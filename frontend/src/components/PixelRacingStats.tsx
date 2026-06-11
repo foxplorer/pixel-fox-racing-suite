@@ -58,15 +58,27 @@ const TRACK_ICON_BY_NAME: Record<string, string> = {
   Germany: '🇩🇪',
   Aspen: '🏔️'
 };
+type PixelRacingResultQuery = { app: string; name: string };
+type PixelRacingStatsEra = 'current' | 'legacy';
+
 const GORILLAPOOL_SEARCH_LIMIT = 10000;
 const RESULTS_APP = import.meta.env.VITE_PIXELRACING_RESULTS_APP || 'pixelfoxracing';
 const RESULTS_NAME = import.meta.env.VITE_PIXELRACING_RESULTS_NAME || 'pixelracingtimes';
-const PIXELRACING_RESULT_QUERIES = [
-  // { app: 'foxplorer', name: 'pixelracingtimes' },
+const LEGACY_RESULTS_APP = import.meta.env.VITE_PIXELRACING_LEGACY_RESULTS_APP || 'foxplorer';
+const LEGACY_RESULTS_NAME = import.meta.env.VITE_PIXELRACING_LEGACY_RESULTS_NAME || 'pixelracingtimes';
+
+const dedupeResultQueries = (queries: PixelRacingResultQuery[]): PixelRacingResultQuery[] =>
+  queries.filter((query, index, allQueries) =>
+    allQueries.findIndex(other => other.app === query.app && other.name === query.name) === index
+  );
+
+const CURRENT_PIXELRACING_RESULT_QUERIES = dedupeResultQueries([
   { app: RESULTS_APP, name: RESULTS_NAME },
-].filter((query, index, queries) =>
-  queries.findIndex(other => other.app === query.app && other.name === query.name) === index
-);
+]);
+
+const LEGACY_PIXELRACING_RESULT_QUERIES = dedupeResultQueries([
+  { app: LEGACY_RESULTS_APP, name: LEGACY_RESULTS_NAME },
+]);
 
 const getTxid = (item: any): string => {
   const raw = item?.txid || item?.id || item?.outpoint || item?.origin?.outpoint || '';
@@ -85,9 +97,12 @@ const getSigner = (item: any): string | undefined => {
   return sigma?.address || sigma?.pubKey || sigma?.publicKey || sigma?.identityKey || item?.signer;
 };
 
-const toPixelRacingGameResult = (item: any): PixelRacingGameResult | null => {
+const toPixelRacingGameResult = (
+  item: any,
+  allowedQueries: PixelRacingResultQuery[] = CURRENT_PIXELRACING_RESULT_QUERIES
+): PixelRacingGameResult | null => {
   const mapData = getMapData(item);
-  const isPixelRacingResult = PIXELRACING_RESULT_QUERIES.some(query =>
+  const isPixelRacingResult = allowedQueries.some(query =>
     mapData.app === query.app && mapData.name === query.name
   );
   if (!isPixelRacingResult) return null;
@@ -250,25 +265,90 @@ const formatLapTime = (seconds: number): string => {
   return `${mins}:${secs.padStart(6, '0')}`;
 };
 
+const processFetchedGames = (games: PixelRacingGameResult[]) => {
+  const sortedHistory = _.sortBy(games, item => Number(item.time) || 0).reverse();
+
+  return {
+    sortedHistory,
+    leaders: [...games].sort((a, b) => Number(a.laptime) - Number(b.laptime)),
+    trackLeaderboards: groupPixelRacingResultsByStatsTrack(games),
+    driverChampionship: computeDriverChampionship(games),
+    gameCount: sortedHistory.length,
+  };
+};
+
+const fetchPixelRacingResults = async (
+  queries: PixelRacingResultQuery[]
+): Promise<PixelRacingGameResult[]> => {
+  const searchResults = await Promise.all(queries.map(async query => {
+    const response = await fetch(`https://ordinals.gorillapool.io/api/txos/search?limit=${GORILLAPOOL_SEARCH_LIMIT}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json;charset=UTF-8",
+      },
+      body: JSON.stringify({ map: query }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status} for ${query.app}/${query.name}`);
+    }
+
+    const searchData = await response.json();
+    return Array.isArray(searchData) ? searchData : [];
+  }));
+
+  const searchItems = searchResults.flat();
+
+  const historyGames = (await Promise.all(searchItems.map(async (item: any) => {
+    const directResult = toPixelRacingGameResult(item, queries);
+    if (directResult) return directResult;
+
+    const txid = getTxid(item);
+    if (!txid) return null;
+
+    try {
+      const utxoResponse = await fetch(`https://ordinals.gorillapool.io/api/txos/${txid}_0`);
+      if (!utxoResponse.ok) return null;
+      return toPixelRacingGameResult(await utxoResponse.json(), queries);
+    } catch {
+      return null;
+    }
+  }))).filter(Boolean) as PixelRacingGameResult[];
+
+  return Array.from(
+    new Map(historyGames.map(game => [game.txid || `${game.outpoint}_${game.time}`, game])).values()
+  );
+};
+
 const ACTIVITY_PAGE_SIZE = 5;
 
 const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOrdinalAddress, customTitle, renderBeforeLeaderboard }: PixelRacingStatsProps) {
   const [liveActivity, setLiveActivity] = useState<PixelRacingGameResult[]>([]); // ONLY live items/games
   const [gameHistory, setGameHistory] = useState<PixelRacingGameResult[]>([]); // Fetched global games
+  const [legacyGameHistory, setLegacyGameHistory] = useState<PixelRacingGameResult[]>([]);
   const [leadersdisplay, setLeadersDisplay] = useState<PixelRacingGameResult[]>([]); // Legacy - keeping for compatibility
   const [trackLeaderboards, setTrackLeaderboards] = useState<Record<string, PixelRacingGameResult[]>>({});
+  const [legacyTrackLeaderboards, setLegacyTrackLeaderboards] = useState<Record<string, PixelRacingGameResult[]>>({});
   const [gamecount, setGameCount] = useState<number>(0);
+  const [legacyGameCount, setLegacyGameCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoadingLegacy, setIsLoadingLegacy] = useState<boolean>(false);
   const [activityresults, setActivityResults] = useState<number>(ACTIVITY_PAGE_SIZE);
   const [historyResults, setHistoryResults] = useState<number>(ACTIVITY_PAGE_SIZE);
+  const [legacyHistoryResults, setLegacyHistoryResults] = useState<number>(ACTIVITY_PAGE_SIZE);
   const [displayshowmoreactivity, setDisplayShowMoreActivity] = useState<boolean>(false);
   const [displayshowmorehistory, setDisplayShowMoreHistory] = useState<boolean>(false);
+  const [displayShowMoreLegacyHistory, setDisplayShowMoreLegacyHistory] = useState<boolean>(false);
   const [fetchError, setFetchError] = useState<string | null>(null); // Track fetch errors for retry UI
+  const [legacyFetchError, setLegacyFetchError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0); // Track retry attempts
   const [driverChampionship, setDriverChampionship] = useState<DriverStats[]>([]); // Driver standings
+  const [legacyDriverChampionship, setLegacyDriverChampionship] = useState<DriverStats[]>([]);
   const [expandedDrivers, setExpandedDrivers] = useState<Set<string>>(new Set()); // Expanded driver cards
   const [championshipDisplayCount, setChampionshipDisplayCount] = useState<number>(10); // Pagination
   const [activeTab, setActiveTab] = useState<string>(PIXEL_RACING_CHAMPIONSHIP_TAB_ID); // Track tabs
+  const [statsEra, setStatsEra] = useState<PixelRacingStatsEra>('current');
   const [canScrollLeft, setCanScrollLeft] = useState(false); // Track if can scroll left
   const [canScrollRight, setCanScrollRight] = useState(true); // Track if more tabs to scroll
 
@@ -276,6 +356,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
   const didMount = useRef(false);
   const tabContainerRef = useRef<HTMLDivElement>(null);
   const hasFetchedHistory = useRef(false); // Track if history has been fetched
+  const hasFetchedLegacyHistory = useRef(false);
   const MAX_RETRIES = 3;
   const BASE_DELAY = 1000; // 1 second base delay for exponential backoff
   
@@ -390,66 +471,19 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     setFetchError(null);
 
     try {
-      const searchResults = await Promise.all(PIXELRACING_RESULT_QUERIES.map(async query => {
-        const response = await fetch(`https://ordinals.gorillapool.io/api/txos/search?limit=${GORILLAPOOL_SEARCH_LIMIT}`, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json;charset=UTF-8",
-          },
-          body: JSON.stringify({ map: query }),
-        });
+      const uniqueHistoryGames = await fetchPixelRacingResults(CURRENT_PIXELRACING_RESULT_QUERIES);
+      const processed = processFetchedGames(uniqueHistoryGames);
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status} for ${query.app}/${query.name}`);
-        }
+      console.log(`Fetched ${uniqueHistoryGames.length} current-season history games by metadata search`);
 
-        const searchData = await response.json();
-        return Array.isArray(searchData) ? searchData : [];
-      }));
-
-      const searchItems = searchResults.flat();
-
-      const historyGames = (await Promise.all(searchItems.map(async (item: any) => {
-        const directResult = toPixelRacingGameResult(item);
-        if (directResult) return directResult;
-
-        const txid = getTxid(item);
-        if (!txid) return null;
-
-        try {
-          const utxoResponse = await fetch(`https://ordinals.gorillapool.io/api/txos/${txid}_0`);
-          if (!utxoResponse.ok) return null;
-          return toPixelRacingGameResult(await utxoResponse.json());
-        } catch {
-          return null;
-        }
-      }))).filter(Boolean) as PixelRacingGameResult[];
-
-      const uniqueHistoryGames = Array.from(
-        new Map(historyGames.map(game => [game.txid || `${game.outpoint}_${game.time}`, game])).values()
-      );
-
-      console.log(`Fetched ${uniqueHistoryGames.length} global history games by metadata search`);
-
-      // Sort for History (Time Descending)
-      let sortedHistory = _.sortBy(uniqueHistoryGames, item => Number(item.time) || 0).reverse();
-      setGameHistory(sortedHistory);
+      setGameHistory(processed.sortedHistory);
       setHistoryResults(ACTIVITY_PAGE_SIZE);
-      setDisplayShowMoreHistory(sortedHistory.length > ACTIVITY_PAGE_SIZE);
-
-      // Sort for Leaderboard (Lap Time Ascending - lower is better)
-      let leaders = [...uniqueHistoryGames].sort((a, b) => Number(a.laptime) - Number(b.laptime));
-      setLeadersDisplay(leaders);
-
-      setTrackLeaderboards(groupPixelRacingResultsByStatsTrack(uniqueHistoryGames));
-
-      // Compute Driver Championship standings
-      const championshipData = computeDriverChampionship(uniqueHistoryGames);
-      setDriverChampionship(championshipData);
-      console.log(`Computed driver championship with ${championshipData.length} drivers`);
-
-      setGameCount(sortedHistory.length);
+      setDisplayShowMoreHistory(processed.sortedHistory.length > ACTIVITY_PAGE_SIZE);
+      setLeadersDisplay(processed.leaders);
+      setTrackLeaderboards(processed.trackLeaderboards);
+      setDriverChampionship(processed.driverChampionship);
+      console.log(`Computed driver championship with ${processed.driverChampionship.length} drivers`);
+      setGameCount(processed.gameCount);
       setIsLoading(false);
       setRetryCount(0); // Reset retry count on success
       setFetchError(null);
@@ -474,12 +508,55 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     }
   };
 
+  const fetchLegacyHistory = async (): Promise<void> => {
+    setIsLoadingLegacy(true);
+    setLegacyFetchError(null);
+
+    try {
+      const uniqueHistoryGames = await fetchPixelRacingResults(LEGACY_PIXELRACING_RESULT_QUERIES);
+      const processed = processFetchedGames(uniqueHistoryGames);
+
+      console.log(`Fetched ${uniqueHistoryGames.length} legacy history games by metadata search`);
+
+      setLegacyGameHistory(processed.sortedHistory);
+      setLegacyHistoryResults(ACTIVITY_PAGE_SIZE);
+      setDisplayShowMoreLegacyHistory(processed.sortedHistory.length > ACTIVITY_PAGE_SIZE);
+      setLegacyTrackLeaderboards(processed.trackLeaderboards);
+      setLegacyDriverChampionship(processed.driverChampionship);
+      setLegacyGameCount(processed.gameCount);
+      setIsLoadingLegacy(false);
+      setLegacyFetchError(null);
+    } catch (err) {
+      console.error('Error fetching legacy pixel racing stats:', err);
+      hasFetchedLegacyHistory.current = false;
+      setIsLoadingLegacy(false);
+      setLegacyFetchError('Failed to load legacy racing stats. Please try again.');
+    }
+  };
+
   // Manual refresh function
   const handleManualRefresh = () => {
+    if (statsEra === 'legacy') {
+      hasFetchedLegacyHistory.current = false;
+      setLegacyFetchError(null);
+      hasFetchedLegacyHistory.current = true;
+      fetchLegacyHistory();
+      return;
+    }
+
     hasFetchedHistory.current = false;
     setRetryCount(0);
     setFetchError(null);
     fetchHistoryWithRetry(0);
+  };
+
+  const handleStatsEraChange = (nextEra: PixelRacingStatsEra) => {
+    if (nextEra === statsEra) return;
+
+    setStatsEra(nextEra);
+    setActiveTab(PIXEL_RACING_CHAMPIONSHIP_TAB_ID);
+    setExpandedDrivers(new Set());
+    setChampionshipDisplayCount(10);
   };
 
   // Fetch GLOBAL HISTORY only (for History & Leaderboard sections)
@@ -493,6 +570,15 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     hasFetchedHistory.current = true;
     fetchHistoryWithRetry(0);
   }, []);
+
+  useEffect(() => {
+    if (statsEra !== 'legacy' || hasFetchedLegacyHistory.current) {
+      return;
+    }
+
+    hasFetchedLegacyHistory.current = true;
+    fetchLegacyHistory();
+  }, [statsEra]);
 
   // Handle LIVE updates (Latest Transactions)
   useEffect(() => {
@@ -556,11 +642,22 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
 
   // Helper to show more HISTORY
   const showMoreHistory = () => {
-      const newCount = historyResults + ACTIVITY_PAGE_SIZE;
+      const activeHistory = statsEra === 'legacy' ? legacyGameHistory : gameHistory;
+      const currentCount = statsEra === 'legacy' ? legacyHistoryResults : historyResults;
+      const newCount = currentCount + ACTIVITY_PAGE_SIZE;
+
+      if (statsEra === 'legacy') {
+        setLegacyHistoryResults(newCount);
+        if (newCount >= activeHistory.length) {
+          setDisplayShowMoreLegacyHistory(false);
+        }
+        return;
+      }
+
       setHistoryResults(newCount);
 
       // Hide button if all items are shown
-      if (newCount >= gameHistory.length) {
+      if (newCount >= activeHistory.length) {
           setDisplayShowMoreHistory(false);
       }
   };
@@ -709,20 +806,29 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     }
   };
 
-  const trackNamesForTabs = getPixelRacingStatsTrackNames(gameHistory);
+  const trackNamesForTabs = getPixelRacingStatsTrackNames(
+    statsEra === 'legacy' ? legacyGameHistory : gameHistory
+  );
+  const activeGameHistory = statsEra === 'legacy' ? legacyGameHistory : gameHistory;
+  const activeTrackLeaderboards = statsEra === 'legacy' ? legacyTrackLeaderboards : trackLeaderboards;
+  const activeDriverChampionship = statsEra === 'legacy' ? legacyDriverChampionship : driverChampionship;
+  const activeIsLoading = statsEra === 'legacy' ? isLoadingLegacy : isLoading;
+  const activeFetchError = statsEra === 'legacy' ? legacyFetchError : fetchError;
+  const activeHistoryResults = statsEra === 'legacy' ? legacyHistoryResults : historyResults;
+  const activeShowMoreHistory = statsEra === 'legacy' ? displayShowMoreLegacyHistory : displayshowmorehistory;
   const trackTabs = [
     ...trackNamesForTabs.map(trackName => ({
       id: getPixelRacingStatsTrackTabId(trackName),
       label: trackName,
       icon: TRACK_ICON_BY_NAME[trackName] ?? '🏁',
-      count: trackLeaderboards[trackName]?.length ?? 0,
+      count: activeTrackLeaderboards[trackName]?.length ?? 0,
       trackName
     })),
     {
       id: PIXEL_RACING_CHAMPIONSHIP_TAB_ID,
       label: 'Championship',
       icon: '🏆',
-      count: driverChampionship.length,
+      count: activeDriverChampionship.length,
       trackName: null
     }
   ];
@@ -774,7 +880,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
       <h3 style={styles.sectionTitle}>🏆 {trackName}</h3>
       <div id={`${getPixelRacingStatsTrackTabId(trackName)}Leaderboard`}>
         <div className="CenterLoader">
-          {isLoading ? (
+          {activeIsLoading ? (
             <PulseLoader color="#ffffff" />
           ) : null}
         </div>
@@ -849,10 +955,14 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
               );
             })}
           </ol>
-        ) : !isLoading ? (
+        ) : !activeIsLoading ? (
           <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
             <p>No {trackName} track entries yet.</p>
-            <p style={{ fontSize: '0.9em', marginTop: '10px' }}>Play games on {trackName} track to appear here!</p>
+            <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
+              {statsEra === 'legacy'
+                ? `No legacy results recorded for ${trackName}.`
+                : `Play games on ${trackName} track to appear here!`}
+            </p>
           </div>
         ) : null}
       </div>
@@ -1024,21 +1134,89 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
         </div>
       )}
 
+      {/* Stats Era Toggle */}
+      <div style={{
+        ...styles.section,
+        padding: '16px 20px',
+        marginBottom: '20px',
+        background: 'linear-gradient(135deg, rgba(0,0,0,0.65) 0%, rgba(20,20,40,0.75) 100%)',
+      }}>
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+          gap: '10px',
+          marginBottom: statsEra === 'legacy' ? '12px' : '0',
+        }}>
+          <button
+            type="button"
+            onClick={() => handleStatsEraChange('current')}
+            style={tabBarStyles.pill(statsEra === 'current') as React.CSSProperties}
+          >
+            <span>🏁</span>
+            <span>Current Tracks</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleStatsEraChange('legacy')}
+            style={tabBarStyles.pill(statsEra === 'legacy') as React.CSSProperties}
+          >
+            <span>📜</span>
+            <span>Legacy Era</span>
+          </button>
+        </div>
+        {statsEra === 'legacy' && (
+          <p style={{
+            margin: 0,
+            textAlign: 'center',
+            color: '#b8c5d1',
+            fontSize: '0.9em',
+            lineHeight: 1.5,
+          }}>
+            Scores from the earlier foxplorer era on different track layouts.
+            Lap times here are not directly comparable to current tracks.
+          </p>
+        )}
+      </div>
+
       {/* Game History Section */}
       <div style={styles.section}>
         <h3 style={styles.sectionTitle}>
-          Game History{gameHistory.length > 0 ? ` (${gameHistory.length.toLocaleString()})` : ''}
+          {statsEra === 'legacy' ? 'Legacy Game History' : 'Game History'}
+          {activeGameHistory.length > 0 ? ` (${activeGameHistory.length.toLocaleString()})` : ''}
         </h3>
         <div id="GameHistory">
           <div className="CenterLoader">
-            {isLoading ? (
+            {activeIsLoading ? (
               <PulseLoader color="#ffffff" />
             ) : null}
           </div>
+
+          {activeFetchError && !activeIsLoading && (
+            <div style={{ textAlign: 'center', color: '#ff6b6b', padding: '20px' }}>
+              <p>{activeFetchError}</p>
+              <button
+                onClick={handleManualRefresh}
+                style={{
+                  marginTop: '15px',
+                  padding: '10px 20px',
+                  backgroundColor: '#36bffa',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '1em',
+                  fontWeight: 'bold'
+                }}
+              >
+                Refresh Stats
+              </button>
+            </div>
+          )}
           
-          {gameHistory && gameHistory.length > 0 ? (
+          {activeGameHistory && activeGameHistory.length > 0 ? (
             <ol style={styles.list}>
-              {gameHistory.slice(0, historyResults).map((data, index) => {
+              {activeGameHistory.slice(0, activeHistoryResults).map((data, index) => {
                 let txidlink = getWhatsOnChainTransactionUrl(data.txid);
                 let inscriptionlink = getOrdinalInscriptionUrl(`${data.txid}_0`);
                 let date = new Date(Number(data.time) || 0).toLocaleString();
@@ -1077,14 +1255,18 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                 );
               })}
             </ol>
-          ) : !isLoading ? (
+          ) : !activeIsLoading && !activeFetchError ? (
             <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
-              <p>No game history found.</p>
-              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>Be the first to play a game!</p>
+              <p>{statsEra === 'legacy' ? 'No legacy game history found.' : 'No game history found.'}</p>
+              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
+                {statsEra === 'legacy'
+                  ? 'Legacy scores will appear here once loaded from foxplorer inscriptions.'
+                  : 'Be the first to play a game!'}
+              </p>
             </div>
           ) : null}
           
-          {gameHistory && gameHistory.length > 0 && displayshowmorehistory && (
+          {activeGameHistory && activeGameHistory.length > 0 && activeShowMoreHistory && (
             <div id="ShowMoreHistory" style={{ 
               display: 'flex',
               justifyContent: 'center',
@@ -1187,7 +1369,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
 
       {activeTrackTab?.trackName && renderTrackLeaderboard(
         activeTrackTab.trackName,
-        trackLeaderboards[activeTrackTab.trackName] ?? []
+        activeTrackLeaderboards[activeTrackTab.trackName] ?? []
       )}
 
       {/* Driver Championship Section */}
@@ -1206,7 +1388,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
           textShadow: '0 0 10px rgba(255, 215, 0, 0.5)',
           marginBottom: '5px'
         }}>
-          Driver Championship
+          {statsEra === 'legacy' ? 'Legacy Driver Championship' : 'Driver Championship'}
         </h3>
         <p style={{
           textAlign: 'center',
@@ -1215,19 +1397,21 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
           marginTop: '0',
           marginBottom: '20px'
         }}>
-          Championship points: 25-18-15-12-10-8-6-4-2-1 for top 10 per track
+          {statsEra === 'legacy'
+            ? 'Legacy championship standings from earlier track layouts (foxplorer era).'
+            : 'Championship points: 25-18-15-12-10-8-6-4-2-1 for top 10 per track'}
         </p>
 
         <div id="DriverChampionship">
           <div className="CenterLoader">
-            {isLoading ? (
+            {activeIsLoading ? (
               <PulseLoader color="#FFD700" />
             ) : null}
           </div>
 
-          {driverChampionship && driverChampionship.length > 0 ? (
+          {activeDriverChampionship && activeDriverChampionship.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {driverChampionship.slice(0, championshipDisplayCount).map((driver, index) => {
+              {activeDriverChampionship.slice(0, championshipDisplayCount).map((driver, index) => {
                 const isExpanded = expandedDrivers.has(driver.address);
                 const championshipPosition = index + 1;
                 const tracksRaced = Object.keys(driver.trackStats).length;
@@ -1659,7 +1843,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
               })}
 
               {/* Show More Button */}
-              {driverChampionship.length > championshipDisplayCount && (
+              {activeDriverChampionship.length > championshipDisplayCount && (
                 <div style={{
                   display: 'flex',
                   justifyContent: 'center',
@@ -1669,15 +1853,19 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                 </div>
               )}
             </div>
-          ) : !isLoading ? (
+          ) : !activeIsLoading && !activeFetchError ? (
             <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
-              <p>No championship data yet.</p>
-              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>Race on any track to earn championship points!</p>
+              <p>{statsEra === 'legacy' ? 'No legacy championship data yet.' : 'No championship data yet.'}</p>
+              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
+                {statsEra === 'legacy'
+                  ? 'Switch back to Current Tracks or wait for legacy scores to load.'
+                  : 'Race on any track to earn championship points!'}
+              </p>
             </div>
           ) : null}
 
           {/* Championship Summary Stats */}
-          {driverChampionship && driverChampionship.length > 0 && !isLoading && (
+          {activeDriverChampionship && activeDriverChampionship.length > 0 && !activeIsLoading && (
             <div style={{
               marginTop: '25px',
               padding: '15px',
@@ -1702,19 +1890,19 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
               }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ color: '#FFD700', fontSize: '1.8em', fontWeight: 'bold' }}>
-                    {driverChampionship.length}
+                    {activeDriverChampionship.length}
                   </div>
                   <div style={{ color: '#888' }}>Total Drivers</div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ color: '#36bffa', fontSize: '1.8em', fontWeight: 'bold' }}>
-                    {driverChampionship.reduce((sum, d) => sum + d.totalRaces, 0)}
+                    {activeDriverChampionship.reduce((sum, d) => sum + d.totalRaces, 0)}
                   </div>
                   <div style={{ color: '#888' }}>Total Races</div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ color: '#4CAF50', fontSize: '1.8em', fontWeight: 'bold' }}>
-                    {driverChampionship.reduce((sum, d) => sum + d.totalPoints, 0)}
+                    {activeDriverChampionship.reduce((sum, d) => sum + d.totalPoints, 0)}
                   </div>
                   <div style={{ color: '#888' }}>Total Points Awarded</div>
                 </div>
