@@ -1,0 +1,178 @@
+/* Snowmobile Component Styles */
+
+/* Join Overlay - Full screen background with snowy image */
+.snowmobile-join-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 80vh;
+  margin: 0;
+  padding: 20px;
+  background: linear-gradient(180deg, #1a3a5c 0%, #0d1f33 50%, #081018 100%);
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  z-index: 100;
+}
+
+/* Join Modal - Modern style */
+.snowmobile-join-modal {
+  max-width: 500px;
+  padding: 40px;
+  background: #0d1f33;
+  border: 3px solid #87CEEB;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  margin: 0;
+}
+
+.snowmobile-join-modal.modern {
+  width: min(400px, 95%);
+  padding: 16px;
+  background: rgba(12, 31, 51, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.snowmobile-join-modal h3 {
+  margin-top: 0;
+  color: #fff;
+  font-size: 24px;
+}
+
+/* Modal Header */
+.snowmobile-join-modal-header {
+  text-align: left;
+}
+
+.snowmobile-join-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #87CEEB;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.snowmobile-join-modal-header h3 {
+  margin: 0;
+  font-size: 24px;
+  color: #fff;
+}
+
+.snowmobile-join-description {
+  color: #aaa;
+  margin: 20px 0 30px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Gate indicator styles */
+.gate-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.gate-indicator.red {
+  background: rgba(255, 0, 0, 0.2);
+  border: 1px solid #ff4444;
+  color: #ff6666;
+}
+
+.gate-indicator.blue {
+  background: rgba(0, 100, 255, 0.2);
+  border: 1px solid #4488ff;
+  color: #66aaff;
+}
+
+.gate-indicator.passed {
+  opacity: 0.5;
+}
+
+/* Snowflake animation */
+@keyframes snowfall {
+  0% {
+    transform: translateY(-10vh) translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) translateX(20px);
+    opacity: 0.3;
+  }
+}
+
+.snowflake {
+  position: absolute;
+  color: white;
+  font-size: 1.5rem;
+  animation: snowfall linear infinite;
+  pointer-events: none;
+}
+
+/* Buttons */
+.snowmobile-join-button {
+  padding: 8px 16px;
+  background: transparent;
+  color: #87CEEB;
+  border: 2px solid #87CEEB;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  min-width: auto;
+  width: fit-content;
+}
+
+.snowmobile-join-button:hover:not(:disabled) {
+  background: #87CEEB;
+  color: #0d1f33;
+  border-color: #87CEEB;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(135, 206, 235, 0.4);
+}
+
+.snowmobile-join-button:disabled {
+  background: transparent;
+  color: #666;
+  border-color: #666;
+  cursor: not-allowed;
+  transform: none;
+  opacity: 0.5;
+}
+
+.snowmobile-join-button.neon {
+  background: #87CEEB;
+  color: #0d1f33;
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  box-shadow: none;
+}
+
+.snowmobile-join-button.neon:hover:not(:disabled) {
+  background: #a8daef;
+  color: #0d1f33;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(135, 206, 235, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .snowmobile-join-modal.modern {
+    padding: 22px;
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "pixel-fox-racing-suite",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "socket-server",
+    "transaction-server"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "dev:socket": "npm --workspace socket-server run dev",
+    "dev:transactions": "npm --workspace transaction-server run dev",
+    "build:frontend": "npm --workspace frontend run build",
+    "test:frontend-core": "npm --workspace frontend run test:core",
+    "tracks:generate-custom": "node scripts/generate-custom-track.mjs",
+    "tracks:add-elevations": "node scripts/add-geojson-elevations.mjs",
+    "check:socket": "npm --workspace socket-server run check",
+    "check:transactions": "npm --workspace transaction-server run check"
+  }
+}

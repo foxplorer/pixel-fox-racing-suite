@@ -1,0 +1,239 @@
+/* Fox Racing Component Styles */
+
+/* Join Overlay - Full screen background with track image */
+.join-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 80vh; /* Reduced height to show stats below */
+  margin: 0;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  z-index: 100; /* Below topbar which is typically z-index 1000+ */
+}
+
+/* Join Modal - Modern style */
+.join-modal {
+  max-width: 500px;
+  padding: 40px;
+  background: #16213e;
+  border: 3px solid #4ECDC4;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  margin: 0; /* Remove any default margins */
+}
+
+.join-modal.modern {
+  width: min(400px, 95%);
+  padding: 16px;
+  background: rgba(12, 18, 36, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.join-modal h3 {
+  margin-top: 0;
+  color: #fff;
+  font-size: 24px;
+}
+
+/* Modal Header */
+.join-modal-header {
+  text-align: left;
+}
+
+.join-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #5ed0c5;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.join-modal-header h3 {
+  margin: 0;
+  font-size: 24px;
+  color: #fff;
+}
+
+.join-description {
+  color: #aaa;
+  margin: 20px 0 30px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.join-modal.modern .join-description {
+  margin: 8px 0 12px 0;
+  color: #9baac3;
+}
+
+/* Modal Body */
+.join-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Fox Card */
+.join-fox-card {
+  display: flex;
+  gap: 12px;
+  background: #0a101d;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  align-items: center;
+}
+
+.join-fox-preview {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid rgba(94, 208, 197, 0.5);
+  flex-shrink: 0;
+}
+
+.join-fox-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.join-fox-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(94, 208, 197, 0.9);
+  color: #06101c;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.join-fox-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.join-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.join-info-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7f8ead;
+}
+
+.join-info-value {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.join-info-value.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  color: #5ed0c5;
+}
+
+/* Buttons */
+.join-button {
+  padding: 8px 16px;
+  background: transparent;
+  color: #4ECDC4;
+  border: 2px solid #4ECDC4;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  min-width: auto;
+  width: fit-content;
+}
+
+.join-button:hover:not(:disabled) {
+  background: #4ECDC4;
+  color: #16213e;
+  border-color: #4ECDC4;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
+}
+
+.join-button:disabled {
+  background: transparent;
+  color: #666;
+  border-color: #666;
+  cursor: not-allowed;
+  transform: none;
+  opacity: 0.5;
+}
+
+.join-button.neon {
+  background: #36bffa;
+  color: #06101c;
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  box-shadow: none;
+}
+
+.join-button.neon:disabled {
+  background: #1a2437;
+  color: #5c6781;
+}
+
+.join-button.neon:hover:not(:disabled) {
+  background: #4ECDC4;
+  color: #06101c;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
+}
+
+/* Modal Footer */
+.join-modal-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .join-modal.modern {
+    padding: 22px;
+  }
+
+  .join-fox-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .join-fox-preview {
+    width: 100%;
+    height: 200px;
+  }
+}
+
