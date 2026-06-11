@@ -62,7 +62,7 @@ const GORILLAPOOL_SEARCH_LIMIT = 10000;
 const RESULTS_APP = import.meta.env.VITE_PIXELRACING_RESULTS_APP || 'pixelfoxracing';
 const RESULTS_NAME = import.meta.env.VITE_PIXELRACING_RESULTS_NAME || 'pixelracingtimes';
 const PIXELRACING_RESULT_QUERIES = [
-  { app: 'foxplorer', name: 'pixelracingtimes' },
+  // { app: 'foxplorer', name: 'pixelracingtimes' },
   { app: RESULTS_APP, name: RESULTS_NAME },
 ].filter((query, index, queries) =>
   queries.findIndex(other => other.app === query.app && other.name === query.name) === index
