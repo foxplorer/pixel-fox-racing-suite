@@ -261,7 +261,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
               metalness={0.1}
             />
           </mesh>
-          <DistantMountains radius={1800} layers={5} />
+          <DistantMountains radius={2000} layers={5} />
           <SimpleTrees
             count={50}
             area={1500}
