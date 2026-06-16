@@ -58,6 +58,7 @@ import { registerCarTrackLivePlayerSocketListeners } from '../../racing/multipla
 import { useRemotePlayerLodRendering } from '../../racing/multiplayer/useRemotePlayerLodRendering'
 import { getRacingMinimapQualitySettings, getRacingQualityPreset } from '../../racing/performance/qualitySettings'
 import { useRacingQualitySetting } from '../../racing/performance/useRacingQualitySetting'
+import { useFullscreenToggle } from '../../racing/components/useFullscreenToggle'
 
 const collectibleImageUrls = {
   blueberry: blueberryUrl,
@@ -115,7 +116,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   // ===== TESTING FLAG - Set to true to skip transaction submission =====
   const TESTING_MODE = false // Set to false to enable transaction submission
   // =======================================================================
-  
+
+  const { containerRef, isFullscreen, toggleFullscreen } = useFullscreenToggle<HTMLDivElement>()
   const [gameStatus, setGameStatus] = useState<GameStatus>('idle')
   const [score, setScore] = useState(0)
   const [distanceTraveled, setDistanceTraveled] = useState(0)
@@ -336,6 +338,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     socketRef,
     hasJoined,
     playDingSound,
+    identityKey,
     ordinalAddress,
     foxOutpoint,
     foxOriginOutpoint,
@@ -721,15 +724,15 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
 
   return (
     <>
-      <div style={getCarRacingGameViewportStyle(gameStatus)}>
+      <div ref={containerRef} style={getCarRacingGameViewportStyle(gameStatus)}>
         {/* Loading Screen */}
         {gameStatus === 'loading' && (
           <RacingLoadingOverlay />
         )}
-        
+
         {/* 3D World */}
         <FoxRacingWorld
-          otherPlayers={visibleRemotePlayers} 
+          otherPlayers={visibleRemotePlayers}
           gameStatus={gameStatus}
           onCrash={handleCrash}
           onScoreUpdate={setScore}
@@ -755,6 +758,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           localChatMessage={localChatMessage}
           cameraMode={cameraMode}
           qualityPresetId={qualityPresetId}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
 
         {/* Minimap - Show during racing and countdown (bottom right) */}

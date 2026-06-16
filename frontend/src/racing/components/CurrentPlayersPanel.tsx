@@ -149,7 +149,7 @@ export const CurrentPlayersPanel: React.FC<CurrentPlayersPanelProps> = ({
                     }}>
                       {(player.name && player.name.trim()) || 'Fox'}
                     </span>
-                    {player.ordinalAddress && (
+                    {player.identityKey && (
                       <span className="player-address" style={{
                         fontSize: '10px',
                         color: '#888',
@@ -158,7 +158,7 @@ export const CurrentPlayersPanel: React.FC<CurrentPlayersPanelProps> = ({
                         overflow: 'hidden',
                         textOverflow: 'ellipsis'
                       }}>
-                        {formatShortAddress(player.ordinalAddress)}
+                        ID: {formatShortAddress(player.identityKey)}
                       </span>
                     )}
                     <span className="player-track" style={{

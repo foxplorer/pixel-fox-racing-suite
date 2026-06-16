@@ -107,6 +107,44 @@ The transaction server exposes these Pixel Fox Racing routes:
 - `POST /createsalad`
 - `POST /createrabbit`
 
+## Wallet Behavior
+
+The frontend supports two explicit wallet choices. The landing page does not
+auto-connect or probe wallets before the player clicks a wallet button.
+
+- `Connect Yours Wallet` uses the modern BRC-100 flow through `@1sat/react`,
+  `@bsv/sdk`, and `@1sat/actions`. The app creates an actions context with
+  `createContext(wallet, { chain: 'main', services })`, derives the payment and
+  ordinal receive addresses with `deriveDepositAddresses`, and lists foxes with
+  `getOrdinals` from the wallet-managed `p 1sat ordinals` basket. The
+  deprecated legacy `window.yours` provider is not used.
+- `Connect Metanet` uses the local Metanet JSON API wallet transport. Foxes are
+  listed from the app-specific `pixel foxes` basket, and race collectibles are
+  delivered through the same Metanet protocol-key/basket path.
+
+Race collectibles intentionally use different receive mechanics per wallet:
+
+- Yours collectibles are minted and broadcast to the derived ordinal receive
+  address. In practice this is the Yours/1Sat ordinal path, backed by the
+  wallet's `p 1sat ordinals` basket. The Yours extension automatically tracks
+  that address, so collectibles appear in the wallet without any frontend
+  action. The frontend does not call `internalizeAction` for Yours rewards.
+- Metanet collectibles are minted and broadcast to a BRC-42 address derived from
+  the player's `[0, 'pixel foxes']` protocol public key. The transaction server
+  returns Atomic BEEF, output details, and remittance metadata for the
+  app-specific `pixel foxes` basket. The frontend then calls `internalizeAction`
+  on the Metanet client to import the output into that `pixel foxes` basket.
+  This intentionally avoids the `p 1sat ordinals` basket/module path because
+  Metanet Client can reject that path with missing `p` module errors. If this
+  basket import step fails, the frontend retries three times with exponential
+  backoff. If all retries fail, the broadcast transaction remains on-chain and
+  visible in activity.
+
+The transaction server receives a validated `deliveryTarget` union from the
+frontend. The current modes are `address` for Yours-style address delivery and
+`protocol-key` for Metanet basket delivery. Legacy names such as
+`address-fallback` are not part of the current main request contract.
+
 ## Real Transaction Mode
 
 Dummy mode returns fake 64-character hex txids so people can build locally without infrastructure.
@@ -130,3 +168,19 @@ To create and broadcast real inscriptions, copy `transaction-server/.env.example
 - `RABBIT_COLLECTION_ID` - your own rabbit collection parent outpoint
 
 Real mode expects a `payment_utxos` table. See `transaction-server/schema.sql` for a starter schema.
+
+## Release Checks
+
+Before publishing a fork or release, run:
+
+```bash
+npm run build:frontend
+npm run test:frontend-core
+npm run check:socket
+npm run check:transactions
+npm run test:transactions
+```
+
+Manual wallet smoke tests should cover both wallet buttons, fox selection, one
+Yours collectible broadcast to the ordinal address, and one Metanet collectible
+internalization with retry behavior.

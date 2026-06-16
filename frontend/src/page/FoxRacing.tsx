@@ -1,9 +1,8 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
-import { FaucetPandaConnectButton } from "../components/FaucetPandaConnectButton";
 import pixelRacingLogo from '../assets/pixel_racing_logo.png';
 import { NewGameChoosePlayerModal } from "../components/NewGameChoosePlayerModal";
 import { ExitButton } from "../components/ExitButton";
-import { usePandaWallet, Addresses } from "panda-wallet-provider";
+import { useWallet } from "@1sat/react";
 import { useNavigate } from "react-router-dom";
 import { PulseLoader } from "react-spinners";
 import PixelRacingStats from "../components/PixelRacingStats";
@@ -23,6 +22,13 @@ import {
   type ImportedCarTrackId
 } from "../racing/tracks/importedCarTrackCatalog";
 import { belgiumCarTrackDefinition } from "../racing/tracks/carTrackDefinitions";
+import {
+  derivePixelRacingAddresses,
+  verifyMetanetPixelFoxAccess
+} from "../wallet/oneSatWallet";
+import { METANET_WALLET_PROVIDER } from "../wallet/walletProviders";
+import { formatShortAddress } from "../racing/components/addressFormat";
+import { normalizeOrdinalOutpoint } from "../racing/transactions/ordinalOutpoint";
 
 const DEFAULT_TRACK_EVENT_ID: TrackEventId = 'australia-car';
 
@@ -48,13 +54,12 @@ const TrackEventLoadingFallback = () => (
 
 export const FoxRacing = () => {
   const navigate = useNavigate();
-  const wallet = usePandaWallet();
+  const { wallet, status, identityKey, providerType } = useWallet();
   
   // Wallet & Player State
-  const [loading, setLoading] = useState<boolean>(false);
-  const [addresses, setAddresses] = useState<Addresses | undefined>();
   const [myordaddress, setMyOrdAddress] = useState<string>("");
   const [bsvaddress, setBsvAddress] = useState<string | undefined>();
+  const [walletOrdinalSource, setWalletOrdinalSource] = useState<'onesat' | 'metanet'>('onesat');
   
   // Fox State
   const [foxSelected, setFoxSelected] = useState<boolean>(false);
@@ -85,56 +90,54 @@ export const FoxRacing = () => {
   // Game Racing State - to hide outer fox info panel when game shows its own
   const [isGameRacing, setIsGameRacing] = useState<boolean>(false);
 
-  // Handle Address Updates
   useEffect(() => {
-    if (addresses) {
-      if (addresses.ordAddress) {
-        setMyOrdAddress(addresses.ordAddress);
+    if (status !== 'connected' || !wallet) return;
+
+    let cancelled = false;
+    const loadAddresses = async () => {
+      try {
+        if (providerType === METANET_WALLET_PROVIDER) {
+          await verifyMetanetPixelFoxAccess(wallet);
+          if (cancelled) return;
+          setWalletOrdinalSource('metanet');
+          setMyOrdAddress(identityKey || '');
+          setBsvAddress(undefined);
+          setIsChoosePlayerModalOpen(true);
+          return;
+        }
+
+        const addrs = await derivePixelRacingAddresses(wallet);
+        if (cancelled) return;
+        setWalletOrdinalSource('onesat');
+        setMyOrdAddress(addrs.ordAddress);
+        setBsvAddress(addrs.bsvAddress);
         setIsChoosePlayerModalOpen(true);
+      } catch (error) {
+        console.error('Failed to initialize connected wallet:', error);
       }
-      if (addresses.bsvAddress) {
-        setBsvAddress(addresses.bsvAddress);
-      }
-    }
-  }, [addresses]);
+    };
 
-  const handleGetAddresses = async () => {
-    const addrs = await wallet.getAddresses();
-    if (addrs) setAddresses(addrs);
-  };
+    loadAddresses();
+    return () => {
+      cancelled = true;
+    };
+  }, [status, wallet, identityKey, providerType]);
 
-  const handleConnect = async () => {
-    // If wallet is already connected but no fox selected, reopen the modal
-    if (myordaddress && !foxSelected) {
+  const handleConnect = () => {
+    if ((myordaddress || walletOrdinalSource === 'metanet') && !foxSelected) {
       setIsChoosePlayerModalOpen(true);
-      return;
-    }
-
-    setLoading(true);
-    if (!wallet.connect) {
-      window.open("https://github.com/Panda-Wallet/panda-wallet#getting-started-alpha", "_blank");
-      setLoading(false);
-      return;
-    }
-
-    const key = await wallet.connect();
-    if (key) {
-      setTimeout(() => handleGetAddresses(), 1000);
-    } else {
-      setLoading(false);
     }
   };
 
   const handleFoxSelected = (foxData: any) => {
     setFoxName(foxData.foxname);
-    setFoxImageSrc(foxData.originoutpoint);
-    setFoxOutpoint(foxData.outpoint);
+    setFoxImageSrc(normalizeOrdinalOutpoint(foxData.originoutpoint));
+    setFoxOutpoint(normalizeOrdinalOutpoint(foxData.outpoint));
     setFoxBackground(foxData.traits?.background);
     setMyOrdAddress(foxData.owneraddress);
     setFoxesOwned(foxData.foxes);
     setFoxSelected(true);
     setIsChoosePlayerModalOpen(false);
-    setLoading(false);
     
     // Set wallet totals from foxData
     if (foxData.walletSaladCount !== undefined) {
@@ -169,13 +172,6 @@ export const FoxRacing = () => {
     window.location.href = "/pixelfoxracing";
   };
 
-  // Helper function to shorten addresses
-  const shortenAddress = (address: string) => {
-    if (!address) return '';
-    if (address.length <= 12) return address;
-    return `${address.slice(0, 6)}...${address.slice(-6)}`;
-  };
-
   const handleTrackEventChange = (trackName: string, color?: string) => {
     // Only start race if color is passed (indicates START RACE was clicked)
     const shouldStartRace = !!color;
@@ -208,7 +204,7 @@ export const FoxRacing = () => {
         return (
           <FoxRacingGame
             key={selectedImportedCarTrackId ?? 'australia-car'}
-            identityKey={null}
+            identityKey={identityKey}
             onConnectWallet={handleConnect}
             foxName={foxname}
             foxOriginOutpoint={foximagesrc}
@@ -231,7 +227,7 @@ export const FoxRacing = () => {
       case 'san-luis-car':
         return (
           <FoxRacingGameSanLuis
-            identityKey={null}
+            identityKey={identityKey}
             onConnectWallet={handleConnect}
             foxName={foxname}
             foxOriginOutpoint={foximagesrc}
@@ -254,7 +250,7 @@ export const FoxRacing = () => {
         return (
           <FoxRacingGame
             key="belgium-car"
-            identityKey={null}
+            identityKey={identityKey}
             onConnectWallet={handleConnect}
             foxName={foxname}
             foxOriginOutpoint={foximagesrc}
@@ -280,7 +276,7 @@ export const FoxRacing = () => {
       case 'aspen-snowmobile':
         return (
           <FoxRacingGameAspen
-            identityKey={null}
+            identityKey={identityKey}
             onConnectWallet={handleConnect}
             foxName={foxname}
             foxOriginOutpoint={foximagesrc}
@@ -397,14 +393,13 @@ export const FoxRacing = () => {
                       </span>
                     </a>
                     
-                    {/* Addresses Section */}
+                    {/* Wallet Identity Section */}
                     <div style={{
                       marginTop: '8px',
                       paddingTop: '8px',
                       borderTop: '1px solid rgba(255, 255, 255, 0.1)'
                     }}>
-                      {/* Ordinal Address */}
-                      {myordaddress && (
+                      {identityKey && (
                         <div style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -416,18 +411,18 @@ export const FoxRacing = () => {
                             fontSize: '0.85em',
                             fontWeight: '600'
                           }}>
-                            Ord:
+                            ID:
                           </span>
                           <span style={{
                             color: '#ccc',
                             fontSize: '0.85em',
                             fontFamily: 'monospace'
                           }}>
-                            {shortenAddress(myordaddress)}
+                            {formatShortAddress(identityKey)}
                           </span>
                           <button
                             onClick={() => {
-                              navigator.clipboard.writeText(myordaddress);
+                              navigator.clipboard.writeText(identityKey);
                               const button = document.activeElement as HTMLButtonElement;
                               if (button) {
                                 const originalText = button.textContent;
@@ -452,58 +447,8 @@ export const FoxRacing = () => {
                           </button>
                         </div>
                       )}
-                      
-                      {/* BSV Address */}
-                      {bsvaddress && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginBottom: '8px'
-                        }}>
-                          <span style={{
-                            color: '#888',
-                            fontSize: '0.85em',
-                            fontWeight: '600'
-                          }}>
-                            BSV:
-                          </span>
-                          <span style={{
-                            color: '#ccc',
-                            fontSize: '0.85em',
-                            fontFamily: 'monospace'
-                          }}>
-                            {shortenAddress(bsvaddress)}
-                          </span>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(bsvaddress);
-                              const button = document.activeElement as HTMLButtonElement;
-                              if (button) {
-                                const originalText = button.textContent;
-                                button.textContent = 'Copied!';
-                                setTimeout(() => {
-                                  button.textContent = originalText;
-                                }, 1000);
-                              }
-                            }}
-                            style={{
-                              backgroundColor: 'transparent',
-                              border: '1px solid #36bffa',
-                              color: '#36bffa',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              fontSize: '10px',
-                              cursor: 'pointer',
-                              fontFamily: 'monospace'
-                            }}
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      )}
-                      
-                      {/* Wallet Totals - Always show all three items, below both addresses */}
+
+                      {/* Wallet Totals - Always show all three items below the identity */}
                       <div style={{
                         marginTop: '8px',
                         paddingTop: '8px',
@@ -577,9 +522,11 @@ export const FoxRacing = () => {
         isOpen={isChoosePlayerModalOpen}
         onClose={() => {
           setIsChoosePlayerModalOpen(false);
-          setLoading(false);
         }}
         ownerAddress={myordaddress || undefined}
+        bsvAddress={bsvaddress}
+        identityKey={identityKey}
+        ordinalSource={walletOrdinalSource}
         logo={pixelRacingLogo}
         onFoxSelected={handleFoxSelected}
       />

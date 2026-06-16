@@ -1,3 +1,5 @@
+import { normalizeOrdinalOutpoint } from '../transactions/ordinalOutpoint'
+
 export interface JoinGameStartFinishPosition {
   x: number
   y: number
@@ -53,7 +55,9 @@ export const buildJoinGamePayload = ({
   identityKey: identityKey || createGuestIdentityKeyOverride(),
   name: foxName || 'Fox',
   ordinalAddress: ordinalAddress || null,
-  originOutpoint: foxOriginOutpoint || null,
+  originOutpoint: foxOriginOutpoint
+    ? normalizeOrdinalOutpoint(foxOriginOutpoint)
+    : null,
   carColor: playerColor,
   ...(startFinishPosition ? { startFinishPosition } : {}),
   trackName

@@ -420,6 +420,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     socketRef,
     hasJoined,
     playDingSound,
+    identityKey,
     ordinalAddress,
     foxOutpoint,
     foxOriginOutpoint,
@@ -1105,8 +1106,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
             name={foxName}
             originOutpoint={foxOriginOutpoint}
             addresses={[
-              { label: 'Ord:', value: ordinalAddress, canCopy: true },
-              { label: 'BSV:', value: bsvAddress, canCopy: true }
+              { label: 'ID:', value: identityKey, canCopy: true }
             ]}
             walletItems={[
               { label: 'Blueberries', iconUrl: blueberryUrl, count: walletBlueberryCount },

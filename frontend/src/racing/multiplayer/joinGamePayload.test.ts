@@ -42,6 +42,20 @@ test('buildJoinGamePayload falls back to guest identity and fox defaults', () =>
   })
 })
 
+test('buildJoinGamePayload canonicalizes dot-form origin outpoints', () => {
+  const txid = 'a'.repeat(64)
+  const payload = buildJoinGamePayload({
+    identityKey: 'identity',
+    foxName: 'Fast Fox',
+    ordinalAddress: 'owner',
+    foxOriginOutpoint: `${txid}.2`,
+    playerColor: '#ff0000',
+    trackName: 'Australia'
+  })
+
+  assert.equal(payload.originOutpoint, `${txid}_2`)
+})
+
 test('shouldEmitJoinGame supports showroom-only joins', () => {
   assert.equal(shouldEmitJoinGame({
     gameStatus: 'showroom',

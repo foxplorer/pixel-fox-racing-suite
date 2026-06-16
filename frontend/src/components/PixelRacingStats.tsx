@@ -4,6 +4,7 @@ import _ from 'underscore';
 import { ShowMoreActivityButton } from "./ShowMoreActivityButton";
 import { PixelRacingGameResult } from "./foxracing/types";
 import { getOrdinalContentUrl, getOrdinalInscriptionUrl, getWhatsOnChainTransactionUrl } from "../racing/transactions/ordinalLinks";
+import { getOutpointTxid, normalizeOrdinalOutpoint } from "../racing/transactions/ordinalOutpoint";
 import { formatShortAddress } from "../racing/components/addressFormat";
 import {
   getPixelRacingStatsTrackName,
@@ -12,6 +13,10 @@ import {
   groupPixelRacingResultsByStatsTrack,
   PIXEL_RACING_CHAMPIONSHIP_TAB_ID
 } from "../racing/stats/pixelRacingStatsTracks";
+import {
+  getPixelRacingRecordVersion,
+  getPixelRacingStandingKey,
+} from "../racing/stats/pixelRacingStatsPrivacy";
 
 type PixelRacingStatsProps = {
   latestactivity: PixelRacingGameResult | null;
@@ -35,6 +40,7 @@ interface TrackStat {
 
 interface DriverStats {
   address: string;
+  identityKind: 'owner-address' | 'fox-origin';
   totalPoints: number;
   trackStats: { [trackName: string]: TrackStat };
   positionCounts: { [position: number]: number };
@@ -82,7 +88,8 @@ const LEGACY_PIXELRACING_RESULT_QUERIES = dedupeResultQueries([
 
 const getTxid = (item: any): string => {
   const raw = item?.txid || item?.id || item?.outpoint || item?.origin?.outpoint || '';
-  return String(raw).split('_')[0];
+  const value = String(raw);
+  return getOutpointTxid(value) || value;
 };
 
 const getMapData = (item: any): Record<string, any> => {
@@ -108,11 +115,19 @@ const toPixelRacingGameResult = (
   if (!isPixelRacingResult) return null;
 
   const txid = getTxid(item);
-  const outpoint = mapData.outpoint || mapData.playeroutpoint || '';
-  const originoutpoint = mapData.originoutpoint || mapData.playeroriginoutpoint || '';
+  const outpoint = normalizeOrdinalOutpoint(
+    mapData.outpoint || mapData.playeroutpoint || ''
+  );
+  const originoutpoint = normalizeOrdinalOutpoint(
+    mapData.originoutpoint || mapData.playeroriginoutpoint || ''
+  );
+  const recordVersion = getPixelRacingRecordVersion(mapData);
 
   return {
-    owneraddress: mapData.owneraddress || mapData.playerowner || item?.owner || item?.address || '',
+    recordVersion,
+    owneraddress: recordVersion >= 2
+      ? ''
+      : mapData.owneraddress || mapData.playerowner || item?.owner || item?.address || '',
     outpoint,
     originoutpoint,
     foxname: mapData.foxname || mapData.playerfoxname || 'Unknown Fox',
@@ -145,7 +160,7 @@ const computeDriverChampionship = (allGames: PixelRacingGameResult[]): DriverSta
     const trackGames = gamesByTrack[track] ?? [];
 
     for (const game of trackGames) {
-      const addr = game.owneraddress;
+      const addr = getPixelRacingStandingKey(game);
       if (!addr) continue;
 
       const existing = driverBestByTrack[track][addr];
@@ -193,6 +208,9 @@ const computeDriverChampionship = (allGames: PixelRacingGameResult[]): DriverSta
       if (!driverStatsMap[entry.address]) {
         driverStatsMap[entry.address] = {
           address: entry.address,
+          identityKind: entry.data.recordVersion && entry.data.recordVersion >= 2
+            ? 'fox-origin'
+            : 'owner-address',
           totalPoints: 0,
           trackStats: {},
           positionCounts: {},
@@ -368,9 +386,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
 
   // Function to extract txid from outpoint (format: txid_vout)
   const extractTxid = (outpoint: string): string | null => {
-    if (!outpoint) return null;
-    const parts = outpoint.split('_');
-    return parts[0] || null;
+    return getOutpointTxid(outpoint);
   };
 
   // Function to extract outpoint from URL (e.g., "https://ordfs.network/content/txid_vout")
@@ -937,7 +953,9 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                     </a>
                   )}
                   <div style={styles.foxName}>{data.foxname}</div>
-                  <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
+                  {data.recordVersion !== undefined && data.recordVersion >= 2 ? null : (
+                    <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
+                  )}
                   <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500', marginTop: '2px' }}>
                     Track: {trackName}
                   </div>
@@ -1092,7 +1110,9 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                         </div>
                       </>
                     )}
-                    <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
+                    {data.recordVersion !== undefined && data.recordVersion >= 2 ? null : (
+                      <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
+                    )}
                     <div style={styles.date}>{date}</div>
                     <div style={styles.links}>
                       <a style={styles.link} target="blank" href={txidlink}>
@@ -1238,7 +1258,9 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                     )}
                     <div style={styles.foxName}>{data.foxname}</div>
                         <div style={styles.laptime}>Lap Time: {formatLapTime(Number(data.laptime))}</div>
-                    <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
+                    {data.recordVersion !== undefined && data.recordVersion >= 2 ? null : (
+                      <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
+                    )}
                     <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500', marginTop: '2px' }}>
                       Track: {getPixelRacingStatsTrackName(data)}
                     </div>
@@ -1388,7 +1410,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
           textShadow: '0 0 10px rgba(255, 215, 0, 0.5)',
           marginBottom: '5px'
         }}>
-          {statsEra === 'legacy' ? 'Legacy Driver Championship' : 'Driver Championship'}
+          {statsEra === 'legacy' ? 'Legacy Driver Championship' : 'Fox Championship'}
         </h3>
         <p style={{
           textAlign: 'center',
@@ -1399,7 +1421,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
         }}>
           {statsEra === 'legacy'
             ? 'Legacy championship standings from earlier track layouts (foxplorer era).'
-            : 'Championship points: 25-18-15-12-10-8-6-4-2-1 for top 10 per track'}
+            : 'Fox standings use origin outpoints. Points: 25-18-15-12-10-8-6-4-2-1 for the top 10 per track.'}
         </p>
 
         <div id="DriverChampionship">
@@ -1492,7 +1514,9 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                           fontSize: '0.85em',
                           fontFamily: 'monospace'
                         }}>
-                          {formatShortAddress(driver.address)}
+                          {driver.identityKind === 'owner-address'
+                            ? formatShortAddress(driver.address)
+                            : 'Fox origin'}
                         </div>
                         {driver.foxNames.length > 1 && (
                           <div style={{
@@ -1892,7 +1916,9 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                   <div style={{ color: '#FFD700', fontSize: '1.8em', fontWeight: 'bold' }}>
                     {activeDriverChampionship.length}
                   </div>
-                  <div style={{ color: '#888' }}>Total Drivers</div>
+                  <div style={{ color: '#888' }}>
+                    {statsEra === 'legacy' ? 'Total Drivers' : 'Total Foxes'}
+                  </div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ color: '#36bffa', fontSize: '1.8em', fontWeight: 'bold' }}>

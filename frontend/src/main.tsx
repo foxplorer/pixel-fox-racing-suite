@@ -1,8 +1,9 @@
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { PandaProvider } from 'panda-wallet-provider'
+import { WalletProvider } from '@1sat/react'
 import { FoxRacing } from './page/FoxRacing'
 import { RoutePreview } from './page/RoutePreview'
+import { pixelRacingWalletProviders } from './wallet/walletProviders'
 import './styles.css'
 
 if (import.meta.env.VITE_PIXELRACING_DEBUG !== 'true') {
@@ -11,7 +12,7 @@ if (import.meta.env.VITE_PIXELRACING_DEBUG !== 'true') {
 }
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <PandaProvider>
+  <WalletProvider providers={pixelRacingWalletProviders}>
     <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <Routes>
         <Route path="/route" element={<RoutePreview />} />
@@ -19,5 +20,5 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
         <Route path="*" element={<Navigate to="/pixelfoxracing" replace />} />
       </Routes>
     </BrowserRouter>
-  </PandaProvider>,
+  </WalletProvider>,
 )

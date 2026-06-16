@@ -2,10 +2,14 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import { config } from 'dotenv'
-import { PrivateKey } from '@bsv/sdk'
+import { PrivateKey, ProtoWallet } from '@bsv/sdk'
+import { OneSatServices } from '@1sat/client'
 import { createOrdinals } from 'js-1sat-ord'
-import type { CollectionItemSubTypeData, CreateOrdinalsConfig, LocalSigner, PreMAP, Utxo } from 'js-1sat-ord'
+import type { CreateOrdinalsConfig, LocalSigner, PreMAP, Utxo } from 'js-1sat-ord'
+import { registerCollectibleRoutes } from './collectibles.js'
 import { getAndReservePaymentUtxo, markPaymentUtxoAsUsed, releasePaymentUtxo } from './db.js'
+import { createIdentityCollectibleDelivery } from './identityCollectibleDelivery.js'
+import { getInvalidRequestOutpointFields } from './outpoints.js'
 
 config()
 
@@ -20,6 +24,7 @@ const TRANSACTION_MODE = (process.env.TRANSACTION_MODE || 'dummy').toLowerCase()
 const USE_REAL_TRANSACTIONS = TRANSACTION_MODE === 'real'
 const INSCRIPTION_APP = process.env.INSCRIPTION_APP?.trim() || 'pixelfoxracing'
 const RACE_RESULT_INSCRIPTION_NAME = process.env.RACE_RESULT_INSCRIPTION_NAME?.trim() || 'pixelracingtimes'
+const CHAIN = process.env.BSV_NETWORK?.trim().toLowerCase() === 'test' ? 'test' : 'main'
 
 app.use(cors({
   origin: corsOrigins,
@@ -30,6 +35,17 @@ app.use(cors({
 app.options('*', cors())
 app.use(express.urlencoded({ extended: true }))
 app.use(express.json())
+app.use((req, res, next) => {
+  const invalidFields = getInvalidRequestOutpointFields(req.body)
+  if (invalidFields.length > 0) {
+    res.status(400).json({
+      error: 'invalid_outpoint_format',
+      message: `Outpoints must use txid_vout format: ${invalidFields.join(', ')}`,
+    })
+    return
+  }
+  next()
+})
 app.use(helmet({
   crossOriginResourcePolicy: false,
   crossOriginOpenerPolicy: false,
@@ -37,7 +53,13 @@ app.use(helmet({
 }))
 
 app.get('/', (_req, res) => {
-  res.json({ ok: true, service: 'pixel-fox-racing-transaction-server', mode: TRANSACTION_MODE })
+  res.json({
+    ok: true,
+    service: 'pixel-fox-racing-transaction-server',
+    mode: TRANSACTION_MODE,
+    collectibleIdentityDeliveryEnabled: !!identityDelivery,
+    collectibleSenderIdentityKey: senderIdentityKey,
+  })
 })
 
 function makeDummyTxid(): string {
@@ -67,9 +89,13 @@ async function broadcastWithRetry(txHex: string): Promise<string> {
   const maxRetries = 5
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const response = await fetch('https://api.whatsonchain.com/v1/bsv/main/tx/raw', {
+      const whatsOnChainApiKey = process.env.WHATSONCHAIN_API_KEY?.trim()
+      const response = await fetch(`https://api.whatsonchain.com/v1/bsv/${CHAIN}/tx/raw`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(whatsOnChainApiKey ? { Authorization: whatsOnChainApiKey } : {}),
+        },
         body: JSON.stringify({ txhex: txHex }),
       })
 
@@ -109,112 +135,33 @@ async function submitToGorillapool(txid: string): Promise<void> {
   }
 }
 
-type CollectibleKind = 'blueberries' | 'salad' | 'rabbit'
+const groupSigningWif = process.env.GROUP_SIGNING_WIF?.trim()
+const identityRootKey = groupSigningWif
+  ? PrivateKey.fromWif(groupSigningWif)
+  : undefined
+const identityWallet = identityRootKey
+  ? new ProtoWallet(identityRootKey)
+  : undefined
+const senderIdentityKey = identityRootKey?.toPublicKey().toString()
+const identityDelivery = USE_REAL_TRANSACTIONS && identityWallet && senderIdentityKey
+  ? createIdentityCollectibleDelivery({
+      chain: CHAIN,
+      services: new OneSatServices(CHAIN),
+      getPublicKey: args => identityWallet.getPublicKey(args),
+      senderIdentityKey,
+      inscriptionApp: INSCRIPTION_APP,
+    })
+  : undefined
 
-const COLLECTIBLES: Record<CollectibleKind, {
-  route: string
-  collectionIdEnv: string
-  viewBox: string
-  serverInstance: string
-}> = {
-  blueberries: {
-    route: '/createblueberries',
-    collectionIdEnv: 'BLUEBERRIES_COLLECTION_ID',
-    viewBox: '0 0 53.308 53.308',
-    serverInstance: 'blueberries-server',
-  },
-  salad: {
-    route: '/createsalad',
-    collectionIdEnv: 'SALAD_COLLECTION_ID',
-    viewBox: '0 0 55.569 55.569',
-    serverInstance: 'salad-server',
-  },
-  rabbit: {
-    route: '/createrabbit',
-    collectionIdEnv: 'RABBIT_COLLECTION_ID',
-    viewBox: '0 0 416.188 416.188',
-    serverInstance: 'rabbit-server',
-  },
-}
-
-for (const [kind, configForKind] of Object.entries(COLLECTIBLES) as Array<[CollectibleKind, typeof COLLECTIBLES[CollectibleKind]]>) {
-  app.post(configForKind.route, async (req, res) => {
-    const address = req.body.address
-    if (!address) {
-      res.json({ error: 'Address is required' })
-      return
-    }
-
-    let reservedOutpoint: string | undefined
-    try {
-      if (!USE_REAL_TRANSACTIONS) {
-        const time = Date.now()
-        res.json({
-          txid: makeDummyTxid(),
-          time,
-          type: kind,
-          dummy: true,
-        })
-        return
-      }
-
-      const reservedUtxo = await getAndReservePaymentUtxo('default', configForKind.serverInstance)
-      if (!reservedUtxo) {
-        res.json({ error: 'no_utxos_available', message: 'No payment UTXOs available in database' })
-        return
-      }
-      reservedOutpoint = `${reservedUtxo.txid}_${reservedUtxo.vout}`
-      const collectionId = requireEnv(configForKind.collectionIdEnv)
-
-      const content = `<svg width="100%" height="100%" viewBox="${configForKind.viewBox}" xmlns="http://www.w3.org/2000/svg">
-  <image href="/content/${collectionId}" width="100%" height="100%"/>
-</svg>`
-      const time = Date.now()
-      const metaData = {
-        app: INSCRIPTION_APP,
-        name: kind,
-        type: 'ord',
-        time,
-        subType: 'collectionItem',
-        subTypeData: {
-          collectionId,
-        } as CollectionItemSubTypeData,
-      } as PreMAP
-
-      const ordConfig: CreateOrdinalsConfig = {
-        utxos: [reservedUtxo as Utxo],
-        destinations: [{
-          address,
-          inscription: {
-            dataB64: Buffer.from(content).toString('base64'),
-            contentType: 'image/svg+xml',
-          },
-        }],
-        paymentPk: getItemPaymentPk(),
-        changeAddress: requireEnv('CHANGE_ADDRESS'),
-        metaData,
-        signer: getSigner(),
-      }
-
-      const { tx } = await createOrdinals(ordConfig)
-      const txid = await broadcastWithRetry(tx.toHex())
-      await markPaymentUtxoAsUsed(reservedOutpoint)
-      res.json({ txid, time, type: kind })
-      await submitToGorillapool(txid)
-    } catch (error) {
-      console.error(`Error creating ${kind}:`, error)
-      if (reservedOutpoint) {
-        await releasePaymentUtxo(reservedOutpoint).catch(releaseError => {
-          console.error(`Error releasing ${reservedOutpoint}:`, releaseError)
-        })
-      }
-      res.json({ error: `Failed to create ${kind} inscription` })
-    }
-  })
-}
+registerCollectibleRoutes(app, {
+  mode: USE_REAL_TRANSACTIONS ? 'real' : 'dummy',
+  inscriptionApp: INSCRIPTION_APP,
+  makeDummyTxid,
+  identityDelivery,
+})
 
 app.post('/createpixelracing', async (req, res) => {
-  const required = ['playerowner', 'playeroutpoint', 'playeroriginoutpoint', 'playerfoxname', 'laptime', 'time']
+  const required = ['playeroutpoint', 'playeroriginoutpoint', 'playerfoxname', 'laptime', 'time']
   const missing = required.filter(key => !req.body[key])
   if (missing.length > 0) {
     res.json({ error: 'missing_fields', message: `Missing required fields: ${missing.join(', ')}` })
@@ -246,7 +193,10 @@ app.post('/createpixelracing', async (req, res) => {
       return
     }
 
-    const reservedUtxo = await getAndReservePaymentUtxo('default', 'pixelracing-server')
+    const reservedUtxo = await getAndReservePaymentUtxo(
+      process.env.PAYMENT_UTXO_POOL?.trim() || 'default',
+      'pixelracing-server'
+    )
     if (!reservedUtxo) {
       res.json({ error: 'no_utxos_available', message: 'No payment UTXOs available in database' })
       return
@@ -254,7 +204,7 @@ app.post('/createpixelracing', async (req, res) => {
     reservedOutpoint = `${reservedUtxo.txid}_${reservedUtxo.vout}`
 
     const contentObj: Record<string, unknown> = {
-      playerowner: req.body.playerowner,
+      recordVersion: 2,
       playeroutpoint: req.body.playeroutpoint,
       playeroriginoutpoint: req.body.playeroriginoutpoint,
       playerfoxname: req.body.playerfoxname,
@@ -270,7 +220,7 @@ app.post('/createpixelracing', async (req, res) => {
       app: INSCRIPTION_APP,
       type: 'ord',
       name: RACE_RESULT_INSCRIPTION_NAME,
-      owneraddress: req.body.playerowner,
+      recordVersion: '2',
       outpoint: req.body.playeroutpoint,
       originoutpoint: req.body.playeroriginoutpoint,
       foxname: req.body.playerfoxname,
@@ -327,4 +277,7 @@ app.post('/createpixelracing', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Pixel Fox Racing transaction server listening on ${PORT} (${TRANSACTION_MODE} mode)`)
+  if (senderIdentityKey) {
+    console.log('Collectible sender identity key:', senderIdentityKey)
+  }
 })

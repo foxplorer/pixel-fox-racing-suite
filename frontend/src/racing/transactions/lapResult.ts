@@ -1,7 +1,9 @@
 import { isSubmittableTrackDisplayName, SUBMITTABLE_TRACK_DISPLAY_NAMES } from '../tracks/trackDisplayNames'
 import { getOrdinalContentUrl, getOrdinalInscriptionUrl } from './ordinalLinks'
+import { normalizeOrdinalOutpoint } from './ordinalOutpoint'
 
 export interface PixelRacingGameResult {
+  recordVersion?: number
   owneraddress: string
   outpoint: string
   originoutpoint: string
@@ -54,7 +56,7 @@ export interface LapResultInput {
 }
 
 export interface PixelRacingLapInscriptionPayload {
-  playerowner: string
+  recordVersion: 2
   playeroutpoint: string
   playeroriginoutpoint: string
   playerfoxname: string
@@ -77,6 +79,7 @@ export interface PixelRacingSharedLapTransactionPayload {
 }
 
 export interface PixelRacingIncomingTransactionData {
+  recordVersion?: number
   txid?: string
   ownerAddress?: string
   foxOutpoint?: string
@@ -106,8 +109,8 @@ export const buildLapPlayerIdentity = (identity: PartialLapPlayerIdentity): LapP
 
   return {
     ownerAddress: identity.ownerAddress as string,
-    outpoint: identity.outpoint as string,
-    originOutpoint: identity.originOutpoint as string,
+    outpoint: normalizeOrdinalOutpoint(identity.outpoint),
+    originOutpoint: normalizeOrdinalOutpoint(identity.originOutpoint),
     foxName: identity.foxName as string
   }
 }
@@ -190,8 +193,8 @@ export const buildPixelRacingGameResult = ({
   dummy
 }: LapResultInput): PixelRacingGameResult => ({
   owneraddress: identity.ownerAddress,
-  outpoint: identity.outpoint,
-  originoutpoint: identity.originOutpoint,
+  outpoint: normalizeOrdinalOutpoint(identity.outpoint),
+  originoutpoint: normalizeOrdinalOutpoint(identity.originOutpoint),
   foxname: identity.foxName,
   laptime: lapTimeSeconds.toString(),
   time: timestampMs.toString(),
@@ -210,9 +213,9 @@ export const buildPixelRacingLapInscriptionPayload = ({
   carColor,
   trackName
 }: Omit<LapResultInput, 'txid' | 'dummy'> & { trackName: string }): PixelRacingLapInscriptionPayload => ({
-  playerowner: identity.ownerAddress,
-  playeroutpoint: identity.outpoint,
-  playeroriginoutpoint: identity.originOutpoint,
+  recordVersion: 2,
+  playeroutpoint: normalizeOrdinalOutpoint(identity.outpoint),
+  playeroriginoutpoint: normalizeOrdinalOutpoint(identity.originOutpoint),
   playerfoxname: identity.foxName,
   laptime: lapTimeSeconds.toString(),
   time: timestampMs.toString(),
@@ -231,9 +234,9 @@ export const buildPixelRacingSharedLapTransactionPayload = ({
   txid,
   score: lapTimeSeconds,
   time: timestampMs.toString(),
-  foxOutpoint: identity.outpoint,
+  foxOutpoint: normalizeOrdinalOutpoint(identity.outpoint),
   foxName: identity.foxName,
-  originOutpoint: identity.originOutpoint,
+  originOutpoint: normalizeOrdinalOutpoint(identity.originOutpoint),
   ownerAddress: identity.ownerAddress,
   trackName,
   dummy
@@ -244,9 +247,10 @@ export const buildPixelRacingActivityFromTransaction = (
   defaultTrackName: string,
   fallbackTimestampMs: number
 ): PixelRacingGameResult => ({
+  ...(data.recordVersion !== undefined ? { recordVersion: data.recordVersion } : {}),
   owneraddress: data.ownerAddress || '',
-  outpoint: data.foxOutpoint || '',
-  originoutpoint: data.originOutpoint || '',
+  outpoint: normalizeOrdinalOutpoint(data.foxOutpoint),
+  originoutpoint: normalizeOrdinalOutpoint(data.originOutpoint),
   foxname: data.foxName || 'Unknown Fox',
   laptime: (data.score || 0).toString(),
   time: data.time || fallbackTimestampMs.toString(),

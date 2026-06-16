@@ -10,6 +10,7 @@ import { DEFAULT_PLAYER_COLOR } from '../../racing/core/playerColors'
 import { useFullscreenToggle } from '../../racing/components/useFullscreenToggle'
 import { createPreloadedAudio, playAudioElement } from '../../racing/components/audioElements'
 import { RacingPlayerInfoPanel } from '../../racing/components/RacingPlayerInfoPanel'
+import { normalizeOrdinalOutpoint } from '../../racing/transactions/ordinalOutpoint'
 import raceStartBeeps from '../../assets/race-start-beeps.mp3'
 
 const SOCKET_URL = import.meta.env.VITE_PIXELRACING_SOCKET_URL || 'http://localhost:5000'
@@ -108,7 +109,7 @@ export const SnowmobileGame: React.FC<SnowmobileGameProps> = ({
         identityKey: identityKey || `guest_${Date.now()}`,
         name: foxName || 'Anonymous',
         ordinalAddress: ordinalAddress,
-        originOutpoint: foxOriginOutpoint,
+        originOutpoint: normalizeOrdinalOutpoint(foxOriginOutpoint),
         color: playerColorRef.current // Use ref to avoid reconnect on color change
       })
     })
@@ -418,7 +419,7 @@ export const SnowmobileGame: React.FC<SnowmobileGameProps> = ({
         <RacingPlayerInfoPanel
           name={foxName}
           originOutpoint={foxOriginOutpoint}
-          addresses={[{ value: ordinalAddress }]}
+          addresses={[{ label: 'ID:', value: identityKey, canCopy: true }]}
           backgroundColor="rgba(13, 31, 51, 0.9)"
           borderColor="rgba(135, 206, 235, 0.2)"
           accentColor="#87CEEB"

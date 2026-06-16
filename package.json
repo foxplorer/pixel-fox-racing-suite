@@ -17,6 +17,7 @@
     "tracks:generate-custom": "node scripts/generate-custom-track.mjs",
     "tracks:add-elevations": "node scripts/add-geojson-elevations.mjs",
     "check:socket": "npm --workspace socket-server run check",
-    "check:transactions": "npm --workspace transaction-server run check"
+    "check:transactions": "npm --workspace transaction-server run check",
+    "test:transactions": "npm --workspace transaction-server run test"
   }
 }

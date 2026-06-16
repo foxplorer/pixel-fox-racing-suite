@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react'
+import React, { useRef, useState, useMemo, useCallback } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { UnifiedShowroom } from '../racing/UnifiedShowroom'
@@ -29,6 +29,7 @@ import { australiaCarTrackDefinition } from '../../racing/tracks/carTrackDefinit
 import type { CarTrackDefinition, CarTrackRenderBudget } from '../../racing/tracks/carTrackDefinitions'
 import { ImportedCarTrackScenery } from '../../racing/tracks/imported/ImportedCarTrackScenery'
 import type { TerrainHeightSampler } from '../../racing/core/roadCorridor'
+import { RacingCameraControlButtons } from '../../racing/components/RacingCameraControlButtons'
 
 // Additional stadium positions around the track - spaced around from start line
 const ADDITIONAL_STADIUM_POSITIONS = [
@@ -90,6 +91,8 @@ interface FoxRacingWorldProps {
   qualityPresetId?: RacingQualityPresetId
   trackDefinition?: CarTrackDefinition
   sceneryMode?: 'australia' | 'imported-basic'
+  isFullscreen?: boolean
+  onToggleFullscreen?: () => void
 }
 
 const resolveQualityNumberBudget = (
@@ -312,7 +315,9 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   showroomLoading = true,
   qualityPresetId = 'medium',
   trackDefinition = australiaCarTrackDefinition,
-  sceneryMode = 'australia'
+  sceneryMode = 'australia',
+  isFullscreen = false,
+  onToggleFullscreen
 }) => {
   const worldRuntime = useCarTrackWorldRuntime({
     config: trackDefinition,
@@ -367,6 +372,51 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     })
   }, [sceneryMode, sceneHeightSampler, worldRuntime.trackCurve])
 
+  const handleToggleManualCamera = useCallback(() => {
+    const manualCam = worldRuntime.manualCamera
+    manualCam.setIsManualCamera(prev => {
+      const next = !prev
+      if (next) manualCam.focusControlsOnCar()
+      return next
+    })
+  }, [worldRuntime.manualCamera])
+
+  const handleZoomIn = useCallback(() => {
+    const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
+    if (!controls?.object) return
+    const direction = new THREE.Vector3()
+    controls.object.getWorldDirection(direction)
+    controls.object.position.addScaledVector(direction, 5)
+    controls.update()
+  }, [worldRuntime.manualCamera.orbitControlsRef])
+
+  const handleZoomOut = useCallback(() => {
+    const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
+    if (!controls?.object) return
+    const direction = new THREE.Vector3()
+    controls.object.getWorldDirection(direction)
+    controls.object.position.addScaledVector(direction, -5)
+    controls.update()
+  }, [worldRuntime.manualCamera.orbitControlsRef])
+
+  const handleRotateLeft = useCallback(() => {
+    const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
+    if (!controls?.object) return
+    const offset = controls.object.position.clone().sub(controls.target)
+    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.2)
+    controls.object.position.copy(controls.target).add(offset)
+    controls.update()
+  }, [worldRuntime.manualCamera.orbitControlsRef])
+
+  const handleRotateRight = useCallback(() => {
+    const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
+    if (!controls?.object) return
+    const offset = controls.object.position.clone().sub(controls.target)
+    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.2)
+    controls.object.position.copy(controls.target).add(offset)
+    controls.update()
+  }, [worldRuntime.manualCamera.orbitControlsRef])
+
   // Showroom Canvas
   if (gameStatus === 'showroom' || gameStatus === 'idle') {
     return (
@@ -403,6 +453,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   }
 
   return (
+    <>
     <CarTrackWorldShell
       gameStatus={gameStatus}
       countdown={countdown}
@@ -543,5 +594,18 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       )}
       remotePlayers={<RemotePlayerCars players={otherPlayers} getHeightAtPosition={terrainHeightSampler} />}
     />
+    {(gameStatus === 'racing' || gameStatus === 'countdown') && (
+      <RacingCameraControlButtons
+        isManualCamera={worldRuntime.manualCamera.isManualCamera}
+        isFullscreen={isFullscreen}
+        onToggleManualCamera={handleToggleManualCamera}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onRotateLeft={handleRotateLeft}
+        onRotateRight={handleRotateRight}
+        onToggleFullscreen={onToggleFullscreen}
+      />
+    )}
+    </>
   )
 }

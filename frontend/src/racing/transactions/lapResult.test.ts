@@ -144,7 +144,7 @@ test('buildPixelRacingLapInscriptionPayload creates the transaction server paylo
     carColor: '#00ff00',
     trackName: 'Belgium'
   }), {
-    playerowner: 'owner-address',
+    recordVersion: 2,
     playeroutpoint: 'fox-outpoint',
     playeroriginoutpoint: 'origin-outpoint',
     playerfoxname: 'Test Fox',
@@ -153,6 +153,24 @@ test('buildPixelRacingLapInscriptionPayload creates the transaction server paylo
     carcolor: '#00ff00',
     trackname: 'Belgium'
   })
+})
+
+test('buildPixelRacingLapInscriptionPayload canonicalizes wallet dot outpoints', () => {
+  const currentTxid = '6'.repeat(64)
+  const originTxid = '7'.repeat(64)
+  const payload = buildPixelRacingLapInscriptionPayload({
+    identity: {
+      ...identity,
+      outpoint: `${currentTxid}.2`,
+      originOutpoint: `${originTxid}.238`
+    },
+    lapTimeSeconds: 80,
+    timestampMs: 987654321,
+    trackName: 'Australia'
+  })
+
+  assert.equal(payload.playeroutpoint, `${currentTxid}_2`)
+  assert.equal(payload.playeroriginoutpoint, `${originTxid}_238`)
 })
 
 test('buildPixelRacingSharedLapTransactionPayload creates the socket broadcast payload shape', () => {

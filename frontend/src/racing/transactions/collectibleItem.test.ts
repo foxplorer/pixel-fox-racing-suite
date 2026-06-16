@@ -2,12 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   buildCollectibleActivityResult,
+  buildMetanetCollectibleInternalizeAction,
   buildCollectibleTransactionRequest,
   buildSharedCollectibleTransactionPayload,
   getCollectibleImageUrl,
   getCollectibleScore,
   getCollectibleScoreText,
   getCollectibleTransactionEndpoint,
+  internalizeMetanetCollectibleDeliveryWithRetry,
   submitCollectibleTransaction
 } from './collectibleItem'
 
@@ -43,16 +45,66 @@ test('getCollectibleImageUrl selects the matching item image URL', () => {
 
 test('buildCollectibleTransactionRequest preserves POST request construction', () => {
   assert.deepEqual(
-    buildCollectibleTransactionRequest('http://localhost:9000', 'blueberry', 'owner'),
+    buildCollectibleTransactionRequest(
+      'http://localhost:9000',
+      'blueberry',
+      '02identity',
+      { type: 'address', address: 'owner' }
+    ),
     {
       url: 'http://localhost:9000/createblueberries',
       init: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: 'owner' })
+        body: JSON.stringify({
+          identityKey: '02identity',
+          deliveryTarget: { type: 'address', address: 'owner' }
+        })
       }
     }
   )
+})
+
+test('buildCollectibleTransactionRequest omits the compatibility address when unavailable', () => {
+  const request = buildCollectibleTransactionRequest(
+    'http://localhost:9000',
+    'salad',
+    '03identity',
+    { type: 'counterparty', identityKey: '03identity' }
+  )
+
+  assert.equal(request.init.body, JSON.stringify({
+    identityKey: '03identity',
+    deliveryTarget: { type: 'counterparty', identityKey: '03identity' }
+  }))
+})
+
+test('buildCollectibleTransactionRequest includes Metanet delivery material', () => {
+  const request = buildCollectibleTransactionRequest(
+    'http://localhost:9000',
+    'rabbit',
+    '03identity',
+    {
+      type: 'protocol-key',
+      publicKey: '02metanet',
+      protocolID: [0, 'pixel foxes'],
+      keyID: '1',
+      counterparty: 'anyone',
+      basket: 'pixel foxes'
+    }
+  )
+
+  assert.equal(request.init.body, JSON.stringify({
+    identityKey: '03identity',
+    deliveryTarget: {
+      type: 'protocol-key',
+      publicKey: '02metanet',
+      protocolID: [0, 'pixel foxes'],
+      keyID: '1',
+      counterparty: 'anyone',
+      basket: 'pixel foxes'
+    }
+  }))
 })
 
 test('submitCollectibleTransaction posts the collectible request and returns response JSON', async () => {
@@ -60,7 +112,8 @@ test('submitCollectibleTransaction posts the collectible request and returns res
   const result = await submitCollectibleTransaction(
     'http://localhost:9000',
     'rabbit',
-    'owner',
+    '02identity',
+    { type: 'address', address: 'owner' },
     async (url, init) => {
       calls.push({ url, init })
       return {
@@ -77,11 +130,124 @@ test('submitCollectibleTransaction posts the collectible request and returns res
       init: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: 'owner' })
+        body: JSON.stringify({
+          identityKey: '02identity',
+          deliveryTarget: { type: 'address', address: 'owner' }
+        })
       }
     }
   ])
   assert.deepEqual(result, { txid: 'txid', dummy: true })
+})
+
+test('buildMetanetCollectibleInternalizeAction builds a Metanet pixel foxes basket insertion', () => {
+  const action = buildMetanetCollectibleInternalizeAction({
+    txid: 'txid',
+    deliveryMode: 'metanet',
+    atomicBEEF: [1, 2, 3],
+    outputIndex: 0,
+    remittance: {
+      protocolID: [0, 'pixel foxes'],
+      keyID: '1',
+      counterparty: 'anyone',
+      basket: 'pixel foxes',
+      tags: ['type:image/svg+xml', 'origin', 'name:blueberries']
+    }
+  })
+
+  assert.equal(action.outputs?.[0]?.insertionRemittance?.basket, 'pixel foxes')
+  assert.equal(
+    action.outputs?.[0]?.insertionRemittance?.customInstructions,
+    JSON.stringify({
+      protocolID: [0, 'pixel foxes'],
+      keyID: '1',
+      counterparty: 'anyone'
+    })
+  )
+})
+
+test('buildMetanetCollectibleInternalizeAction rejects non-Metanet receipts', () => {
+  assert.throws(
+    () => buildMetanetCollectibleInternalizeAction({
+      txid: 'txid',
+      deliveryMode: 'identity'
+    }),
+    /missing Metanet delivery material/
+  )
+})
+
+test('internalizeMetanetCollectibleDeliveryWithRetry retries transient wallet rejection', async () => {
+  let calls = 0
+  const delays: number[] = []
+  const retryAttempts: number[] = []
+  const wallet = {
+    async internalizeAction() {
+      calls += 1
+      return { accepted: calls >= 3 }
+    }
+  }
+
+  await internalizeMetanetCollectibleDeliveryWithRetry(
+    wallet as never,
+    {
+      txid: 'txid',
+      deliveryMode: 'metanet',
+      atomicBEEF: [1, 2, 3],
+      outputIndex: 0,
+      remittance: {
+        protocolID: [0, 'pixel foxes'],
+        keyID: '1',
+        counterparty: 'anyone',
+        basket: 'pixel foxes',
+        tags: ['origin']
+      }
+    },
+    {
+      initialDelayMs: 10,
+      sleep: async delayMs => { delays.push(delayMs) },
+      onRetry: attempt => { retryAttempts.push(attempt) }
+    }
+  )
+
+  assert.equal(calls, 3)
+  assert.deepEqual(delays, [10, 20])
+  assert.deepEqual(retryAttempts, [1, 2])
+})
+
+test('internalizeMetanetCollectibleDeliveryWithRetry gives up after configured attempts', async () => {
+  let calls = 0
+  const wallet = {
+    async internalizeAction() {
+      calls += 1
+      return { accepted: false }
+    }
+  }
+
+  await assert.rejects(
+    internalizeMetanetCollectibleDeliveryWithRetry(
+      wallet as never,
+      {
+        txid: 'txid',
+        deliveryMode: 'metanet',
+        atomicBEEF: [1, 2, 3],
+        outputIndex: 0,
+        remittance: {
+          protocolID: [0, 'pixel foxes'],
+          keyID: '1',
+          counterparty: 'anyone',
+          basket: 'pixel foxes',
+          tags: ['origin']
+        }
+      },
+      {
+        maxAttempts: 3,
+        initialDelayMs: 0,
+        sleep: async () => {}
+      }
+    ),
+    /Wallet rejected collectible internalization/
+  )
+  assert.equal(calls, 3)
 })
 
 test('buildCollectibleActivityResult preserves item activity payload shape', () => {

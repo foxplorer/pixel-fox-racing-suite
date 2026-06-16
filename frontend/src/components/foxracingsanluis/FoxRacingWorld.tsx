@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { Showroom } from '../racingsanluis/Showroom'
 import { Track } from '../racingsanluis/Track'
 import { GameStatus } from './FoxRacingGame'
@@ -19,6 +19,7 @@ import { CarTrackLocalVehicle } from '../../racing/components/CarTrackLocalVehic
 import { useCarTrackWorldRuntime } from '../../racing/components/useCarTrackWorldRuntime'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import { sanLuisCarTrackDefinition } from '../../racing/tracks/carTrackDefinitions'
+import { RacingCameraControlButtons } from '../../racing/components/RacingCameraControlButtons'
 
 interface FoxRacingWorldProps {
   gameStatus: GameStatus
@@ -47,6 +48,8 @@ interface FoxRacingWorldProps {
   localChatMessage?: { text: string; timestamp: number } | null
   cameraMode?: CameraMode
   qualityPresetId?: RacingQualityPresetId
+  isFullscreen?: boolean
+  onToggleFullscreen?: () => void
 }
 
 export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
@@ -75,7 +78,9 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   spawnPosition = null,
   localChatMessage = null,
   cameraMode = 'smooth',
-  qualityPresetId = 'medium'
+  qualityPresetId = 'medium',
+  isFullscreen = false,
+  onToggleFullscreen
 }) => {
   const worldRuntime = useCarTrackWorldRuntime({
     config: sanLuisCarTrackDefinition,
@@ -211,6 +216,51 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       return points
     }
 
+  const handleToggleManualCamera = useCallback(() => {
+    const manualCam = worldRuntime.manualCamera
+    manualCam.setIsManualCamera(prev => {
+      const next = !prev
+      if (next) manualCam.focusControlsOnCar()
+      return next
+    })
+  }, [worldRuntime.manualCamera])
+
+  const handleZoomIn = useCallback(() => {
+    const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
+    if (!controls?.object) return
+    const direction = new THREE.Vector3()
+    controls.object.getWorldDirection(direction)
+    controls.object.position.addScaledVector(direction, 5)
+    controls.update()
+  }, [worldRuntime.manualCamera.orbitControlsRef])
+
+  const handleZoomOut = useCallback(() => {
+    const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
+    if (!controls?.object) return
+    const direction = new THREE.Vector3()
+    controls.object.getWorldDirection(direction)
+    controls.object.position.addScaledVector(direction, -5)
+    controls.update()
+  }, [worldRuntime.manualCamera.orbitControlsRef])
+
+  const handleRotateLeft = useCallback(() => {
+    const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
+    if (!controls?.object) return
+    const offset = controls.object.position.clone().sub(controls.target)
+    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.2)
+    controls.object.position.copy(controls.target).add(offset)
+    controls.update()
+  }, [worldRuntime.manualCamera.orbitControlsRef])
+
+  const handleRotateRight = useCallback(() => {
+    const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
+    if (!controls?.object) return
+    const offset = controls.object.position.clone().sub(controls.target)
+    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), -0.2)
+    controls.object.position.copy(controls.target).add(offset)
+    controls.update()
+  }, [worldRuntime.manualCamera.orbitControlsRef])
+
   // Showroom Canvas
   if (gameStatus === 'showroom' || gameStatus === 'idle') {
     return (
@@ -223,6 +273,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   }
 
   return (
+    <>
     <CarTrackWorldShell
       gameStatus={gameStatus}
       countdown={countdown}
@@ -309,5 +360,18 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       )}
       remotePlayers={<RemotePlayerCars players={otherPlayers} />}
     />
+    {(gameStatus === 'racing' || gameStatus === 'countdown') && (
+      <RacingCameraControlButtons
+        isManualCamera={worldRuntime.manualCamera.isManualCamera}
+        isFullscreen={isFullscreen}
+        onToggleManualCamera={handleToggleManualCamera}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onRotateLeft={handleRotateLeft}
+        onRotateRight={handleRotateRight}
+        onToggleFullscreen={onToggleFullscreen}
+      />
+    )}
+    </>
   )
 }

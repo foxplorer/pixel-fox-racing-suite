@@ -4,6 +4,7 @@ import { PulseLoader } from 'react-spinners';
 import { Button } from '@mui/material';
 import { useNavigate } from "react-router-dom";
 import { getOrdinalContentUrl, getOrdinalInscriptionUrl } from "../../racing/transactions/ordinalLinks";
+import { getOutpointTxid, normalizeOrdinalOutpoint } from "../../racing/transactions/ordinalOutpoint";
 
 type SearchResultsProps = {
   myordinalsaddress: string,
@@ -63,6 +64,30 @@ type ToDisplay = {
   outpoint: string;
 }
 
+const PIXEL_FOX_COLLECTION_ID =
+  "1611d956f397caa80b56bc148b4bce87b54f39b234aeca4668b4d5a7785eb9fa_0";
+const RESULTS_PAGE_SIZE = 25;
+
+const isPixelFox = (item: any): boolean =>
+  item?.origin?.data?.map?.subTypeData?.collectionId === PIXEL_FOX_COLLECTION_ID;
+
+const getFoxTraitValues = (item: any): string[] => {
+  const traits = item?.origin?.data?.map?.subTypeData?.traits;
+  if (!Array.isArray(traits)) return [];
+
+  return traits.map((trait: unknown) => {
+    if (typeof trait === 'string') {
+      const separator = trait.indexOf(':');
+      return separator >= 0 ? trait.slice(separator + 1).trim() : trait;
+    }
+    if (trait && typeof trait === 'object' && 'value' in trait) {
+      const value = (trait as { value?: unknown }).value;
+      return typeof value === 'string' ? value : '';
+    }
+    return '';
+  });
+};
+
 const SearchResults = ({ setsearchloading, passedFunctionFromFilters, clearFilters, myordinalsaddress, todisplay, background, name, body, mouth, head, eyes, item, totalresults, walletSaladCount, walletBlueberryCount, walletRabbitCount, onFoxSelected, filtersLoading, highlightedFoxOutpoints }: SearchResultsProps) => {
 
   //loading for results
@@ -78,7 +103,7 @@ const SearchResults = ({ setsearchloading, passedFunctionFromFilters, clearFilte
   const navigate = useNavigate();
 
   //setnumresults
-  const [foxresults, setFoxResults] = useState<number>(100);
+  const [foxresults, setFoxResults] = useState<number>(RESULTS_PAGE_SIZE);
   const [numresults, setNumResults] = useState<number | string>("?");
 
   // foxes to map
@@ -123,9 +148,7 @@ const SearchResults = ({ setsearchloading, passedFunctionFromFilters, clearFilte
 
   // Function to extract txid from outpoint (format: txid_vout)
   const extractTxid = (outpoint: string): string | null => {
-    if (!outpoint) return null;
-    const parts = outpoint.split('_');
-    return parts[0] || null;
+    return getOutpointTxid(outpoint);
   };
 
   // Function to submit txid to gorillapool
@@ -214,8 +237,12 @@ const SearchResults = ({ setsearchloading, passedFunctionFromFilters, clearFilte
   //get action
   const pickFox = (e) => {
     const foxData = {
-      originoutpoint: e.currentTarget.getAttribute("data-imgid") || "",
-      outpoint: e.currentTarget.getAttribute("data-outpoint") || "",
+      originoutpoint: normalizeOrdinalOutpoint(
+        e.currentTarget.getAttribute("data-imgid")
+      ),
+      outpoint: normalizeOrdinalOutpoint(
+        e.currentTarget.getAttribute("data-outpoint")
+      ),
       owneraddress: e.currentTarget.getAttribute("data-owner") || myordinalsaddress || "",
       foxes: totalresults,
       foxname: e.currentTarget.getAttribute("data-name") || "",
@@ -250,44 +277,38 @@ const SearchResults = ({ setsearchloading, passedFunctionFromFilters, clearFilte
     let rrr = todisplay;
     if (rrr) {
       let ppp = JSON.parse(rrr)!;
-      let foxcount = (foxresults - 50);
       let d = 0;
       let displayfaucetfoxestemp = [];
+      const nextLimit = Math.min(foxresults + RESULTS_PAGE_SIZE, ppp.length);
 
-      //show up to 50 more
-      for (let i = (foxresults - 50); i < foxresults; i++) {
-        if (ppp[i] !== undefined) if (ppp[i].origin.data.map.subTypeData.collectionId === "1611d956f397caa80b56bc148b4bce87b54f39b234aeca4668b4d5a7785eb9fa_0") {
+      // Show the next page of foxes.
+      for (let i = foxresults; i < nextLimit; i++) {
+        if (isPixelFox(ppp[i])) {
+          const traits = getFoxTraitValues(ppp[i]);
           // fox
           displayfaucetfoxestemp[d] = { img: "", name: "" }
           displayfaucetfoxestemp[d].img = getOrdinalContentUrl(ppp[i].origin.outpoint);
           displayfaucetfoxestemp[d].name = ppp[i].origin.data.map.name;
           displayfaucetfoxestemp[d].link = getOrdinalInscriptionUrl(ppp[i].origin.outpoint);
           displayfaucetfoxestemp[d].imgid = ppp[i].origin.outpoint;
-          displayfaucetfoxestemp[d].trait1 = ppp[i].origin.data.map.subTypeData.traits[0]?.value || ' ';
-          displayfaucetfoxestemp[d].trait2 = ppp[i].origin.data.map.subTypeData.traits[1]?.value || ' ';
-          displayfaucetfoxestemp[d].trait3 = ppp[i].origin.data.map.subTypeData.traits[2]?.value || ' ';
-          displayfaucetfoxestemp[d].trait4 = ppp[i].origin.data.map.subTypeData.traits[3]?.value || ' ';
-          displayfaucetfoxestemp[d].trait5 = ppp[i].origin.data.map.subTypeData.traits[4]?.value || ' ';
-          displayfaucetfoxestemp[d].trait6 = ppp[i].origin.data.map.subTypeData.traits[5]?.value || ' ';
-          displayfaucetfoxestemp[d].trait7 = ppp[i].origin.data.map.subTypeData.traits[6]?.value || ' ';
-          displayfaucetfoxestemp[d].owner = ppp[i].owner;
-          let own = ppp[i].owner;
+          displayfaucetfoxestemp[d].trait1 = traits[0] || ' ';
+          displayfaucetfoxestemp[d].trait2 = traits[1] || ' ';
+          displayfaucetfoxestemp[d].trait3 = traits[2] || ' ';
+          displayfaucetfoxestemp[d].trait4 = traits[3] || ' ';
+          displayfaucetfoxestemp[d].trait5 = traits[4] || ' ';
+          displayfaucetfoxestemp[d].trait6 = traits[5] || ' ';
+          displayfaucetfoxestemp[d].trait7 = traits[6] || ' ';
+          displayfaucetfoxestemp[d].owner = ppp[i].owner || '';
+          let own = ppp[i].owner || '';
           displayfaucetfoxestemp[d].ownerlink = "https://whatsonchain.com/address/" + own;
           displayfaucetfoxestemp[d].ownertrimmed = own.substring(0, 10) + "...";
           displayfaucetfoxestemp[d].outpoint = ppp[i].outpoint;
           d++;
-          foxcount++;
         }
       }
       addElement(displayfaucetfoxestemp)
-
-      //hide if no more foxes or add more foxes
-      if (foxcount - foxresults < 0) {
-        // console.log(foxcount -foxresults)
-        setDisplayShowMore(false)
-      } else {
-        setFoxResults(foxresults + 50)
-      }
+      setFoxResults(nextLimit)
+      setDisplayShowMore(nextLimit < ppp.length)
     }
   };
 
@@ -341,7 +362,7 @@ const SearchResults = ({ setsearchloading, passedFunctionFromFilters, clearFilte
         let foxlength = ppp.length;
         //get total length
         for (let i = 0; i < foxlength; i++) {
-          if (ppp[i] !== undefined) if (ppp[i].origin.data.map.subTypeData.collectionId === "1611d956f397caa80b56bc148b4bce87b54f39b234aeca4668b4d5a7785eb9fa_0") {
+          if (isPixelFox(ppp[i])) {
             foxcount++;
           }
         }
@@ -350,28 +371,29 @@ const SearchResults = ({ setsearchloading, passedFunctionFromFilters, clearFilte
         // Build new foxes list, only adding foxes we haven't displayed yet
         let newFoxes: ToDisplay[] = [];
         let displayedCount = 0;
-        const maxToShow = 100;
+        const maxToShow = RESULTS_PAGE_SIZE;
 
         for (let i = 0; i < ppp.length && displayedCount < maxToShow; i++) {
-          if (ppp[i] !== undefined && ppp[i].origin?.data?.map?.subTypeData?.collectionId === "1611d956f397caa80b56bc148b4bce87b54f39b234aeca4668b4d5a7785eb9fa_0") {
+          if (isPixelFox(ppp[i])) {
             const foxId = ppp[i].origin.outpoint;
 
             // Only add if not already displayed
             if (!displayedFoxIdsRef.current.has(foxId)) {
               displayedFoxIdsRef.current.add(foxId);
               const own = ppp[i].owner || '';
+              const traits = getFoxTraitValues(ppp[i]);
               newFoxes.push({
                 img: getOrdinalContentUrl(ppp[i].origin.outpoint),
                 name: ppp[i].origin.data.map.name,
                 link: getOrdinalInscriptionUrl(ppp[i].origin.outpoint),
                 imgid: ppp[i].origin.outpoint,
-                trait1: ppp[i].origin.data.map.subTypeData.traits[0]?.value || ' ',
-                trait2: ppp[i].origin.data.map.subTypeData.traits[1]?.value || ' ',
-                trait3: ppp[i].origin.data.map.subTypeData.traits[2]?.value || ' ',
-                trait4: ppp[i].origin.data.map.subTypeData.traits[3]?.value || ' ',
-                trait5: ppp[i].origin.data.map.subTypeData.traits[4]?.value || ' ',
-                trait6: ppp[i].origin.data.map.subTypeData.traits[5]?.value || ' ',
-                trait7: ppp[i].origin.data.map.subTypeData.traits[6]?.value || ' ',
+                trait1: traits[0] || ' ',
+                trait2: traits[1] || ' ',
+                trait3: traits[2] || ' ',
+                trait4: traits[3] || ' ',
+                trait5: traits[4] || ' ',
+                trait6: traits[5] || ' ',
+                trait7: traits[6] || ' ',
                 owner: own,
                 ownerlink: "https://whatsonchain.com/address/" + own,
                 ownertrimmed: own.substring(0, 10) + "...",
@@ -386,14 +408,14 @@ const SearchResults = ({ setsearchloading, passedFunctionFromFilters, clearFilte
         if (filtersChanged || todisplayChanged) {
           // Replace entire list in one operation (no intermediate empty state)
           setDisplayFaucetFoxes(newFoxes);
-          setFoxResults(100);
+          setFoxResults(RESULTS_PAGE_SIZE);
         } else if (newFoxes.length > 0) {
           // Append new foxes to existing list
           setDisplayFaucetFoxes(prev => [...prev, ...newFoxes]);
         }
         
         //show/hide display more as necessary
-        if ((foxcount - 50) > 0) {
+        if (foxcount > RESULTS_PAGE_SIZE) {
           setDisplayShowMore(true)
         } else {
           setDisplayShowMore(false)

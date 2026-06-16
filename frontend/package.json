@@ -6,10 +6,16 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
     "build": "vite build",
-    "test:core": "node --import tsx --test \"src/racing/**/*.test.ts\"",
+    "test:core": "node --import tsx --test \"src/racing/**/*.test.ts\" \"src/wallet/**/*.test.ts\" \"src/components/newgame/**/*.test.ts\"",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@1sat/actions": "0.0.162",
+    "@1sat/client": "0.0.38",
+    "@1sat/connect": "0.0.67",
+    "@1sat/react": "0.0.63",
+    "@1sat/types": "0.0.30",
+    "@bsv/sdk": "^2.1.4",
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
     "@mui/icons-material": "^5.15.21",
@@ -19,7 +25,6 @@
     "@react-three/fiber": "^8.15.12",
     "@types/three": "^0.160.0",
     "chart.js": "^4.4.3",
-    "panda-wallet-provider": "^2.2.0",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.2.0",

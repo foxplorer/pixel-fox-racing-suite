@@ -1,9 +1,13 @@
 import { RefObject, useCallback, useEffect, useRef } from 'react'
+import { useWallet } from '@1sat/react'
+import { prepareCollectibleDeliveryTarget } from '../../wallet/deliveryTarget'
+import { METANET_WALLET_PROVIDER } from '../../wallet/walletProviders'
 import type { PixelRacingGameResult } from '../transactions/lapResult'
 import {
   buildCollectibleActivityResult,
   buildSharedCollectibleTransactionPayload,
   getCollectibleImageUrl,
+  internalizeMetanetCollectibleDeliveryWithRetry,
   submitCollectibleTransaction
 } from '../transactions/collectibleItem'
 import type {
@@ -22,6 +26,7 @@ interface UseCollectibleItemActionsOptions {
   socketRef: RefObject<CollectibleSocket | null>
   hasJoined: boolean
   playDingSound: () => void
+  identityKey?: string | null
   ordinalAddress?: string | null
   foxOutpoint?: string | null
   foxOriginOutpoint?: string | null
@@ -37,6 +42,7 @@ export const useCollectibleItemActions = ({
   socketRef,
   hasJoined,
   playDingSound,
+  identityKey,
   ordinalAddress,
   foxOutpoint,
   foxOriginOutpoint,
@@ -45,6 +51,7 @@ export const useCollectibleItemActions = ({
   onLatestActivityChange,
   onCollectibleCollected
 }: UseCollectibleItemActionsOptions) => {
+  const { wallet, providerType } = useWallet()
   const submitItemTransactionRef = useRef<((type: RacingCollectibleType) => Promise<void>) | null>(null)
   const collectedItemsRef = useRef<Set<string>>(new Set())
   const submittedItemTransactionIdsRef = useRef<Set<string>>(new Set())
@@ -65,13 +72,47 @@ export const useCollectibleItemActions = ({
   }, [hasJoined, playDingSound, socketRef])
 
   const submitItemTransaction = useCallback(async (itemType: RacingCollectibleType) => {
-    if (!ordinalAddress || !foxOutpoint || !foxOriginOutpoint || !foxName) {
+    if (!identityKey || !foxOutpoint || !foxOriginOutpoint || !foxName) {
       console.error('Cannot create item inscription - missing required fields')
       return
     }
 
     try {
-      const result = await submitCollectibleTransaction(transactionServerUrl, itemType, ordinalAddress)
+      if (!wallet) {
+        throw new Error('Cannot prepare collectible delivery without a connected wallet')
+      }
+      const deliveryTarget = await prepareCollectibleDeliveryTarget(
+        wallet,
+        providerType,
+        identityKey,
+        ordinalAddress,
+      )
+      const result = await submitCollectibleTransaction(
+        transactionServerUrl,
+        itemType,
+        identityKey,
+        deliveryTarget,
+      )
+
+      if (providerType === METANET_WALLET_PROVIDER && result.deliveryMode === 'metanet') {
+        if (!wallet) {
+          throw new Error('Cannot internalize Metanet collectible without a connected wallet')
+        }
+        try {
+          await internalizeMetanetCollectibleDeliveryWithRetry(wallet, result, {
+            maxAttempts: 3,
+            initialDelayMs: 500,
+            onRetry: (attempt, error, nextDelayMs) => {
+              console.warn(
+                `Metanet collectible internalization attempt ${attempt} failed; retrying in ${nextDelayMs}ms`,
+                error
+              )
+            }
+          })
+        } catch (error) {
+          console.error('Metanet collectible internalization failed after retries:', error)
+        }
+      }
 
       if (result.txid) {
         console.log(`✅ Collectible ${itemType} txid received:`, result.txid)
@@ -105,20 +146,23 @@ export const useCollectibleItemActions = ({
           socketRef.current.emit('shareTransaction', buildSharedCollectibleTransactionPayload(collectiblePayloadInput))
         }
       }
-    } catch (e) {
-      // Preserve existing silent error handling for failed collectible submissions.
+    } catch (error) {
+      console.error('Collectible delivery failed:', error)
     }
   }, [
     collectibleImageUrls,
     foxName,
     foxOriginOutpoint,
     foxOutpoint,
+    identityKey,
     onCollectibleCollected,
     onLatestActivityChange,
     ordinalAddress,
+    providerType,
     socketRef,
     trackName,
-    transactionServerUrl
+    transactionServerUrl,
+    wallet
   ])
 
   useEffect(() => {

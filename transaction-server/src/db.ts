@@ -25,18 +25,30 @@ export interface PaymentUtxo {
   script: string
 }
 
-export async function getAndReservePaymentUtxo(fundingPool = 'default', serverInstance: string | null = null): Promise<PaymentUtxo | null> {
+function getPaymentUtxoTable(): string {
+  const table = process.env.PAYMENT_UTXO_TABLE?.trim() || 'payment_utxos'
+  if (!/^[a-z_][a-z0-9_]*$/i.test(table)) {
+    throw new Error('PAYMENT_UTXO_TABLE must be a valid PostgreSQL identifier')
+  }
+  return table
+}
+
+export async function getAndReservePaymentUtxo(
+  fundingPool = 'default',
+  serverInstance: string | null = null
+): Promise<PaymentUtxo | null> {
+  const table = getPaymentUtxoTable()
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
     const result = await client.query(`
-      UPDATE payment_utxos
+      UPDATE ${table}
       SET status = 'pending',
           server_instance = $1,
           claimed_at = NOW()
       WHERE id = (
         SELECT id
-        FROM payment_utxos
+        FROM ${table}
         WHERE status = 'available'
           AND funding_pool = $2
         ORDER BY created_at ASC
@@ -68,8 +80,9 @@ export async function getAndReservePaymentUtxo(fundingPool = 'default', serverIn
 }
 
 export async function markPaymentUtxoAsUsed(outpoint: string): Promise<boolean> {
+  const table = getPaymentUtxoTable()
   const result = await pool.query(`
-    UPDATE payment_utxos
+    UPDATE ${table}
     SET status = 'used'
     WHERE outpoint = $1
   `, [outpoint])
@@ -77,8 +90,9 @@ export async function markPaymentUtxoAsUsed(outpoint: string): Promise<boolean> 
 }
 
 export async function releasePaymentUtxo(outpoint: string): Promise<boolean> {
+  const table = getPaymentUtxoTable()
   const result = await pool.query(`
-    UPDATE payment_utxos
+    UPDATE ${table}
     SET status = 'available',
         server_instance = NULL,
         claimed_at = NULL

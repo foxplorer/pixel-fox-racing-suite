@@ -9,7 +9,7 @@ import {
 import type { PixelRacingLapInscriptionPayload } from './lapResult'
 
 const payload: PixelRacingLapInscriptionPayload = {
-  playerowner: 'owner',
+  recordVersion: 2,
   playeroutpoint: 'outpoint',
   playeroriginoutpoint: 'origin',
   playerfoxname: 'Fox',
@@ -77,7 +77,7 @@ test('submitPixelRacingLapCompletion returns tx activity and socket payloads', a
   assert.equal(result.txid, 'tx456')
   assert.equal(result.dummy, false)
   assert.deepEqual(result.inscriptionPayload, {
-    playerowner: 'owner',
+    recordVersion: 2,
     playeroutpoint: 'outpoint',
     playeroriginoutpoint: 'origin',
     playerfoxname: 'Fox',

@@ -8,6 +8,16 @@ For the detailed track and shared-systems refactor plan, see `REFACTOR.md`.
 
 Pixel Racing Classic can live separately as the original pre-refactor code and feel. The open-source Pixel Fox Racing Suite is the prompt anyone can build on: keep the personality, but let the shared version become deeper, better-looking, easier to maintain, and eventually different enough that it is not limited by the classic implementation.
 
+## Roadmap
+
+Near-term directions for the suite:
+
+1. Complete the wallet capability adapter to remove wallet-specific branches from game and collectible code. Metanet is a selected provider, not a silent fallback.
+2. Persist collectible claims and delivery receipts server-side. Retries must return the same receipt and outpoint without creating duplicate collectibles.
+3. Build the no-Pixel-Fox faucet on the same idempotent receipt pipeline.
+4. Keep the open-source transaction server canonical. Production-specific behavior should be thin configuration or deployment composition, not divergent core files.
+5. Build shared touch controls for mobile, deferring Metanet Mobile wallet validation until login can be tested.
+
 ## Goals
 
 - Keep the suite easy to run locally with one install and simple dev commands.
@@ -92,17 +102,79 @@ Useful track improvements:
 - Add responsive polish for small screens and touch controls.
 - Add optional sound packs that forks can install separately with clear licensing.
 
-## Wallet Integration Ideas
+## Wallet Architecture
 
-- Evaluate migrating from the current Panda wallet provider path to the current Yours Wallet / BRC-100 provider flow.
-- Explore a BRC-100 authentication flow using a Pixel Fox Racing auth basket. A wallet could keep a reusable Pixel Fox Racing auth token in that basket, spend or move it during login, and return it to the same basket so the app can verify wallet control and track the most recent authenticated login.
-- Use auth-token recency as a session freshness signal. If the last verified basket/token activity is older than a configured threshold, ask the player to authenticate again by spending or cycling the token through the wallet flow.
-- Keep the BRC-100 auth token separate from race results, collectibles, and lap submissions. It should prove wallet control/session freshness, not become gameplay state or a required on-chain write for every race.
-- Design this so every compatible BRC-100 wallet can support the same Pixel Fox Racing auth basket pattern, while forks can rename/configure their own auth basket and token metadata.
-- Keep wallet support optional so dummy-mode local development still works without a browser wallet.
-- Verify address loading, ordinal selection, collectible ownership, transaction signing, and error states against the updated wallet API.
-- Document supported wallet APIs and fallback behavior so forks can choose their own BSV ordinal wallet integration.
+The frontend supports two explicit wallet choices. The landing page does not auto-connect, probe wallets, or open the player modal before the player clicks a button.
 
+### Yours Wallet
+
+Yours uses `WalletClient('window.CWI')` and the modern BRC-100 flow through `@1sat/react`, `@bsv/sdk`, and `@1sat/actions`.
+
+- `createContext(wallet, { chain: 'main', services })` creates the actions context.
+- `getOrdinals.execute(ctx, ...)` lists Pixel Foxes.
+- `deriveDepositAddresses.execute(ctx, { startIndex: 0, count: 2 })` derives the payment and ordinal receive addresses.
+- Race collectibles use `deliveryTarget: { type: 'address' }` with the derived ordinal address.
+- The transaction server mints the collectible to that address and broadcasts it. The Yours extension automatically tracks that address so the collectible appears in the wallet without any frontend action — no `internalizeAction` call.
+
+The deprecated `window.yours` provider is not used.
+
+### Metanet Desktop
+
+Metanet uses `WalletClient('json-api')`, the local Metanet JSON API transport.
+
+- Foxes are listed from the `pixel foxes` basket with `wallet.listOutputs`.
+- Race collectibles use `deliveryTarget: { type: 'protocol-key' }` with the protocol ID, key ID, counterparty, destination basket, and public key derived by the wallet adapter.
+- The transaction server uses `GROUP_SIGNING_WIF` to derive a BRC-42 destination from the player's protocol key, mints and broadcasts the collectible reliably, then returns Atomic BEEF plus the actual output index and remittance metadata.
+- The frontend calls `internalizeAction` on the Metanet client to import that output into the `pixel foxes` basket. This basket import step — not the server send — is what the three exponential-backoff retry attempts cover. If all retries fail, the broadcast transaction is still on-chain and visible in activity.
+
+Metanet is a first-class selected wallet, not a fallback for Yours.
+
+### Transaction Server Delivery
+
+The transaction server receives a validated `deliveryTarget` union from the frontend:
+
+- `address` — mints and broadcasts the collectible to the Yours-derived ordinal receive address. No client-side action required.
+- `protocol-key` — uses the server's stateless `ProtoWallet` (`GROUP_SIGNING_WIF`) with BRC-42 to derive a unique destination from the player's protocol key. Returns Atomic BEEF and remittance metadata for the frontend to pass to `internalizeAction`.
+
+`GROUP_SIGNING_WIF` serves two purposes: it signs Sigma issuer proofs on inscriptions, and it provides the server's BRC-42 sender identity key for Metanet collectible delivery. For every Metanet collectible the Metanet client must store the sender's public key, protocol ID, and key ID at `internalizeAction` time to later derive the spending private key — this is always required, not only when the key changes. Yours Wallet collectibles sent to an ordinal address have no derivation requirement and are not affected by this key.
+
+Collectible routing is isolated in `src/collectibles.ts`. PostgreSQL supplies the funding UTXO; `PAYMENT_WIF` signs the funding input separately. No server wallet database is required.
+
+### Player Identity
+
+- `identityKey` is the primary player identifier for sockets, sessions, and collectible delivery.
+- `originOutpoint` is the stable fox identifier. Use it as the racing identity; do not rely on client-supplied fox metadata alone.
+- Race-history inscriptions go to the single configured `PIXELRACING_RESULTS_ADDRESS`. This is independent from the three collectible reward paths, which belong to the player.
+- Ordinal and payment addresses are kept out of public sockets and race history inscriptions.
+- Race history uses `recordVersion: 2` and omits player addresses. Legacy records with `playerowner` / `owneraddress` are still parsed when reading history.
+
+### Roadmap Items
+
+- Add a wallet capability adapter in the frontend (`identityKey`, `listOrdinalOutputs`, `receiveCounterpartyDelivery`, `internalizeOrdinal`) so wallet-specific branches move out of game and collectible code.
+- Add server-side idempotency for collectible claims bound to `identityKey`, race/pickup ID, and a claim ID so retries cannot create duplicate collectibles.
+- Add request-bound `getAuthToken` sign-in.
+- Build the fox faucet flow: detect an empty wallet-specific fox source, show
+  explicit `Get a Fox` action, deliver foxes through the selected wallet path,
+  internalize when required, and verify. Yours should use the address/1Sat
+  ordinals path; Metanet should use `[0, 'pixel foxes']` and the `pixel foxes`
+  basket.
+- Add shared touch controls for mobile.
+
+### Standards Reference
+
+- BRC-100: the client wallet API (`WalletInterface`, `getPublicKey`, `internalizeAction`, `listOutputs`).
+- BRC-42/BRC-43: counterparty key derivation and protocol/key-ID invoice convention used for Metanet delivery.
+- BEEF/Atomic BEEF: transaction and ancestry proof material returned by the transaction server for Metanet internalization.
+- `p 1sat ordinals`: the Yours/1Sat wallet basket label for ordinals.
+  `[0, 'p 1sat']` is the 1Sat action protocol identifier, distinct from the
+  basket name. Metanet uses the app-specific `[0, 'pixel foxes']` protocol and
+  `pixel foxes` basket because Metanet Client can reject the `p 1sat ordinals`
+  module path.
+
+Identity and recipient decisions:
+
+- Use `identityKey` as the stable, intentionally shareable account/player identifier in sockets, sessions, authentication, counterparty delivery, and optional identity presentation.
+- Do not treat the identity public key as a P2PKH address or place it directly in a locking script. The current mint path asks the stateless server `ProtoWallet` for a `[0, 'p 1sat']` counterparty-derived public key and locks the ordinal to its P2PKH address. Existing wallet-owned ordinals should still use the high-level `transferOrdinals` counterparty path.
 ## Graphics Ideas
 
 - Improve vehicle models and animations.

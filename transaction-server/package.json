@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "start": "tsx src/index.ts",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test --test-concurrency=1 src/collectibles.test.ts src/identityCollectibleDelivery.test.ts src/outpoints.test.ts src/sdkCollectibleTransaction.test.ts"
   },
   "dependencies": {
+    "@1sat/actions": "0.0.162",
+    "@1sat/client": "0.0.38",
+    "@1sat/templates": "0.0.22",
     "@bsv/sdk": "^2.1.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

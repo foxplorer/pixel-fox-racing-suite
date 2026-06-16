@@ -64,6 +64,7 @@ import {
 import { useRemotePlayerLodRendering } from '../../racing/multiplayer/useRemotePlayerLodRendering'
 import { getRacingMinimapQualitySettings, getRacingQualityPreset } from '../../racing/performance/qualitySettings'
 import { useRacingQualitySetting } from '../../racing/performance/useRacingQualitySetting'
+import { useFullscreenToggle } from '../../racing/components/useFullscreenToggle'
 
 const collectibleImageUrls = {
   blueberry: blueberryUrl,
@@ -133,6 +134,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   startRaceImmediately = false,
   selectedColor
 }) => {
+  const { containerRef, isFullscreen, toggleFullscreen } = useFullscreenToggle<HTMLDivElement>()
   const importedTrackDefinition = findImportedCarTrackDefinitionById(trackDefinitionId)
   const resolvedTrackDefinition = importedTrackDefinition ?? trackDefinition
   const resolvedLocalTrackName = importedTrackDefinition?.metadata.displayName ?? localTrackName
@@ -374,6 +376,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     socketRef,
     hasJoined,
     playDingSound,
+    identityKey,
     ordinalAddress,
     foxOutpoint,
     foxOriginOutpoint,
@@ -754,15 +757,15 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
 
   return (
     <>
-      <div style={getCarRacingGameViewportStyle(gameStatus)}>
+      <div ref={containerRef} style={getCarRacingGameViewportStyle(gameStatus)}>
         {/* Loading Screen */}
         {gameStatus === 'loading' && (
           <RacingLoadingOverlay />
         )}
-        
+
         {/* 3D World */}
         <FoxRacingWorld
-          otherPlayers={visibleRemotePlayers} 
+          otherPlayers={visibleRemotePlayers}
           gameStatus={gameStatus}
           onCrash={handleCrash}
           onScoreUpdate={setScore}
@@ -792,6 +795,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           qualityPresetId={qualityPresetId}
           trackDefinition={resolvedTrackDefinition}
           sceneryMode={resolvedSceneryMode}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
 
         {/* Minimap - Show during racing and countdown (bottom right) */}

@@ -12,9 +12,11 @@ Before opening a PR:
 
 - Keep changes scoped to one concern.
 - Run the relevant command:
+  - `npm run test:frontend-core`
   - `npm run build:frontend`
   - `npm run check:socket`
   - `npm run check:transactions`
+  - `npm run test:transactions`
 - Include screenshots or short screen recordings for frontend changes.
 - Do not commit `.env` files, signing WIFs, database URLs, or generated folders.
 - Prefer local dummy transaction mode for development unless the change specifically needs real inscriptions.
