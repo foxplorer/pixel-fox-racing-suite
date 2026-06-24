@@ -40,7 +40,7 @@ const ITEM_VALUES: Record<(typeof ITEM_TYPES)[number], number> = {
 }
 const MAX_ITEMS = 10
 const ROOM_ID = 'global_pixelfoxracing_world'
-const DEFAULT_VALID_TRACK_NAMES = ['Australia', 'San Luis', 'Belgium', 'Aspen', 'United Kingdom', 'Germany']
+const DEFAULT_VALID_TRACK_NAMES = ['Australia', 'San Luis', 'Belgium', 'Aspen', 'United Kingdom', 'Germany', 'Volcanoes']
 const VALID_TRACK_NAMES = (process.env.VALID_TRACK_NAMES || DEFAULT_VALID_TRACK_NAMES.join(','))
   .split(',')
   .map(trackName => trackName.trim())

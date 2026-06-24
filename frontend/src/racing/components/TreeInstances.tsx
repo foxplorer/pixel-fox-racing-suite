@@ -89,6 +89,13 @@ export const TreeInstances: React.FC<TreeInstancesProps> = ({
     foliage1Ref.current.instanceMatrix.needsUpdate = true
     foliage2Ref.current.instanceMatrix.needsUpdate = true
     foliage3Ref.current.instanceMatrix.needsUpdate = true
+    // Instance matrices don't refresh the mesh bounds; without this each bounding
+    // sphere stays a unit shape at the origin and the whole field gets frustum culled
+    // (popping in/out) once the origin leaves view. Matters when frustumCulled is on.
+    trunkRef.current.computeBoundingSphere()
+    foliage1Ref.current.computeBoundingSphere()
+    foliage2Ref.current.computeBoundingSphere()
+    foliage3Ref.current.computeBoundingSphere()
   }, [trees])
 
   if (trees.length === 0) return null

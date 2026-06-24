@@ -1,9 +1,10 @@
-import React, { useRef, useEffect, useMemo } from 'react'
+import React, { useRef, useEffect, useMemo, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { VoxelBackgroundRemovalStrategy } from '../voxelization/voxelBackgroundStrategy'
 import { logRacingDiagnostic, warnRacingDiagnostic } from '../../racing/debug/diagnostics'
 import carOnGas from '../../assets/car-on-gas.mp3'
+import explosionSound from '../../assets/explosion.mp3'
 import { GameStatus } from './FoxRacingGame'
 import { spatialHash, trackSamples, GRID_SIZE, startFinishPosition, startFinishDirection } from './TrackData'
 import { createIndexedTrackQueries } from '../../racing/core/indexedTrackQueries'
@@ -20,7 +21,7 @@ import { notifyLapDisplayUpdate, notifySpeedDisplayUpdate } from '../../racing/s
 import { resetLapCountersForGameStatus } from '../../racing/simulation/lapCounterReset'
 import { advanceTrackPositionFrame, shouldRefreshOnTrackState } from '../../racing/simulation/trackFrameCadence'
 import { getTrackRuntimeConfig } from '../../racing/tracks/trackRuntimeConfig'
-import { createPreloadedAudio } from '../../racing/components/audioElements'
+import { createPreloadedAudio, playAudioElement } from '../../racing/components/audioElements'
 import { applyVehicleSpawnPositionOnce, commitVehiclePose, notifyManualCameraControlUsed, notifyVehiclePositionUpdate, resetVehiclePoseRefs } from '../../racing/components/vehicleFrameCallbacks'
 import { getCarSurfaceVisualY, SHARED_CAR_OFF_TRACK_BOUNCE } from '../../racing/vehicles/carBounce'
 import {
@@ -35,6 +36,12 @@ import {
 } from '../../racing/vehicles/carCamera'
 import type { RacingAdvertisingBoard } from '../../racing/vehicles/carBoardCollision'
 import { resolveCarCollisionFrame } from '../../racing/vehicles/carCollisionFrame'
+import { advanceCarJump, createCarJumpState, findActiveCarJumpZone, CAR_JUMP_MIN_LAUNCH_SPEED, type CarJumpZone } from '../../racing/vehicles/carJump'
+import { isCarRampLipLaunchTransition, rampHeightAbove, resolveCarRampSideCollision, type CarRampZone } from '../../racing/vehicles/carRamp'
+import { isCarOverLava, type CarLavaHazard } from '../../racing/vehicles/carLavaHazard'
+import { advanceLavaDeath, applyVehicleHeatTint, createLavaDeathState, resetLavaDeathState } from '../../racing/vehicles/carLavaDeath'
+import { CarLavaExplosion } from '../../racing/components/CarLavaExplosion'
+import { advanceCarTerrainContact, createCarTerrainContactState } from '../../racing/vehicles/carTerrainContact'
 import { updateCarGasAudio } from '../../racing/vehicles/carGasAudio'
 import { advanceCarControlFrame, advanceCarMovementFrame, canAdvanceCarFrame, getCarForwardVector, getInactiveCarSpeed, getStableCarRotation, isAnyCarControlActive, SHARED_CAR_HANDLING } from '../../racing/vehicles/carHandling'
 import { useCarKeyboardControls } from '../../racing/vehicles/useCarKeyboardControls'
@@ -75,6 +82,14 @@ interface FreeRoamCarProps {
   getHeightAtPosition?: (x: number, z: number, currentY?: number, trackT?: number) => number
   treePositions?: Array<{ x: number; z: number; scale: number; radius: number }>
   startingGatePoles?: Array<{ x: number; z: number; radius: number }>
+  /** Opt-in launch zones (e.g. lava pits). Empty/omitted = no jump behavior. */
+  jumpZones?: CarJumpZone[]
+  /** Opt-in raised ramp surfaces the car climbs (e.g. lava-pit ramps). Empty/omitted = flat ground. */
+  rampZones?: CarRampZone[]
+  /** Opt-in molten regions that destroy the car on contact (e.g. lava). Omitted = no hazard. */
+  lavaHazard?: CarLavaHazard
+  /** Fired once the burn-up sequence finishes, to switch the game into its crashed state. */
+  onCrash?: () => void
   advertisingBoards?: RacingAdvertisingBoard[]
   onDistanceUpdate?: (distance: number) => void
   onPositionUpdate?: (position: THREE.Vector3, rotation?: number, speed?: number) => void
@@ -112,6 +127,10 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   getHeightAtPosition = getFlatVehicleHeightAtPosition,
   treePositions = [],
   startingGatePoles = [],
+  jumpZones = [],
+  rampZones = [],
+  lavaHazard,
+  onCrash,
   advertisingBoards = [],
   onDistanceUpdate,
   onPositionUpdate,
@@ -132,7 +151,12 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   const { camera } = useThree()
   const carRef = useRef<THREE.Group>(null)
   const carVisualRef = useRef<THREE.Group>(null)
-  
+
+  // Lava burn-up death sequence (Volcanoes): alive → red-hot → explode → game over.
+  const lavaDeathRef = useRef(createLavaDeathState())
+  const lavaExplosionStartedRef = useRef(false)
+  const [showLavaExplosion, setShowLavaExplosion] = useState(false)
+
   // Initialize position from spawnPosition if provided, otherwise default to start line
   // Y coordinate is set to track height (ignoring terrain for now)
   const getInitialPosition = () => {
@@ -192,6 +216,8 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   const boardTangentRef = useRef(new THREE.Vector3()) // Board tangent for sliding
   const slidingAlongBoardRef = useRef(false) // Flag to indicate sliding along board
   const spawnTangentRef = useRef(new THREE.Vector3()) // Reusable tangent for spawn position rotation calculation
+  const jumpStateRef = useRef(createCarJumpState()) // Vertical arc state for lava-pit jumps (no-op when jumpZones empty)
+  const terrainContactStateRef = useRef(createCarTerrainContactState()) // Generic cliff/drop-off gravity state
   
   // Update position when spawnPosition changes (e.g., when joining game)
   // Only update ONCE when spawnPosition is first set - don't reset if car has moved
@@ -233,6 +259,9 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   // Gas sound
   const gasAudio = useMemo(() => {
     return createPreloadedAudio(carOnGas, { loop: true })
+  }, [])
+  const lavaExplosionAudio = useMemo(() => {
+    return createPreloadedAudio(explosionSound, { volume: 0.75, loop: false })
   }, [])
   const isGasSoundPlaying = useRef(false)
   
@@ -291,6 +320,15 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   // Reset lap tracking and car position when starting a new race
   // NOTE: isManualCamera is NOT in dependencies - we don't want to reset car when camera mode changes
   useEffect(() => {
+    // Clear any lava burn-up state whenever we leave the crashed screen for a fresh
+    // race, restoring the car's normal look and visibility.
+    if (gameStatus !== 'crashed') {
+      resetLavaDeathState(lavaDeathRef.current)
+      lavaExplosionStartedRef.current = false
+      setShowLavaExplosion(false)
+      applyVehicleHeatTint(carVisualRef.current, 0)
+      if (carVisualRef.current) carVisualRef.current.visible = true
+    }
     if (gameStatus === 'racing') {
       // Reset car to start/finish line
       const trackY = getHeightAtPosition(providedStartFinishPosition.x, providedStartFinishPosition.z)
@@ -368,7 +406,50 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     
     // Store gameStatus before any narrowing happens (needed for camera code at end)
     const currentGameStatus = gameStatus
-    
+
+    // --- Lava burn-up death (opt-in via lavaHazard, e.g. Volcanoes). On contact the
+    // car/fox glow red-hot, then explode, then the game switches to its crashed
+    // (game-over) screen. A successful jump is never a death: skip while airborne, or
+    // while sitting in a pit zone with enough speed to launch out of it.
+    const aboutToLaunchOverPit =
+      lavaDeathRef.current.phase === 'alive' &&
+      jumpStateRef.current.armed &&
+      Math.abs(speed.current) >= CAR_JUMP_MIN_LAUNCH_SPEED &&
+      findActiveCarJumpZone(position.current.x, position.current.z, jumpZones) !== null
+    // Plain terrain height under the car (no ramp lift — ramps flank the pits, not
+    // the central lake). Lets the lake hazard ignore rock that pokes above the
+    // buried lava sheet so the car only burns over visible lava.
+    const lavaGroundY = getHeightAtPosition(position.current.x, position.current.z)
+    const overLava =
+      currentGameStatus === 'racing' &&
+      !jumpStateRef.current.airborne &&
+      !aboutToLaunchOverPit &&
+      isCarOverLava(position.current.x, position.current.z, lavaHazard, {
+        groundY: lavaGroundY,
+        vehicleY: position.current.y
+      })
+    const lavaDeath = advanceLavaDeath({
+      state: lavaDeathRef.current,
+      overLava,
+      nowSeconds: state.clock.elapsedTime
+    })
+    const lavaFrozen = lavaDeath.phase !== 'alive'
+    if (lavaFrozen) {
+      speed.current = 0
+      applyVehicleHeatTint(carVisualRef.current, lavaDeath.heat)
+    }
+    if ((lavaDeath.phase === 'exploding' || lavaDeath.phase === 'dead') && carVisualRef.current) {
+      carVisualRef.current.visible = false
+    }
+    if (lavaDeath.phase === 'exploding' && !lavaExplosionStartedRef.current) {
+      lavaExplosionStartedRef.current = true
+      setShowLavaExplosion(true)
+      if (isSoundEnabled) {
+        playAudioElement(lavaExplosionAudio, { reset: true, errorMessage: 'Lava explosion sound failed:' })
+      }
+    }
+    if (lavaDeath.justFinished) onCrash?.()
+
     // Update track position (t value) to identify which track section car is on
     // This prevents jumping to overlapping track sections above/below
     // PERFORMANCE: Only update every 10 frames to improve performance significantly
@@ -430,8 +511,20 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     // PERFORMANCE: Track is flat (y=0), so height is constant - no expensive calculations needed
     // Track is always at the shared flat vehicle ride height, so just use constant value
     // This eliminates hundreds of expensive getTrackHeightAndInfluence calls per second
+    // Height the car is rendering at coming into this frame (before surface follow
+    // overwrites it). At the moment of a jump launch this still holds the ramp-lip
+    // height, which the jump uses as the launch start so the car pops off the kicker.
+    const preFrameVehicleY = position.current.y
+
+    // Ramp-aware ground sampler: plain terrain plus any raised launch-ramp surface
+    // (no-op off-volcano, where rampZones is empty). Used for ride height, slope,
+    // next position and visual surface so the car physically climbs and pitches up
+    // the ramp before the jump zone launches it at the lip.
+    const sampleGroundHeight = (x: number, z: number, currentY?: number, trackT?: number) =>
+      getHeightAtPosition(x, z, currentY, trackT) + rampHeightAbove(x, z, rampZones)
+
     const targetTrackHeight = getSafeVehicleTargetHeight({
-      sampledSurfaceHeight: getHeightAtPosition(
+      sampledSurfaceHeight: sampleGroundHeight(
         position.current.x,
         position.current.z,
         position.current.y,
@@ -444,7 +537,10 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     
     // FIXED: More aggressive snapping to prevent floating
     // If car is way above track, snap it down immediately (no lerp)
-    if (position.current.y > targetTrackHeight + 1.0) {
+    // While airborne, skip surface snapping so gravity/jump arcs are preserved.
+    if (jumpStateRef.current.airborne || terrainContactStateRef.current.airborne) {
+      // Vertical position is owned by the airborne integrator this frame.
+    } else if (position.current.y > targetTrackHeight + 1.0) {
       position.current.y = targetTrackHeight
       isInitialized.current = true
     } else if (!isInitialized.current) {
@@ -468,7 +564,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     }
     
     // Only allow movement when racing (countdown must complete first)
-    const canMove = canAdvanceCarFrame(gameStatus)
+    const canMove = canAdvanceCarFrame(gameStatus) && !lavaFrozen
     if (!canMove) {
       // During countdown or loading, apply friction to stop any existing movement
       speed.current = getInactiveCarSpeed({ gameStatus, speed: speed.current })
@@ -487,13 +583,13 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     const onTrack = cachedOnTrack.current
     
     const slopeForward = getCarForwardVector(rotation.current)
-    const currentSlopeHeight = getHeightAtPosition(
+    const currentSlopeHeight = sampleGroundHeight(
       position.current.x,
       position.current.z,
       position.current.y,
       lastTrackT.current ?? undefined
     )
-    const sampledForwardHeight = getHeightAtPosition(
+    const sampledForwardHeight = sampleGroundHeight(
       position.current.x + slopeForward.x * SLOPE_SAMPLE_DISTANCE,
       position.current.z + slopeForward.z * SLOPE_SAMPLE_DISTANCE,
       position.current.y,
@@ -544,9 +640,32 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
         tangent: boardTangentRef.current
       }
     })
+
+    if (!jumpStateRef.current.airborne && !terrainContactStateRef.current.airborne) {
+      const rampSideCollision = resolveCarRampSideCollision({
+        previousX: position.current.x,
+        previousZ: position.current.z,
+        nextX: newPositionRef.current.x,
+        nextZ: newPositionRef.current.z,
+        ramps: rampZones
+      })
+      if (rampSideCollision.blocked) {
+        newPositionRef.current.x = rampSideCollision.slideX ?? position.current.x
+        newPositionRef.current.z = rampSideCollision.slideZ ?? position.current.z
+        speed.current *= SHARED_CAR_HANDLING.boardCollisionSpeedMultiplier
+      }
+    }
+
+    const canLaunchJumpFromRamp = isCarRampLipLaunchTransition({
+      previousX: position.current.x,
+      previousZ: position.current.z,
+      nextX: newPositionRef.current.x,
+      nextZ: newPositionRef.current.z,
+      ramps: rampZones
+    })
     
     const nextTargetTrackHeight = getSafeVehicleTargetHeight({
-      sampledSurfaceHeight: getHeightAtPosition(
+      sampledSurfaceHeight: sampleGroundHeight(
         newPositionRef.current.x,
         newPositionRef.current.z,
         position.current.y,
@@ -556,12 +675,35 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       vehicleHeightOffset: FLAT_CAR_MODEL_HEIGHT_OFFSET,
       minSurfaceHeight: -1000
     })
-    newPositionRef.current.y = resolveVehicleSurfaceY({
-      currentY: newPositionRef.current.y,
-      targetY: nextTargetTrackHeight,
-      deltaSeconds: delta,
-      snapUpToTarget: true
-    })
+    const horizontalMoveDistance = Math.hypot(
+      newPositionRef.current.x - position.current.x,
+      newPositionRef.current.z - position.current.z
+    )
+    if (jumpStateRef.current.airborne || canLaunchJumpFromRamp) {
+      newPositionRef.current.y = position.current.y
+    } else {
+      const terrainFrame = advanceCarTerrainContact({
+        state: terrainContactStateRef.current,
+        currentY: position.current.y,
+        targetY: nextTargetTrackHeight,
+        speed: speed.current,
+        deltaSeconds: delta,
+        horizontalDistance: horizontalMoveDistance
+      })
+      if (terrainFrame.blockedBySteepClimb) {
+        newPositionRef.current.x = position.current.x
+        newPositionRef.current.z = position.current.z
+      }
+      newPositionRef.current.y = terrainFrame.airborne
+        ? terrainFrame.height
+        : resolveVehicleSurfaceY({
+          currentY: newPositionRef.current.y,
+          targetY: terrainFrame.height,
+          deltaSeconds: delta,
+          snapUpToTarget: true
+        })
+      speed.current = terrainFrame.speed
+    }
     
     const collisionFrame = resolveCarCollisionFrame({
       position: newPositionRef.current,
@@ -599,21 +741,46 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       onCollectItem
     })
 
-    const visualSurfaceHeight = getHeightAtPosition(
-      position.current.x,
-      position.current.z,
-      position.current.y,
-      lastTrackT.current ?? undefined
-    )
-    position.current.y = getCarSurfaceVisualY({
-      isOnTrack: onTrack,
+    // While sailing off a cliff (terrain-contact airborne), the vertical integrator
+    // owns Y — skip the ground-hugging visual surface snap or it'd clamp the car back
+    // onto the cliff face every frame instead of letting it arc out and fall. The jump
+    // arc is handled the same way, but advanceCarJump re-asserts its height below, so
+    // only the terrain-contact case needs to short-circuit here.
+    if (terrainContactStateRef.current.airborne && !jumpStateRef.current.airborne) {
+      // Vertical position is owned by the cliff-drop integrator this frame.
+    } else {
+      const visualSurfaceHeight = sampleGroundHeight(
+        position.current.x,
+        position.current.z,
+        position.current.y,
+        lastTrackT.current ?? undefined
+      )
+      position.current.y = getCarSurfaceVisualY({
+        isOnTrack: onTrack,
+        speed: speed.current,
+        elapsedTime: state.clock.elapsedTime,
+        bounce: {
+          ...SHARED_CAR_OFF_TRACK_BOUNCE,
+          groundHeight: visualSurfaceHeight + CAR_VISUAL_HEIGHT_OFFSET
+        }
+      })
+    }
+
+    // Lava-pit jumps: launch into a gravity arc when crossing a zone at speed,
+    // otherwise this returns the grounded height unchanged (no-op off-volcano).
+    const jumpFrame = advanceCarJump({
+      state: jumpStateRef.current,
+      zones: jumpZones,
+      x: position.current.x,
+      z: position.current.z,
+      groundedY: position.current.y,
+      currentY: preFrameVehicleY,
       speed: speed.current,
-      elapsedTime: state.clock.elapsedTime,
-      bounce: {
-        ...SHARED_CAR_OFF_TRACK_BOUNCE,
-        groundHeight: visualSurfaceHeight + CAR_VISUAL_HEIGHT_OFFSET
-      }
+      deltaSeconds: delta,
+      canMove: canMove && canLaunchJumpFromRamp
     })
+    position.current.y = jumpFrame.height
+    speed.current = jumpFrame.speed
 
     commitVehiclePose({
       vehicle: carRef.current,
@@ -634,7 +801,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
           x: -visualForward.z,
           z: visualForward.x
         },
-        getHeightAtPosition
+        getHeightAtPosition: sampleGroundHeight
       })
       const smoothedTilt = smoothVehicleVisualTilt({
         currentPitch: visualPitch.current,
@@ -975,6 +1142,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
           localChatMessage={localChatMessage}
         />
       </group>
+      {showLavaExplosion && <CarLavaExplosion />}
     </group>
   )
 }

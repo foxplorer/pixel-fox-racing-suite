@@ -26,6 +26,7 @@ import type { VoxelBackgroundRemovalStrategy } from '../voxelization/voxelBackgr
 import jungle from '../../assets/engine-idle.mp3'
 import raceStartBeeps from '../../assets/race-start-beeps.mp3'
 import dingSound from '../../assets/ding.mp3'
+import explosionSound from '../../assets/explosion.mp3'
 import blueberryUrl from '../../assets/blueberries.svg'
 import rabbitUrl from '../../assets/rabbit-face.svg'
 import saladUrl from '../../assets/salad.svg'
@@ -80,6 +81,8 @@ const TRANSACTION_SERVER_URL = import.meta.env.VITE_PIXELRACING_TRANSACTION_URL 
 
 const FAKE_REMOTE_PLAYER_COUNT = parseFakeRemotePlayerCount(import.meta.env.VITE_RACING_FAKE_PLAYERS)
 const FAKE_REMOTE_PLAYER_SPEED_SCALE = parseFakeRemotePlayerSpeedScale(import.meta.env.VITE_RACING_FAKE_PLAYER_SPEED)
+const VOLCANO_EXPLOSION_FIRST_DELAY_MS = 1000
+const VOLCANO_EXPLOSION_INTERVAL_MS = 25000
 
 interface FoxRacingGameProps {
   identityKey?: string | null
@@ -347,6 +350,10 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   const dingAudio = useMemo(() => {
     return createPreloadedAudio(dingSound, { volume: 0.5 })
   }, [])
+
+  const volcanoExplosionAudio = useMemo(() => {
+    return createPreloadedAudio(explosionSound, { volume: 0.65, loop: false })
+  }, [])
   
   const {
     showmuted,
@@ -359,12 +366,30 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     pauseIdleAudioForGas,
     resumeIdleAudioAfterGas
   } = useLoopingIdleAudio(audio)
+  const isSoundEnabledRef = useRef(isSoundEnabled)
+
+  useEffect(() => {
+    isSoundEnabledRef.current = isSoundEnabled
+  }, [isSoundEnabled])
+
+  useEffect(() => {
+    if (isSoundEnabled) return
+
+    volcanoExplosionAudio.pause()
+    volcanoExplosionAudio.currentTime = 0
+  }, [isSoundEnabled, volcanoExplosionAudio])
   
   const playDingSound = useCallback(() => {
     if (isSoundEnabled && dingAudio) {
       playAudioElement(dingAudio, { reset: true, errorMessage: 'Ding sound failed:' })
     }
   }, [isSoundEnabled, dingAudio])
+
+  const playVolcanoExplosionSound = useCallback(() => {
+    if (isSoundEnabledRef.current && !hasUserMutedRef.current) {
+      playAudioElement(volcanoExplosionAudio, { reset: true, errorMessage: 'Volcano explosion sound failed:' })
+    }
+  }, [hasUserMutedRef, volcanoExplosionAudio])
 
   const {
     collectedItemsRef,
@@ -585,6 +610,35 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       playJungle()
     }
   }, [gameStatus, audio, playJungle])
+
+  const isVolcanoesTrack = trackName === 'Volcanoes' || resolvedTrackDefinition.trackId === 'volcanoes'
+
+  useEffect(() => {
+    if (isVolcanoesTrack && (gameStatus === 'countdown' || gameStatus === 'racing')) return
+
+    volcanoExplosionAudio.pause()
+    volcanoExplosionAudio.currentTime = 0
+  }, [gameStatus, isVolcanoesTrack, volcanoExplosionAudio])
+
+  useEffect(() => {
+    if (gameStatus !== 'countdown' || !isVolcanoesTrack) return
+
+    const timeoutId = window.setTimeout(() => {
+      playVolcanoExplosionSound()
+    }, VOLCANO_EXPLOSION_FIRST_DELAY_MS)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [gameStatus, isVolcanoesTrack, playVolcanoExplosionSound])
+
+  useEffect(() => {
+    if (gameStatus !== 'racing' || !isVolcanoesTrack) return
+
+    const intervalId = window.setInterval(() => {
+      playVolcanoExplosionSound()
+    }, VOLCANO_EXPLOSION_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [gameStatus, isVolcanoesTrack, playVolcanoExplosionSound])
 
   const handleGasPressed = pauseIdleAudioForGas
   const handleGasReleased = useCallback(() => {

@@ -62,7 +62,8 @@ const TRACK_ICON_BY_NAME: Record<string, string> = {
   Belgium: '🇧🇪',
   'United Kingdom': '🇬🇧',
   Germany: '🇩🇪',
-  Aspen: '🏔️'
+  Aspen: '🏔️',
+  Volcanoes: '🌋'
 };
 type PixelRacingResultQuery = { app: string; name: string };
 type PixelRacingStatsEra = 'current' | 'legacy';

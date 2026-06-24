@@ -58,6 +58,10 @@ const HillLayer: React.FC<{
     })
 
     meshRef.current.instanceMatrix.needsUpdate = true
+    // Instance matrices don't refresh the mesh bounds; without this the bounding
+    // sphere stays a unit sphere at the origin while the hills sit ~1800+ units out,
+    // so the whole ring gets frustum culled and pops in/out as the camera moves.
+    meshRef.current.computeBoundingSphere()
   }, [hills])
 
   return (

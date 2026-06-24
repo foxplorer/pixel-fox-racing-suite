@@ -41,6 +41,10 @@ const MountainLayer: React.FC<{
     })
 
     meshRef.current.instanceMatrix.needsUpdate = true
+    // Refresh bounds from the instance matrices; otherwise the bounding sphere stays
+    // a unit cone at the origin while the peaks sit ~1800+ units out, so the whole
+    // ring gets frustum culled and flickers as the camera moves.
+    meshRef.current.computeBoundingSphere()
   }, [mountains])
 
   return (

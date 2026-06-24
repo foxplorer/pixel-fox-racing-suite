@@ -43,6 +43,7 @@ The frontend includes these playable track environments:
 - `Aspen` - custom winter/snow mountain layout authored for this project.
 - `United Kingdom` - custom imported GeoJSON layout with authored elevation and custom starter scenery.
 - `Germany` - custom imported GeoJSON layout with authored elevation and generic imported-track scenery.
+- `Volcanoes` - custom imported mountain circuit with authored hill-climb elevation and generic imported-track scenery.
 
 Track and asset provenance is documented in `ATTRIBUTIONS.md`. New tracks should include clear notes about whether the layout is original, public domain, MIT-compatible, or requires attribution. The current imported GeoJSON/elevation workflow is documented in `ADDING_IMPORTED_TRACKS.md`.
 

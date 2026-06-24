@@ -5,8 +5,8 @@ import { UnifiedShowroom } from '../racing/UnifiedShowroom'
 import { Track } from '../racing/Track'
 import { GameStatus } from './FoxRacingGame'
 import { FreeRoamCar, CameraMode } from './FreeRoamCar'
-import { SimpleTrees } from './SimpleTrees'
 import { RollingHills } from '../../racing/components/RollingHills'
+import { DistantVolcanoes } from '../../racing/components/DistantVolcanoes'
 import { SampledTerrainMesh } from '../../racing/components/SampledTerrainMesh'
 import { startFinishT } from './TrackData'
 import { SeededRandom, WORLD_SEED } from '../../racing/core/seededRandom'
@@ -30,6 +30,17 @@ import type { CarTrackDefinition, CarTrackRenderBudget } from '../../racing/trac
 import { ImportedCarTrackScenery } from '../../racing/tracks/imported/ImportedCarTrackScenery'
 import type { TerrainHeightSampler } from '../../racing/core/roadCorridor'
 import { RacingCameraControlButtons } from '../../racing/components/RacingCameraControlButtons'
+import { TrackBillboardForest } from '../../racing/components/forest/TrackBillboardForest'
+import type { BillboardForestOptions } from '../../racing/components/forest/billboardForestPlacement'
+import {
+  computeLavaBasinSurfaceY,
+  createLavaCrossings,
+  createVolcanoLavaBasin,
+  createVolcanoLavaPitJumpZones,
+  createVolcanoLavaPitRampZones,
+  createVolcanoLavaPitRoadExclusionIntervals
+} from '../../racing/tracks/imported/volcanoes/volcanoCavePlacement'
+import type { CarLavaHazard } from '../../racing/vehicles/carLavaHazard'
 
 // Additional stadium positions around the track - spaced around from start line
 const ADDITIONAL_STADIUM_POSITIONS = [
@@ -331,6 +342,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   const hillLayers = worldRuntime.sceneryQuality.rollingHillLayers
   const isImportedScenery = sceneryMode !== 'australia'
   const isRainyAustralia = sceneryMode === 'australia'
+  const isVolcano = trackDefinition.trackId === 'volcanoes'
   const terrainHeightSampler = worldRuntime.terrainHeightSampler
   const sceneHeightSampler = useMemo(() => createStartStadiumTerrainSampler(
     terrainHeightSampler,
@@ -338,12 +350,57 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     trackDefinition.trackId === 'australia' || trackDefinition.trackId === 'belgium' || trackDefinition.trackId === 'germany'
   ), [sceneryMode, terrainHeightSampler, trackDefinition])
   const isTerrainAwareScenery = Boolean(terrainHeightSampler)
-  const skyColor = isRainyAustralia ? '#52616c' : isTerrainAwareScenery ? '#87CEEB' : '#52616c'
-  const fogColor = isRainyAustralia ? '#5f6f7b' : isTerrainAwareScenery ? '#87CEEB' : '#5f6f7b'
-  const ambientColor = isRainyAustralia ? '#b7c3cf' : isTerrainAwareScenery ? '#ffffff' : '#b7c3cf'
-  const ambientIntensity = isRainyAustralia ? 0.42 : isTerrainAwareScenery ? 0.6 : 0.42
-  const sunIntensity = isRainyAustralia ? 0.45 : isTerrainAwareScenery ? 1 : 0.45
-  const sunColor = isRainyAustralia ? '#d6dde3' : isTerrainAwareScenery ? '#ffffff' : '#d6dde3'
+  // Volcano lighting: warm molten glow rather than a near-black cave. Ambient and
+  // sun are pushed up and tinted orange so the whole arena reads as lit by lava,
+  // and the terrain is warmed so it catches that glow instead of swallowing it.
+  const skyColor = isVolcano ? '#3a1c0c' : isRainyAustralia ? '#52616c' : isTerrainAwareScenery ? '#87CEEB' : '#52616c'
+  const fogColor = isVolcano ? '#502711' : isRainyAustralia ? '#5f6f7b' : isTerrainAwareScenery ? '#87CEEB' : '#5f6f7b'
+  const ambientColor = isVolcano ? '#ffa85a' : isRainyAustralia ? '#b7c3cf' : isTerrainAwareScenery ? '#ffffff' : '#b7c3cf'
+  const ambientIntensity = isVolcano ? 1.25 : isRainyAustralia ? 0.42 : isTerrainAwareScenery ? 0.6 : 0.42
+  const sunIntensity = isVolcano ? 0.95 : isRainyAustralia ? 0.45 : isTerrainAwareScenery ? 1 : 0.45
+  const sunColor = isVolcano ? '#ffc279' : isRainyAustralia ? '#d6dde3' : isTerrainAwareScenery ? '#ffffff' : '#d6dde3'
+  const terrainColor = isVolcano ? '#5e3a25' : undefined
+  const fogNear = isVolcano ? 120 : isTerrainAwareScenery ? 150 : 140
+  const fogFar = isVolcano ? 900 : isTerrainAwareScenery ? 1100 : 1400
+  // Lava-pit launch zones (volcano only) — same pit centers the scenery draws,
+  // so the car arcs over exactly where the molten gaps cut the track.
+  const lavaPitJumpZones = useMemo(
+    () => (isVolcano ? createVolcanoLavaPitJumpZones(worldRuntime.trackCurve) : []),
+    [isVolcano, worldRuntime.trackCurve]
+  )
+  // Ramp surfaces flanking each pit — the raised ground the car climbs into the
+  // launch. Same pit data as the jump zones, so the lip lines up with the launch.
+  const lavaPitRampZones = useMemo(
+    () => (isVolcano ? createVolcanoLavaPitRampZones(worldRuntime.trackCurve) : []),
+    [isVolcano, worldRuntime.trackCurve]
+  )
+  const lavaPitRoadExclusionIntervals = useMemo(
+    () => (isVolcano ? createVolcanoLavaPitRoadExclusionIntervals(worldRuntime.trackCurve) : []),
+    [isVolcano, worldRuntime.trackCurve]
+  )
+  // Molten regions that destroy the car on contact: the central lava lake plus each
+  // jump pit's open gap. Driving in (or failing a jump into a pit) burns the car up.
+  const lavaHazard = useMemo<CarLavaHazard | undefined>(() => {
+    if (!isVolcano) return undefined
+    const basin = createVolcanoLavaBasin(worldRuntime.trackCurve)
+    return {
+      // surfaceY = the rendered lava sheet's height (same sampler the visual plane
+      // uses), so the central-lake kill zone only fires where the car is genuinely
+      // over visible lava — not on rock that pokes above the buried sheet.
+      polygons: [{
+        boundary: basin.boundary,
+        surfaceY: computeLavaBasinSurfaceY(basin, sceneHeightSampler)
+      }],
+      pits: createLavaCrossings(worldRuntime.trackCurve).map(crossing => ({
+        x: crossing.x,
+        z: crossing.z,
+        forwardX: Math.sin(crossing.angle),
+        forwardZ: Math.cos(crossing.angle),
+        halfLength: crossing.length / 2,
+        halfWidth: crossing.width / 2
+      }))
+    }
+  }, [isVolcano, worldRuntime.trackCurve, sceneHeightSampler])
   const renderBudget = getTrackRenderBudgetValue(trackDefinition.renderBudget, worldRuntime.qualityPreset.id, {
     terrainResolution: isTerrainAwareScenery ? IMPORTED_TERRAIN_RESOLUTION : 160,
     terrainYOffset: trackDefinition.trackId === 'united-kingdom' ? UNITED_KINGDOM_TERRAIN_Y_OFFSET : IMPORTED_TERRAIN_Y_OFFSET,
@@ -371,6 +428,25 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       return { position, direction }
     })
   }, [sceneryMode, sceneHeightSampler, worldRuntime.trackCurve])
+
+  const forestOptions = useMemo<BillboardForestOptions>(() => {
+    const stadium = getStadiumStandPlacement({
+      basePosition: trackDefinition.startFinishPosition,
+      baseDirection: trackDefinition.startFinishDirection,
+      distanceFromTrack: START_STADIUM_DISTANCE_FROM_TRACK,
+      groundY: 0
+    })
+    // Billboard trees can be more than 40 units wide at the canopy. Keep their
+    // centers well outside the seating footprint so foliage does not clip into
+    // the stands even when a card faces the camera broadside.
+    const radius = (START_STADIUM_SEATS_PER_ROW * START_STADIUM_SEAT_WIDTH) / 2 + 30
+    return {
+      exclusionZones: [
+        { x: stadium.leftPos.x, z: stadium.leftPos.z, radius },
+        { x: stadium.rightPos.x, z: stadium.rightPos.z, radius }
+      ]
+    }
+  }, [trackDefinition.startFinishDirection, trackDefinition.startFinishPosition])
 
   const handleToggleManualCamera = useCallback(() => {
     const manualCam = worldRuntime.manualCamera
@@ -467,7 +543,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       staticScenery={(
         <>
           <color attach="background" args={[skyColor]} />
-          <fog attach="fog" args={[fogColor, isTerrainAwareScenery ? 250 : 140, isTerrainAwareScenery ? 2000 : 1400]} />
+          <fog attach="fog" args={[fogColor, fogNear, fogFar]} />
           <ambientLight intensity={ambientIntensity} color={ambientColor} />
           <directionalLight
             position={isTerrainAwareScenery ? [50, 200, 50] : [-120, 220, 80]}
@@ -486,6 +562,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
               getHeightAtPosition={sceneHeightSampler}
               resolution={renderBudget.terrainResolution}
               yOffset={renderBudget.terrainYOffset}
+              color={terrainColor}
             />
           ) : (
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.2, 0]} receiveShadow>
@@ -500,19 +577,21 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
           )}
           {sceneryMode === 'australia' && <AustraliaRain dropCount={rainDropCount} />}
           <RollingHills radius={1800} layers={hillLayers} />
-          {!isTerrainAwareScenery && sceneryMode === 'australia' ? (
-            <SimpleTrees
-              count={25}
-              area={2000}
+          {isVolcano && <DistantVolcanoes radius={2200} layers={2} />}
+          {sceneryMode === 'australia' && (
+            <TrackBillboardForest
               trackCurve={worldRuntime.trackCurve}
-              onTreesGenerated={setTreePositions}
-              advertisingBoards={advertisingBoardPositions}
+              qualityPreset={worldRuntime.qualityPreset}
+              getHeightAtPosition={sceneHeightSampler}
+              options={forestOptions}
             />
-          ) : (
+          )}
+          {!(sceneryMode === 'australia' && !isTerrainAwareScenery) && (
             <ImportedCarTrackScenery
               trackDefinition={trackDefinition}
               qualityPreset={worldRuntime.qualityPreset}
               getHeightAtPosition={sceneHeightSampler}
+              forestOptions={forestOptions}
               onTreesGenerated={setTreePositions}
               onBoardsGenerated={setAdvertisingBoardPositions}
             />
@@ -522,6 +601,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
             frames={worldRuntime.trackFrames}
             segments={worldRuntime.trackSegments}
             getHeight={terrainHeightSampler}
+            excludedIntervals={lavaPitRoadExclusionIntervals}
           />
           {!isTerrainAwareScenery && sceneryMode === 'australia' && <AdvertisingBoards onBoardsGenerated={setAdvertisingBoardPositions} />}
           {!isTerrainAwareScenery && sceneryMode === 'australia' && <StadiumSeating isSoundEnabled={isSoundEnabled} />}
@@ -574,6 +654,10 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
           getHeightAtPosition={terrainHeightSampler}
           treePositions={treePositions}
           startingGatePoles={worldRuntime.startingGatePoles}
+          jumpZones={lavaPitJumpZones}
+          rampZones={lavaPitRampZones}
+          lavaHazard={lavaHazard}
+          onCrash={onCrash}
           advertisingBoards={advertisingBoardPositions}
           onDistanceUpdate={onDistanceUpdate}
           onLapComplete={onLapComplete}

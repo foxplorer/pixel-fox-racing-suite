@@ -10,6 +10,8 @@ import type { TerrainHeightSampler } from '../core/roadCorridor'
 import type { SpatialTrackIndex } from '../core/spatialTrackIndex'
 import type { TrackLapValidationMetadata } from '../tracks/trackMetadata'
 import type { createStartGate } from '../core/startGate'
+import type { CarRampZone } from '../vehicles/carRamp'
+import type { CarLavaHazard } from '../vehicles/carLavaHazard'
 
 type CarTrackVehicleStatus = 'idle' | 'showroom' | 'loading' | 'countdown' | 'racing' | 'crashed' | 'finished'
 type CarTrackCameraMode = 'simple' | 'smooth' | 'damped' | 'targetsmooth' | 'velocity'
@@ -41,6 +43,10 @@ interface CarTrackLocalVehicleProps {
   getHeightAtPosition?: TerrainHeightSampler
   treePositions: Array<{ x: number; z: number; scale: number; radius: number }>
   startingGatePoles: Array<{ x: number; y?: number; z: number; radius?: number }>
+  jumpZones?: Array<{ x: number; z: number; radius: number }>
+  rampZones?: CarRampZone[]
+  lavaHazard?: CarLavaHazard
+  onCrash?: () => void
   advertisingBoards?: RacingAdvertisingBoard[]
   onDistanceUpdate?: (distance: number) => void
   onLapComplete?: (lapTime: number) => void
@@ -79,6 +85,10 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
   getHeightAtPosition,
   treePositions,
   startingGatePoles,
+  jumpZones,
+  rampZones,
+  lavaHazard,
+  onCrash,
   advertisingBoards,
   onDistanceUpdate,
   onLapComplete,
@@ -120,6 +130,10 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
       getHeightAtPosition={getHeightAtPosition}
       treePositions={treePositions}
       startingGatePoles={startingGatePoles}
+      jumpZones={jumpZones}
+      rampZones={rampZones}
+      lavaHazard={lavaHazard}
+      onCrash={onCrash}
       onDistanceUpdate={onDistanceUpdate}
       onLapComplete={onLapComplete}
       onLapTimeUpdate={onLapTimeUpdate}

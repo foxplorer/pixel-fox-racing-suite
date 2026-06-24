@@ -10,6 +10,7 @@ interface TrackProps {
   }
   segments: number
   getHeight?: (x: number, z: number) => number
+  excludedIntervals?: Array<{ startT: number; endT: number }>
 }
 
 const wrapTrackT = (t: number): number => {
@@ -57,7 +58,17 @@ const CENTER_DASH_LENGTH = 8
 const CENTER_DASH_GAP = 14
 const MIN_CURVATURE_LIMITED_ROAD_OFFSET = 8.9
 
-export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight }) => {
+const isTrackTExcluded = (
+  t: number,
+  intervals: readonly { startT: number; endT: number }[]
+): boolean => intervals.some(interval => {
+  if (interval.startT <= interval.endT) {
+    return t >= interval.startT && t <= interval.endT
+  }
+  return t >= interval.startT || t <= interval.endT
+})
+
+export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight, excludedIntervals = [] }) => {
   const geometry = useMemo(() => {
     // Create a custom ribbon geometry manually
     // This avoids the ExtrudeGeometry "twist" issues by explicitly using our computed frames
@@ -132,6 +143,8 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
     // CRITICAL: Since we only generated vertices for i=0 to i=tubularSegments-1,
     // the last segment connects back to the first vertices (index 0) for perfect closure
     for (let i = 0; i < tubularSegments; i++) {
+      const segmentMidT = (i + 0.5) / tubularSegments
+      if (isTrackTExcluded(segmentMidT >= 1 ? segmentMidT - 1 : segmentMidT, excludedIntervals)) continue
       const a = i * 2
       const b = i * 2 + 1
       // For closure, last segment connects to first vertices (index 0)
@@ -152,7 +165,7 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
     // This ensures consistent shading across the entire flat track surface
     
     return geometry
-  }, [curve, frames, segments, getHeight])
+  }, [curve, frames, segments, getHeight, excludedIntervals])
 
   // Create line geometry for markings
   const lineGeometry = useMemo(() => {
@@ -245,6 +258,13 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
     // Indices
     // CRITICAL: Since we're reusing first vertices for closure, the last segment connects to index 0
     for (let i = 0; i < tubularSegments; i++) {
+        const segmentMidT = (i + 0.5) / tubularSegments
+        if (isTrackTExcluded(segmentMidT >= 1 ? segmentMidT - 1 : segmentMidT, excludedIntervals)) {
+          const segmentStart = curve.getPointAt(i / tubularSegments)
+          const segmentEnd = curve.getPointAt((i + 1) / tubularSegments)
+          centerlineDistance += segmentStart.distanceTo(segmentEnd)
+          continue
+        }
         // Yellow lines (continuous)
         // Each segment has 4 vertices: left inner, left outer, right inner, right outer
         // Left strip (vertices 0, 1, 4, 5...) -> offset i*4
@@ -297,8 +317,12 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
       for (let step = 0; step < dashSteps; step++) {
         const base = (firstVertexPair + step) * 2
         const next = base + 2
-        whiteIndices.push(base, base + 1, next)
-        whiteIndices.push(base + 1, next + 1, next)
+        const segmentMidDistance = dashStart + dashLength * ((step + 0.5) / dashSteps)
+        const segmentMidT = ((segmentMidDistance % trackLength) + trackLength) % trackLength / trackLength
+        if (!isTrackTExcluded(segmentMidT, excludedIntervals)) {
+          whiteIndices.push(base, base + 1, next)
+          whiteIndices.push(base + 1, next + 1, next)
+        }
       }
     }
     
@@ -309,7 +333,7 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
     whiteGeom.setIndex(whiteIndices)
     
     return { yellowGeom, whiteGeom }
-  }, [curve, frames, segments, getHeight])
+  }, [curve, frames, segments, getHeight, excludedIntervals])
 
   return (
     <group>

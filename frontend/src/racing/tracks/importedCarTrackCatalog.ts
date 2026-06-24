@@ -6,6 +6,10 @@ export const IMPORTED_CAR_TRACK_CATALOG = [
   {
     id: 'germany',
     displayName: 'Germany'
+  },
+  {
+    id: 'volcanoes',
+    displayName: 'Volcanoes'
   }
 ] as const
 

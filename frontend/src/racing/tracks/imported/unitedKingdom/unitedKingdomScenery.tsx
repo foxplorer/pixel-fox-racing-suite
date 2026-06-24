@@ -11,11 +11,14 @@ import {
   type UnitedKingdomTreePlacement
 } from './unitedKingdomSceneryData'
 import type { TerrainHeightSampler } from '../../../core/roadCorridor'
+import { TrackBillboardForest } from '../../../components/forest/TrackBillboardForest'
+import type { BillboardForestOptions } from '../../../components/forest/billboardForestPlacement'
 
 interface UnitedKingdomSceneryProps {
   trackCurve: THREE.CatmullRomCurve3
   qualityPreset: RacingQualityPreset
   getHeightAtPosition?: TerrainHeightSampler
+  forestOptions?: BillboardForestOptions
   onTreesGenerated?: (trees: UnitedKingdomTreePlacement[]) => void
   onBoardsGenerated?: (boards: UnitedKingdomAdvertisingBoard[]) => void
 }
@@ -24,6 +27,7 @@ export const UnitedKingdomScenery: React.FC<UnitedKingdomSceneryProps> = ({
   trackCurve,
   qualityPreset,
   getHeightAtPosition,
+  forestOptions,
   onTreesGenerated,
   onBoardsGenerated
 }) => {
@@ -49,6 +53,12 @@ export const UnitedKingdomScenery: React.FC<UnitedKingdomSceneryProps> = ({
 
   return (
     <>
+      <TrackBillboardForest
+        trackCurve={trackCurve}
+        qualityPreset={qualityPreset}
+        getHeightAtPosition={getHeightAtPosition}
+        options={forestOptions}
+      />
       <TreeInstances
         trees={trees}
         palette={{

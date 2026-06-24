@@ -120,26 +120,36 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Calculate minimap size based on window dimensions
-  // Must fit: 4 minimaps + 4 labels + gaps + padding + margins
+  const showroomTrackData = useMemo(() => {
+    const eventVehicleModes = showroomVehicleModes ?? [vehicleMode]
+    return getTrackPreviewDefinitions(eventVehicleModes, importedCarTracks)
+  }, [importedCarTracks, showroomVehicleModes, vehicleMode])
+
+  const minimapColumns = showroomTrackData.length > 1 ? 2 : 1
+  const minimapRows = Math.max(1, Math.ceil(showroomTrackData.length / minimapColumns))
+
+  // Calculate minimap size based on window dimensions.
+  // The showroom previews use a two-column grid so larger track catalogs stay on-screen.
   const minimapSize = useMemo(() => {
     const topMargin = 20
-    const containerPadding = 30 // 12px top + 18px bottom (extra for last label)
-    const labelHeight = 22 * 4 // ~22px per label x 4
-    const gaps = 8 * 3 // 3 gaps between 4 items
-    const bottomMargin = 30 // safety margin for label overflow
-    const totalOverhead = topMargin + containerPadding + labelHeight + gaps + bottomMargin
+    const containerPadding = 26
+    const labelHeight = 16 * minimapRows
+    const rowGaps = 8 * Math.max(0, minimapRows - 1)
+    const bottomMargin = 20
+    const totalOverhead = topMargin + containerPadding + labelHeight + rowGaps + bottomMargin
 
     const availableHeight = windowSize.height - totalOverhead
-    const maxFromHeight = Math.floor(availableHeight / 4)
+    const maxFromHeight = Math.floor(availableHeight / minimapRows)
 
-    // Also constrain by width (max 15% of screen width)
-    const maxFromWidth = windowSize.width * 0.15
+    const panelHorizontalMargin = 40
+    const panelPadding = 24
+    const columnGaps = 8 * Math.max(0, minimapColumns - 1)
+    const availablePanelWidth = Math.min(windowSize.width - panelHorizontalMargin, windowSize.width * 0.42)
+    const maxFromWidth = Math.floor((availablePanelWidth - panelPadding - columnGaps) / minimapColumns)
 
-    // Clamp between 45 and 100 pixels (smaller overall)
     const size = Math.min(maxFromHeight, maxFromWidth)
-    return Math.max(45, Math.min(100, size))
-  }, [windowSize])
+    return Math.max(42, Math.min(96, size))
+  }, [minimapColumns, minimapRows, windowSize])
 
   // If idle, show Join Modal
   if (gameStatus === 'idle') {
@@ -150,9 +160,6 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 
   // Showroom UI - Track selection with minimap previews
   if (gameStatus === 'showroom') {
-    const eventVehicleModes = showroomVehicleModes ?? [vehicleMode]
-    const trackData = getTrackPreviewDefinitions(eventVehicleModes, importedCarTracks)
-
     return (
       <>
         {/* Track Preview Minimaps - Upper right */}
@@ -161,16 +168,19 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
           top: 20,
           right: 20,
           zIndex: 100,
-          display: 'flex',
-          flexDirection: 'column',
+          display: 'grid',
+          gridTemplateColumns: `repeat(${minimapColumns}, ${minimapSize}px)`,
+          alignItems: 'start',
           gap: '8px',
           padding: '10px 12px 16px 12px',
           background: 'rgba(0,0,0,0.6)',
           borderRadius: '10px',
           border: '1px solid rgba(255,255,255,0.1)',
-          backdropFilter: 'blur(10px)'
+          backdropFilter: 'blur(10px)',
+          maxHeight: 'calc(100vh - 40px)',
+          overflowY: 'auto'
         }}>
-          {trackData.map(track => (
+          {showroomTrackData.map(track => (
             <TrackPreviewMinimap
               key={`${track.vehicleMode}-${track.trackName}`}
               trackCurve={track.curve}
@@ -215,7 +225,7 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
                   outline: 'none'
                 }}
               >
-                {trackData.map(track => (
+                {showroomTrackData.map(track => (
                   <option key={`${track.vehicleMode}-${track.trackName}`} value={track.trackName} style={{ background: '#000', color: '#fff' }}>
                     {track.trackName}
                   </option>
@@ -314,7 +324,13 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 
       {/* Game Over */}
       {gameStatus === 'crashed' && (
-        <RacingCrashOverlay score={score} onRestart={onRestart} />
+        <RacingCrashOverlay
+          score={score}
+          onRestart={onRestart}
+          title="GAME OVER"
+          description="Your fox burned up in the lava!"
+          restartLabel="Restart Track"
+        />
       )}
     </div>
   )

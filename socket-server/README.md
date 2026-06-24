@@ -15,7 +15,7 @@ Copy `.env.example` to `.env` to override defaults:
 ```dotenv
 PORT=5000
 CORS_ORIGINS=http://localhost:5173
-VALID_TRACK_NAMES=Australia,San Luis,Belgium,Aspen,United Kingdom,Germany
+VALID_TRACK_NAMES=Australia,San Luis,Belgium,Aspen,United Kingdom,Germany,Volcanoes
 ```
 
 `VALID_TRACK_NAMES` controls which track names are accepted for multiplayer filtering. Add a new track's display name here when it is added to the suite.

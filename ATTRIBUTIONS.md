@@ -36,6 +36,7 @@ SVGRepo licensing reference: https://staging.svgrepo.com/page/licensing/
   - `frontend/src/racing/tracks/imported/germany/germany.source.json` - Germany
   - `frontend/src/racing/tracks/imported/germany/germany.raw-elevated.json` - Germany runtime source with authored elevations
   - `frontend/src/racing/tracks/imported/unitedKingdom/unitedKingdom.source.json` - United Kingdom
+  - `frontend/src/racing/tracks/imported/volcanoes/volcanoes.source.json` - Volcanoes
 - Source: original in-game layouts authored for this project
 - License: MIT
 - Notes: Current playable track layouts are custom/original project assets.
@@ -57,6 +58,7 @@ SVGRepo licensing reference: https://staging.svgrepo.com/page/licensing/
   - `frontend/src/assets/engine-idle.mp3`
   - `frontend/src/assets/car-on-gas.mp3`
   - `frontend/src/assets/crowd_long.mp3`
+  - `frontend/src/assets/explosion.mp3`
   - `frontend/src/assets/race-start-beeps.mp3`
   - `frontend/src/assets/snowmobile_idle.mp3`
   - `frontend/src/assets/snowmobile_on_gas.mp3`
@@ -65,6 +67,7 @@ SVGRepo licensing reference: https://staging.svgrepo.com/page/licensing/
   - https://pixabay.com/sound-effects/city-diesel-idle-2-62716/
   - https://pixabay.com/sound-effects/city-car-engine-71198/
   - https://pixabay.com/sound-effects/people-large-crowd-applause-6250/
+  - https://pixabay.com/sound-effects/film-special-effects-debris-break-253779/
   - https://pixabay.com/sound-effects/film-special-effects-race-start-beeps-125125/
   - https://pixabay.com/sound-effects/film-special-effects-snowmobiles-2-94745/
 - License summary: https://pixabay.com/service/license-summary/

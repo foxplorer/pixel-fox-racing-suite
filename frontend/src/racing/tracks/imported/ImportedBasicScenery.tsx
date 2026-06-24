@@ -4,6 +4,12 @@ import { TreeInstances, type TreePalette } from '../../components/TreeInstances'
 import { CurvedBoard } from '../../../components/foxracingbelgium/AdvertisingBoards'
 import type { TerrainHeightSampler } from '../../core/roadCorridor'
 import type { RacingQualityPreset } from '../../performance/qualitySettings'
+import { TrackBillboardForest } from '../../components/forest/TrackBillboardForest'
+import type { BillboardForestOptions } from '../../components/forest/billboardForestPlacement'
+import type {
+  TreeBillboardPalette,
+  TreeSpecies
+} from '../../components/forest/treeBillboardTexture'
 import type {
   ImportedSceneryAdvertisingBoard,
   ImportedSceneryTreePlacement
@@ -23,6 +29,10 @@ interface ImportedBasicSceneryProps {
   boardOptions?: ImportedBasicBoardOptions
   treePalette?: TreePalette
   showBoardTextureLogos?: boolean
+  forest?: boolean
+  forestOptions?: BillboardForestOptions
+  forestPalette?: TreeBillboardPalette
+  forestSpecies?: TreeSpecies
   onTreesGenerated?: (trees: ImportedSceneryTreePlacement[]) => void
   onBoardsGenerated?: (boards: ImportedSceneryAdvertisingBoard[]) => void
 }
@@ -42,6 +52,10 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
   boardOptions,
   treePalette = DEFAULT_IMPORTED_TREE_PALETTE,
   showBoardTextureLogos = false,
+  forest = false,
+  forestOptions,
+  forestPalette,
+  forestSpecies,
   onTreesGenerated,
   onBoardsGenerated
 }) => {
@@ -69,6 +83,16 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
 
   return (
     <>
+      {forest && (
+        <TrackBillboardForest
+          trackCurve={trackDefinition.trackCurve}
+          qualityPreset={qualityPreset}
+          getHeightAtPosition={getHeightAtPosition}
+          options={forestOptions}
+          palette={forestPalette}
+          species={forestSpecies}
+        />
+      )}
       <TreeInstances trees={trees} palette={treePalette} />
       {boards.map((board, index) => (
         <CurvedBoard
