@@ -32,8 +32,8 @@ export const TrackBillboardForest: React.FC<TrackBillboardForestProps> = ({
   species = 'broadleaf'
 }) => {
   const atlas = useMemo(
-    () => generateTreeBillboardAtlas(palette, { species, variants: 6 }),
-    [palette, species]
+    () => generateTreeBillboardAtlas(palette, { species, variants: 6, quality: qualityPreset.id }),
+    [palette, species, qualityPreset.id]
   )
   const trees = useMemo(
     () => createBillboardForestPlacements(trackCurve, qualityPreset, options),

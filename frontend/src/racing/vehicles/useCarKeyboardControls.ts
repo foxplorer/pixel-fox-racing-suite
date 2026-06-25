@@ -13,6 +13,11 @@ import {
 
 type KeyState = Record<string, boolean>
 
+const isEditableKeyboardTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
 interface MutableRef<TValue> {
   current: TValue
 }
@@ -27,6 +32,7 @@ interface UseCarKeyboardControlsOptions {
   onGasPressed?: () => void
   onGasReleased?: () => void
   onGasPlayError?: (err: unknown) => void
+  onHeadlightsToggle?: () => void
 }
 
 export const useCarKeyboardControls = ({
@@ -38,22 +44,32 @@ export const useCarKeyboardControls = ({
   isGasSoundPlaying,
   onGasPressed,
   onGasReleased,
-  onGasPlayError
+  onGasPlayError,
+  onHeadlightsToggle
 }: UseCarKeyboardControlsOptions): void => {
   const onGasPressedRef = useRef(onGasPressed)
   const onGasReleasedRef = useRef(onGasReleased)
   const onGasPlayErrorRef = useRef(onGasPlayError)
+  const onHeadlightsToggleRef = useRef(onHeadlightsToggle)
 
   useEffect(() => {
     onGasPressedRef.current = onGasPressed
     onGasReleasedRef.current = onGasReleased
     onGasPlayErrorRef.current = onGasPlayError
-  }, [onGasPlayError, onGasPressed, onGasReleased])
+    onHeadlightsToggleRef.current = onHeadlightsToggle
+  }, [onGasPlayError, onGasPressed, onGasReleased, onHeadlightsToggle])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableKeyboardTarget(event.target)) return
+
       if ((isCarMovementKey(event.code) || event.code === 'Space') && gameStatus === 'racing') {
         event.preventDefault()
+      }
+
+      if (event.code === 'KeyL' && !event.repeat && (gameStatus === 'racing' || gameStatus === 'countdown')) {
+        event.preventDefault()
+        onHeadlightsToggleRef.current?.()
       }
 
       keys.current[event.code] = true

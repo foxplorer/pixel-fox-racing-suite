@@ -1,202 +1,233 @@
-# Next Prompt: Refactor and Production-Code Migration
+# Next Prompt: Graphics Budgets and Modular Scenery
 
 Continue working in:
 
-`/home/to/Desktop/working/pixel-fox-racing-suite OPEN SOURCE`
+`/home/to/Desktop/pixel-fox-racing-suite`
 
-Compare against:
+This is the open-source Pixel Fox Racing Suite. Keep changes modular, reviewable, and fork-friendly. Do not copy production directories wholesale.
 
-- `/home/to/Desktop/working/frontend-prod`
-- `/home/to/Desktop/working/transaction-server-prod`
+## Current Direction
 
-Do not copy either production directory wholesale. The open-source suite contains its own architecture, documentation, dummy transaction mode, server split, and open-source-only work. Move changes as focused, reviewable features.
+The suite now has seven tracks:
 
-## Current Uncommitted Work
+- `Australia`
+- `San Luis`
+- `Belgium`
+- `Aspen`
+- `United Kingdom`
+- `Germany`
+- `Volcanoes`
 
-The open-source frontend now has:
+The priority is shared low/medium/high graphics budgets and modular scenery upgrades that tracks can reuse. Avoid adding more per-track scenery forks unless the visual is genuinely unique to that track.
 
-- Shared procedural billboard-tree art under `frontend/src/racing/components/forest/`.
-- Quality-scaled billboard forests at approximately:
-  - Low: 1,375 trees
-  - Medium: 2,000 trees
-  - High: 2,500 trees
-- New forests enabled for Australia, Belgium, Germany, United Kingdom, and Volcanoes.
-- San Luis and Aspen intentionally retain their old tree systems.
-- Australia's old `SimpleTrees` rendering removed.
-- Larger stadium exclusion zones to prevent billboard foliage intersecting seating.
-- Volcanoes track, elevated GeoJSON source, tests, catalog registration, documentation, and attribution ported from production.
+Read `PLAN.md` first. It now describes the graphics budget direction, scenery architecture, Volcanoes notes, and definition of done for graphics upgrades.
 
-The frontend production build passed using the dependencies installed in `frontend-prod`. The open-source checkout itself currently lacks installed dependencies. Its test script also expects `tsx`, which is not declared/installed correctly and should be fixed.
+## Current Worktree State
 
-## Product Direction
+There is current uncommitted work around shared scenery quality budgets:
 
-Treat Australia as the reference track:
+- `PLAN.md` rewritten around seven tracks, shared budgets, and modular scenery.
+- `frontend/src/racing/performance/sceneryQuality.ts` now exposes shared effect budgets:
+  - `meshDetailScale`
+  - `activeLightScale`
+  - `particleDensityScale`
+- `frontend/src/racing/performance/sceneryQuality.test.ts` updated for those budgets.
+- `frontend/src/racing/tracks/imported/volcanoes/VolcanoCaveScenery.tsx` consumes those budgets for:
+  - lava mesh detail
+  - lava basin shape segments
+  - live lava light density
+  - smoke and ember emitter density
+  - particles per emitter
 
-- Develop and tune shared car-track systems there first.
-- Keep the other tracks playable as compatibility/experimental tracks.
-- Do not delete the other tracks.
-- Do not introduce more per-track copies of game, vehicle, terrain, or scenery code.
-- San Luis remains useful for narrow-track compatibility.
-- Aspen remains useful for snowmobile/winter compatibility.
+Verification already run for this work:
 
-## Immediate Terrain Concern
+- `npm run test:core` from `frontend` passed.
+- `npm run build` from `frontend` passed.
 
-The tree port did not change terrain geometry, but it changed visual perception:
+The build still reports the existing large chunk warning. Do not hide that warning; report it separately if relevant.
 
-- Terrain-aware fog was changed from `250–2000` to `150–1100`.
-- Large billboard trees can hide terrain shape.
-- The open-source imported terrain still has an abrupt drop when the local spatial-index lookup stops finding a track sample.
-- Production instead eases authored track elevation to base height over a fixed `700` world-unit distance, which looks too gradual.
+There is also shared procedural surface-material work from Claude:
 
-Recommended next step:
+- `frontend/src/racing/components/materials/proceduralSurfaceConfig.ts`
+- `frontend/src/racing/components/materials/proceduralSurfaceConfig.test.ts`
+- `frontend/src/racing/components/materials/proceduralSurfaceTextures.ts`
+- `frontend/src/racing/components/materials/RacingSurfaceMaterial.tsx`
+- `frontend/src/components/racing/Track.tsx`
+- `frontend/src/racing/components/SampledTerrainMesh.tsx`
+- `frontend/src/components/foxracing/FoxRacingWorld.tsx`
+- `frontend/src/components/foxracingbelgium/FoxRacingWorld.tsx`
+- `frontend/src/components/foxracingsanluis/FoxRacingWorld.tsx`
 
-1. Restore or retune fog independently from terrain.
-2. Add typed per-track terrain settings such as:
-   - `lateralFalloffDistance`
-   - `baseHeight`
-3. Use smooth terrain falloff, but start around `400–500` units for hilly imported tracks rather than a global `700`.
-4. Preserve a visible slope away from the road corridor without restoring the cliff.
-5. Add tests for near-road height, midpoint falloff, base height, and tracks with no authored elevation.
+This work adds quality-aware procedural asphalt, grass, and volcanic-rock textures.
+It is modular and shared — driven by one `RacingSurfaceMaterial` component, not per-track
+texture copies — and now spans every track the surface policy targets, not Australia-only.
 
-Do not copy production's global terrain-falloff implementation without making it configurable.
+## Procedural Surface Materials Work
 
-## Height-Sampling and Volcanoes Performance
+The shared surface system now covers three procedural surfaces, all driven by one
+`RacingSurfaceMaterial` component (single source of truth) and one quality-keyed config:
 
-Volcanoes can become choppy because hilly vehicle rendering repeatedly samples terrain.
+- `asphalt` — tiled tarmac (grain + cracks) for the shared car-track `Track.tsx`.
+- `grass` — tiled turf (blades) for ground/terrain meshes.
+- `volcanic-rock` — tiled scorched orange dirt (grain + charred lava fissures) for Volcanoes.
 
-Existing shared optimizations already present:
+Quality-keyed texture budgets (same shape for all three surfaces):
 
-- Track-position calculation every 20 frames.
-- On-track refresh every 5 frames.
-- Spatial-track index for nearest-track queries.
+- Low: 256px, sparse detail, no normal map, 1x anisotropy.
+- Medium: 512px, moderate detail, no normal map, 4x anisotropy.
+- High: 1024px, dense detail, baked normal map, 8x anisotropy.
 
-Remaining concern:
+Key properties:
 
-- `getHeightAtPosition` can be called around ten times per frame for vehicle height, next position, slope, bounce, and visual pitch/roll.
-- Imported tracks can also fall back to a terrain mesh resolution of 420 at every quality setting.
+- `tileWorldSize` is held CONSTANT across quality tiers per surface. An earlier pass shrank
+  the tile as quality rose, which multiplied the texture repeat until the GPU mipped every
+  tile down to its average colour — so detail vanished and higher settings only looked
+  darker. Tile size is now a fixed world-scale value (asphalt 7, grass 26, volcanic-rock 22),
+  so quality changes sharpness and relief, not average brightness.
+- Cached deterministic canvas generation (painted once per surface+quality, reused).
+- DOM-safe fallback: returns a flat tinted material in tests/SSR and for `surface: 'none'`.
 
-Recommended shared refactor:
+Surface policy coverage (per `PLAN.md`):
 
-1. Add a per-frame terrain sample cache keyed by quantized `x`, `z`, and relevant track context.
-2. Keep essential current/next vehicle-height sampling every frame.
-3. Recalculate visual pitch/roll every 2–3 frames and smoothly interpolate.
-4. Add low/medium/high imported-terrain mesh budgets.
-5. Measure before and after on Australia and Volcanoes.
-6. Keep optimization in shared car/terrain systems, not Volcanoes-specific branches.
+- Shared asphalt: car tracks that render the shared `Track.tsx` road ribbon
+  (Australia, Belgium; imported tracks).
+- Shared grass: Australia, Belgium, San Luis, United Kingdom, Germany.
+  - Australia / UK / Germany get it through the shared `SampledTerrainMesh` terrain path.
+  - Belgium and San Luis get it on their flat ground planes via `RacingSurfaceMaterial`.
+- Volcanoes: `volcanic-rock` surface (was previously `none`).
+- Aspen: opts out, keeps snow/winter terrain.
 
-## Frontend Refactor Priorities
+San Luis note: only its GRASS plane uses the shared material. Its road still renders the
+legacy `racingsanluis/Track`, not the shared ribbon, so it intentionally does not get the
+shared asphalt — that stays out of scope until/unless San Luis adopts the shared road ribbon.
 
-Prefer incremental extraction:
+Verification reported:
 
-1. Make imported/reference tracks use one shared `CarTrackGame` and `CarTrackWorld`.
-2. Keep track differences in typed definitions:
-   - geometry
-   - elevation
-   - road corridor
-   - terrain falloff
-   - scenery preset
-   - render budgets
-   - start gate
-   - camera settings
-3. Avoid adding another `foxracing<track>` directory.
-4. Split oversized files carefully, especially:
-   - `SnowmobileWorld.tsx`
-   - stats components
-   - legacy per-track game/world components
-5. Keep simulation and terrain math pure TypeScript where practical.
-6. Preserve current lap, multiplayer, collectible, and wallet behavior while extracting.
+- `npm run build` passed.
+- `npm run test:core` passed (505 tests, includes the surface-config tests).
+- `npx tsc --noEmit` had no new type errors in the surface-material files; remaining type
+  errors are pre-existing.
 
-## Production Frontend Changes to Evaluate
+Coordinate conceptually by keeping budget/scenery work separate from material surface authoring.
 
-Classify every production difference before moving it:
+Good boundaries:
 
-### Move as shared engine work
+- Let asphalt/grass work own procedural road and ground material visuals.
+- Let graphics-budget work own shared quality knobs, placement counts, effect counts, LOD, lights, particles, and reusable scenery composition.
+- If asphalt/grass needs budget inputs, expose a small typed budget hook/helper instead of hard-coding track-specific logic.
 
-- Performance fixes.
-- Quality settings and render budgets.
-- Terrain and road-corridor improvements.
-- Shared trees and scenery systems.
-- Imported-track authoring and validation.
-- Tests for reusable racing, wallet, and transaction behavior.
+## Budget Adoption Status
 
-### Move as public content
+Shared quality settings exist globally, but adoption is uneven.
 
-- Volcanoes and other original tracks with documented provenance.
-- Publicly licensed assets with attribution.
+Works broadly today:
 
-### Move only behind optional configuration
+- Renderer budget: DPR cap, shadows, antialiasing.
+- Remote-player budget: render distance and maximum visible remote players.
+- Minimap budget: update cadence.
+- Scenery density: shared forest/tree placement that uses `getQualityScaledCount`.
 
-- Faucet UI/client behavior.
-- Production-only service integrations.
-- Features requiring funded inventory or databases.
+Partially adopted:
 
-### Never copy into source control
+- Effect budgets. Volcanoes currently consumes them; other tracks can use them but are not wired yet.
 
-- `.env` values.
-- WIFs or other private keys.
-- Database URLs.
-- Funded UTXO inventories.
-- Production database contents.
-- Deployment-specific secrets.
+Next useful step:
 
-## Faucet Architecture Concern
+1. Audit all seven tracks and write down which budgets each track consumes.
+2. Add a small budget adoption table in docs or a focused markdown note.
+3. Wire one non-Volcanoes reusable scenery feature into the shared effect budgets.
+4. Keep asphalt/grass changes separate unless they need a shared budget value.
+5. San Luis grass now uses the shared material; decide whether San Luis should also adopt the shared road ribbon (and thus shared asphalt) or keep its legacy `racingsanluis/Track` until a larger San Luis refactor.
 
-The production Pixel Racing faucet is useful but should not force two manually maintained frontends.
+## Track Notes
 
-Preferred design:
+### Australia
 
-- Keep optional faucet capability in the open-source suite.
-- Disable it by default.
-- Provide dummy/local behavior without funded inventory.
-- Enable production through environment configuration.
-- Keep production inventory and secrets private.
+Treat Australia as the car-track reference for shared systems. Tune shared car-track visuals here first when possible.
 
-Before porting the faucet, address:
+### San Luis
 
-- Server-side eligibility verification.
-- One-claim-per-identity/address enforcement.
-- Proof of delivery-target ownership.
-- Rate limiting.
-- Duplicate and concurrent claim tests.
-- Clear disabled/empty/error behavior.
+Keep useful as a narrow-track compatibility case. Do not break its older tree/scenery setup while moving shared systems forward.
 
-The current production route claims to be for wallets holding zero foxes, but the server route does not itself enforce that ownership rule. Do not present the faucet as secure until this is fixed.
+San Luis now receives the shared procedural GRASS via `RacingSurfaceMaterial` on its ground
+plane. Its road still uses the separate `racingsanluis/Track`, so it intentionally keeps the
+legacy road material (no shared asphalt) until a larger San Luis refactor adopts the shared
+road ribbon. Prefer threading shared material helpers over copying texture code.
 
-## Server Refactor Priorities
+### Belgium
 
-For `transaction-server-prod`, avoid copying the large server wholesale.
+Good candidate for forest, boards, rolling countryside, and shared prop-density improvements.
 
-Extract by domain:
+### Aspen
 
-- Application/bootstrap and middleware.
-- Racing transaction routes.
-- Collectible delivery.
-- Optional faucet routes.
-- Faucet inventory repository.
-- Database schema/migrations.
-- Chain/indexer clients.
+Snowmobile/winter-specific. Keep snowmobile handling separate from car handling. Quality budgets can still apply to snow, trees, particles, and draw distance.
 
-The open-source transaction server must retain dummy mode and forkability.
+### United Kingdom
+
+Good candidate for hedges, dense greenery, damp/wet-weather visuals, and quality-scaled vegetation.
+
+### Germany
+
+Good candidate for clean road visuals, forest, hills, signs, and shared imported-track scenery options.
+
+### Volcanoes
+
+Special-effects proving ground. It already has lava, jump ramps, rocks, smoke, embers, and quality-scaled lava lighting. Its terrain floor now uses the shared `volcanic-rock` procedural surface (orange scorched dirt with charred fissures), so it benefits from the same low/medium/high surface budgets as grass and asphalt. Extract general parts from Volcanoes only after the reusable shape is clear.
+
+## Implementation Guidelines
+
+- Prefer shared helpers in `frontend/src/racing/performance`.
+- Prefer reusable visual components in `frontend/src/racing/components`.
+- Prefer imported-track scenery options in `frontend/src/racing/tracks/imported`.
+- Keep unique visuals inside the track folder only when they are truly unique.
+- Keep placement generation deterministic.
+- Keep collision and decorative density separate.
+- Quality settings should change render cost, not gameplay advantage.
+- Low/medium/high should be visible in cost and polish, but stable in track layout and hazards.
+
+## Scenery Budget Checklist
+
+For any track or scenery module, answer:
+
+- Does low/medium/high change density?
+- Does it change particle count?
+- Does it change live dynamic light count?
+- Does it change mesh detail or draw distance?
+- Does it keep collision stable?
+- Is repeated geometry instanced or billboarded?
+- Is the feature bounded by explicit counts?
+
+## Suggested Next Tasks
+
+Pick one small task:
+
+1. Add `docs/` or markdown notes with a seven-track budget adoption table.
+2. Wire shared effect budgets into a reusable non-Volcanoes effect, such as weather particles, crowd visibility, distant scenery detail, or billboard impostor density.
+3. Add tests for a pure budget helper or deterministic placement helper.
+4. Add a `check` script using `tsc --noEmit` if missing.
+5. Smoke-test low/medium/high on Australia and Volcanoes after any renderer/scenery changes.
+
+Avoid starting with a broad visual rewrite.
 
 ## Verification Requirements
 
-Before completing the next migration/refactor:
+For code changes:
 
-- Install/fix declared frontend development dependencies, including `tsx`.
-- Add a frontend `check` script using `tsc --noEmit`.
 - Run focused tests for changed modules.
-- Run the complete frontend core test command.
-- Run the frontend production build.
-- Run transaction-server type checks and tests if server code changes.
-- Smoke-test Australia and Volcanoes.
-- Confirm San Luis and Aspen still use only their old tree systems.
-- Report bundle-size warnings separately; do not hide them.
+- Run `npm run test:core` from `frontend` when touching shared racing code.
+- Run `npm run build` from `frontend` before handing off.
+- If adding type-check scripts, run them and document any failures.
+
+For markdown-only changes:
+
+- No test run is required.
+- Read the markdown back once for stale paths, incorrect track names, or misleading ownership notes.
 
 ## Working Rules
 
-- Preserve existing uncommitted work.
-- Inspect diffs before applying production changes.
-- Do not overwrite open-source files with entire production copies unless they are verified identical except for the intended feature.
-- Keep commits/features small enough to review independently.
-- Prefer configuration and composition over track-specific conditionals.
-- Explain any behavior change that affects terrain shape, handling, lap timing, wallet delivery, or transaction safety.
+- Preserve uncommitted work you did not create.
+- Inspect diffs before editing files that another agent may be touching.
+- Do not revert unrelated changes.
+- Do not overwrite `frontend/src/racing/components/materials/` without preserving Claude's asphalt/grass work.
+- Keep changes small enough to review independently.
+- Explain behavior changes that affect terrain shape, handling, lap timing, wallet delivery, or transaction safety.

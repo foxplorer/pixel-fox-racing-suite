@@ -9,6 +9,7 @@ export interface PlayerPositionSocketPayload {
   position: PlayerPositionVector3
   rotation: PlayerPositionVector3
   speed: number
+  headlightsEnabled?: boolean
 }
 
 export interface PositionSyncedPlayer {
@@ -16,6 +17,7 @@ export interface PositionSyncedPlayer {
   position: [number, number, number]
   rotation: [number, number, number]
   isWalking: boolean
+  headlightsEnabled?: boolean
 }
 
 export interface SpeedSyncedPlayer extends PositionSyncedPlayer {
@@ -33,7 +35,8 @@ export const toQueuedPlayerPositionUpdate = (
 ): QueuedPlayerPositionUpdate => ({
   position: [payload.position.x, payload.position.y, payload.position.z] as [number, number, number],
   rotation: [payload.rotation.x, payload.rotation.y, payload.rotation.z] as [number, number, number],
-  speed: payload.speed
+  speed: payload.speed,
+  ...(payload.headlightsEnabled !== undefined ? { headlightsEnabled: payload.headlightsEnabled } : {})
 })
 
 export const applyPlayerPositionUpdate = <TPlayer extends PositionSyncedPlayer>(
@@ -48,12 +51,16 @@ export const applyPlayerPositionUpdate = <TPlayer extends PositionSyncedPlayer>(
     }
 
     didChange = true
-    return {
+    const updatedPlayer = {
       ...player,
       position: [payload.position.x, payload.position.y, payload.position.z] as [number, number, number],
       rotation: [payload.rotation.x, payload.rotation.y, payload.rotation.z] as [number, number, number],
       isWalking: payload.speed > 0
     }
+
+    return payload.headlightsEnabled !== undefined
+      ? { ...updatedPlayer, headlightsEnabled: payload.headlightsEnabled }
+      : updatedPlayer
   })
 
   return didChange ? nextPlayers : players
@@ -76,7 +83,8 @@ export const applyQueuedPlayerPositionUpdates = <TPlayer extends PositionSyncedP
       ...player,
       position: update.position,
       rotation: update.rotation,
-      isWalking: update.speed > 0
+      isWalking: update.speed > 0,
+      ...(update.headlightsEnabled !== undefined ? { headlightsEnabled: update.headlightsEnabled } : {})
     }
 
     return ('speed' in player

@@ -15,6 +15,7 @@ export interface RacingWorldPlayer {
   chatMessage?: string
   chatTimestamp?: number
   remoteLodTier?: RemotePlayerLodTier
+  headlightsEnabled?: boolean
 }
 
 export interface RacingWorldGameStatePlayer {
@@ -25,6 +26,7 @@ export interface RacingWorldGameStatePlayer {
   position?: { x: number; y: number; z: number }
   rotation?: { x: number; y: number; z: number }
   speed?: number
+  headlightsEnabled?: boolean
   carColor?: string | null
   originOutpoint?: string | null
   trackName?: string | null
@@ -91,6 +93,8 @@ export const buildRacingWorldPlayer = ({
   const existingCarColor = existingPlayer?.carColor && existingPlayer.carColor.trim() !== '' ? existingPlayer.carColor : null
   const speed = player.speed || 0
 
+  const headlightsEnabled = player.headlightsEnabled ?? existingPlayer?.headlightsEnabled
+
   return {
     id: player.id,
     name: player.name || 'Fox',
@@ -104,6 +108,7 @@ export const buildRacingWorldPlayer = ({
     carColor: serverCarColor || existingCarColor || getFallbackColor(index),
     isWalking: speed > 0,
     ...(includeSpeed ? { speed } : {}),
+    ...(headlightsEnabled !== undefined ? { headlightsEnabled } : {}),
     originOutpoint: player.originOutpoint || undefined
   }
 }

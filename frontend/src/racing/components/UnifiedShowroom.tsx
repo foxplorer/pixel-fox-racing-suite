@@ -3,124 +3,19 @@ import { useFrame } from '@react-three/fiber'
 import { VoxelFox } from '../../components/VoxelFox'
 import * as THREE from 'three'
 import type { VoxelBackgroundRemovalStrategy } from '../../components/voxelization/voxelBackgroundStrategy'
+import type { RacingQualityPresetId } from '../performance/qualitySettings'
 import { getOrdinalContentUrl } from '../transactions/ordinalLinks'
+import { CarTrackVehicleModel } from './CarTrackVehicleModel'
 
 interface UnifiedShowroomProps {
   foxOriginOutpoint?: string | null
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
   vehicleType: 'car' | 'snowmobile'
+  /** Drives the car detail tier so the showroom matches what's raced. */
+  qualityPresetId?: RacingQualityPresetId
   onFoxLoaded?: () => void
 }
-
-// Car vehicle component (no VoxelFox - that's rendered separately)
-const CarVehicle: React.FC<{ playerColor: string }> = ({ playerColor }) => (
-  <group rotation={[0, Math.PI, 0]}>
-    {/* Car Body - Bottom Floor */}
-    <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
-      <boxGeometry args={[2, 0.1, 3.8]} />
-      <meshStandardMaterial color={playerColor} metalness={0.8} roughness={0.2} />
-    </mesh>
-
-    {/* Left Side */}
-    <mesh position={[-0.9, 0.5, 0]} castShadow receiveShadow>
-      <boxGeometry args={[0.2, 0.4, 2.0]} />
-      <meshStandardMaterial color={playerColor} metalness={0.8} roughness={0.2} />
-    </mesh>
-
-    {/* Right Side */}
-    <mesh position={[0.9, 0.5, 0]} castShadow receiveShadow>
-      <boxGeometry args={[0.2, 0.4, 2.0]} />
-      <meshStandardMaterial color={playerColor} metalness={0.8} roughness={0.2} />
-    </mesh>
-
-    {/* Front Nose */}
-    <mesh position={[0, 0.55, 1.4]} castShadow receiveShadow>
-      <boxGeometry args={[2, 0.7, 1.0]} />
-      <meshStandardMaterial color={playerColor} metalness={0.8} roughness={0.2} />
-    </mesh>
-
-    {/* Back Trunk */}
-    <mesh position={[0, 0.55, -1.4]} castShadow receiveShadow>
-      <boxGeometry args={[2, 0.7, 1.0]} />
-      <meshStandardMaterial color={playerColor} metalness={0.8} roughness={0.2} />
-    </mesh>
-
-    {/* Spoiler */}
-    <mesh position={[0, 1.4, -1.6]} castShadow>
-      <boxGeometry args={[2.4, 0.1, 0.6]} />
-      <meshStandardMaterial color={playerColor} metalness={0.8} roughness={0.2} />
-    </mesh>
-    <mesh position={[-0.8, 0.9, -1.6]} castShadow>
-      <boxGeometry args={[0.1, 0.8, 0.3]} />
-      <meshStandardMaterial color="#111" />
-    </mesh>
-    <mesh position={[0.8, 0.9, -1.6]} castShadow>
-      <boxGeometry args={[0.1, 0.8, 0.3]} />
-      <meshStandardMaterial color="#111" />
-    </mesh>
-
-    {/* Front Left Wheel */}
-    <group position={[-1.1, 0.3, 1.2]}>
-      <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.4, 0.4, 0.4, 16]} />
-        <meshStandardMaterial color="#111" />
-      </mesh>
-      <mesh position={[-0.21, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.15, 0.15, 0.05, 16]} />
-        <meshStandardMaterial color="#888" metalness={0.9} roughness={0.1} />
-      </mesh>
-    </group>
-
-    {/* Front Right Wheel */}
-    <group position={[1.1, 0.3, 1.2]}>
-      <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.4, 0.4, 0.4, 16]} />
-        <meshStandardMaterial color="#111" />
-      </mesh>
-      <mesh position={[0.21, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.15, 0.15, 0.05, 16]} />
-        <meshStandardMaterial color="#888" metalness={0.9} roughness={0.1} />
-      </mesh>
-    </group>
-
-    {/* Rear Left Wheel */}
-    <group position={[-1.1, 0.3, -1.2]}>
-      <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.45, 0.45, 0.5, 16]} />
-        <meshStandardMaterial color="#111" />
-      </mesh>
-      <mesh position={[-0.26, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.18, 0.18, 0.05, 16]} />
-        <meshStandardMaterial color="#888" metalness={0.9} roughness={0.1} />
-      </mesh>
-    </group>
-
-    {/* Rear Right Wheel */}
-    <group position={[1.1, 0.3, -1.2]}>
-      <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.45, 0.45, 0.5, 16]} />
-        <meshStandardMaterial color="#111" />
-      </mesh>
-      <mesh position={[0.26, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.18, 0.18, 0.05, 16]} />
-        <meshStandardMaterial color="#888" metalness={0.9} roughness={0.1} />
-      </mesh>
-    </group>
-
-    {/* Windshield */}
-    <mesh position={[0, 1.0, 1.4]} rotation={[-0.4, 0, 0]}>
-      <boxGeometry args={[1.8, 0.6, 0.1]} />
-      <meshPhysicalMaterial
-        color="#aaf"
-        transmission={0.5}
-        opacity={0.5}
-        transparent
-        roughness={0}
-      />
-    </mesh>
-  </group>
-)
 
 // Snowmobile vehicle component (no VoxelFox - that's rendered separately)
 const SnowmobileVehicle: React.FC<{ playerColor: string }> = ({ playerColor }) => (
@@ -254,6 +149,7 @@ export const UnifiedShowroom: React.FC<UnifiedShowroomProps> = ({
   backgroundRemovalStrategy = 'default',
   playerColor,
   vehicleType,
+  qualityPresetId = 'low',
   onFoxLoaded
 }) => {
   const groupRef = useRef<THREE.Group>(null)
@@ -264,11 +160,9 @@ export const UnifiedShowroom: React.FC<UnifiedShowroomProps> = ({
     }
   })
 
-  // Fox position differs between car and snowmobile
-  const foxPosition: [number, number, number] = vehicleType === 'car'
-    ? [0, 0.4, 0]
-    : [0, 0.85 * 1.2, 0] // Snowmobile is scaled 1.2x
-  const foxScale = vehicleType === 'car' ? 0.8 : 0.8 * 1.2
+  // Snowmobile is scaled 1.2x, so its driver fox is offset/scaled to match.
+  const snowmobileFoxPosition: [number, number, number] = [0, 0.85 * 1.2, 0]
+  const snowmobileFoxScale = 0.8 * 1.2
 
   return (
     <group position={[0, 0, 0]}>
@@ -295,24 +189,32 @@ export const UnifiedShowroom: React.FC<UnifiedShowroomProps> = ({
 
       {/* Rotating Vehicle Group */}
       <group ref={groupRef}>
-        {/* Vehicle - conditionally render car or snowmobile */}
         {vehicleType === 'car' ? (
-          <CarVehicle playerColor={playerColor} />
-        ) : (
-          <SnowmobileVehicle playerColor={playerColor} />
-        )}
-
-        {/* VoxelFox Driver - ALWAYS mounted, just repositioned */}
-        <group position={foxPosition} scale={foxScale}>
-          <VoxelFox
-            position={[0, 0, 0]}
-            rotation={[0, Math.PI / 2, 0]}
-            foxTextureUrl={getOrdinalContentUrl(foxOriginOutpoint) || undefined}
+          // Car bundles its own VoxelFox driver and honours the detail tier, so the
+          // showroom shows exactly the model the player will race.
+          <CarTrackVehicleModel
+            foxOriginOutpoint={foxOriginOutpoint}
             backgroundRemovalStrategy={backgroundRemovalStrategy}
-            color={playerColor}
-            onTextureLoaded={onFoxLoaded}
+            playerColor={playerColor}
+            qualityPresetId={qualityPresetId}
+            onFoxLoaded={onFoxLoaded}
           />
-        </group>
+        ) : (
+          <>
+            <SnowmobileVehicle playerColor={playerColor} />
+            {/* VoxelFox Driver rendered separately for the snowmobile */}
+            <group position={snowmobileFoxPosition} scale={snowmobileFoxScale}>
+              <VoxelFox
+                position={[0, 0, 0]}
+                rotation={[0, Math.PI / 2, 0]}
+                foxTextureUrl={getOrdinalContentUrl(foxOriginOutpoint) || undefined}
+                backgroundRemovalStrategy={backgroundRemovalStrategy}
+                color={playerColor}
+                onTextureLoaded={onFoxLoaded}
+              />
+            </group>
+          </>
+        )}
       </group>
     </group>
   )

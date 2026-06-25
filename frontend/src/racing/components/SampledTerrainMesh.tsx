@@ -1,6 +1,13 @@
 import React, { useMemo } from 'react'
 import * as THREE from 'three'
 import type { TerrainHeightSampler } from '../core/roadCorridor'
+import type { RacingQualityPresetId } from '../performance/qualitySettings'
+import {
+  getRacingSurfaceTextureConfig,
+  getSurfaceTextureRepeat,
+  type RacingSurfaceId
+} from './materials/proceduralSurfaceConfig'
+import { RacingSurfaceMaterial } from './materials/RacingSurfaceMaterial'
 
 interface SampledTerrainMeshProps {
   getHeightAtPosition: TerrainHeightSampler
@@ -8,6 +15,13 @@ interface SampledTerrainMeshProps {
   resolution?: number
   yOffset?: number
   color?: string
+  /** Quality tier driving surface texture resolution/detail. Defaults to medium. */
+  qualityPresetId?: RacingQualityPresetId
+  /**
+   * Surface treatment. A textured surface ('grass', 'volcanic-rock', …) paints the
+   * shared procedural material; 'none' keeps a flat tinted material.
+   */
+  surface?: RacingSurfaceId | 'none'
 }
 
 export const SampledTerrainMesh: React.FC<SampledTerrainMeshProps> = ({
@@ -15,7 +29,9 @@ export const SampledTerrainMesh: React.FC<SampledTerrainMeshProps> = ({
   size = 3200,
   resolution = 160,
   yOffset = -0.4,
-  color = '#4a8c59'
+  color = '#4a8c59',
+  qualityPresetId = 'medium',
+  surface = 'grass'
 }) => {
   const geometry = useMemo(() => {
     const halfSize = size / 2
@@ -52,9 +68,23 @@ export const SampledTerrainMesh: React.FC<SampledTerrainMeshProps> = ({
     return terrainGeometry
   }, [getHeightAtPosition, resolution, size, yOffset])
 
+  // Procedural ground via the shared surface material. The UV grid spans the full
+  // terrain `size` on both axes, so a uniform repeat keeps the surface detail a
+  // consistent real-world size. 'none' falls through to the flat tinted material.
+  const surfaceRepeat = useMemo(() => {
+    if (surface === 'none') return 1
+    const tileWorldSize = getRacingSurfaceTextureConfig(surface, qualityPresetId).tileWorldSize
+    return getSurfaceTextureRepeat(size, tileWorldSize)
+  }, [surface, qualityPresetId, size])
+
   return (
     <mesh geometry={geometry} receiveShadow>
-      <meshStandardMaterial color={color} roughness={0.86} metalness={0.05} side={THREE.DoubleSide} />
+      <RacingSurfaceMaterial
+        surface={surface}
+        qualityPresetId={qualityPresetId}
+        repeat={surfaceRepeat}
+        color={color}
+      />
     </mesh>
   )
 }

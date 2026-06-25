@@ -16,6 +16,7 @@ import { RacingCrashOverlay } from '../../racing/components/RacingCrashOverlay'
 import { RacingConnectOverlay } from '../../racing/components/RacingConnectOverlay'
 import { RacingQualitySelector } from '../../racing/components/RacingQualitySelector'
 import { RacingFpsCounter } from '../../racing/components/RacingFpsCounter'
+import { RacingShowroomStatsStrip } from '../../racing/components/RacingShowroomStatsStrip'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 
 // ========== MEMOIZED SUB-COMPONENTS ==========
@@ -256,6 +257,8 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
             </button>
           </div>
         </div>
+
+        <RacingShowroomStatsStrip foxName={foxName} foxOriginOutpoint={foxOriginOutpoint} />
       </>
     )
   }

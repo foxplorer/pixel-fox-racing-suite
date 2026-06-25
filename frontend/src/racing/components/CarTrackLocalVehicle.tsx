@@ -12,6 +12,7 @@ import type { TrackLapValidationMetadata } from '../tracks/trackMetadata'
 import type { createStartGate } from '../core/startGate'
 import type { CarRampZone } from '../vehicles/carRamp'
 import type { CarLavaHazard } from '../vehicles/carLavaHazard'
+import type { RacingQualityPresetId } from '../performance/qualitySettings'
 
 type CarTrackVehicleStatus = 'idle' | 'showroom' | 'loading' | 'countdown' | 'racing' | 'crashed' | 'finished'
 type CarTrackCameraMode = 'simple' | 'smooth' | 'damped' | 'targetsmooth' | 'velocity'
@@ -28,6 +29,7 @@ interface CarTrackLocalVehicleProps {
   foxOriginOutpoint?: string | null
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
+  qualityPresetId?: RacingQualityPresetId
   gameStatus: CarTrackVehicleStatus
   countdown: number
   manualCamera: CarTrackManualCameraRuntime
@@ -61,7 +63,7 @@ interface CarTrackLocalVehicleProps {
   otherPlayers: RacingWorldPlayer[]
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
-  onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number) => void
+  onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
   socketPositionEmitMode?: SocketPositionEmitMode
 }
 
@@ -70,6 +72,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
   foxOriginOutpoint,
   backgroundRemovalStrategy = 'default',
   playerColor,
+  qualityPresetId,
   gameStatus,
   countdown,
   manualCamera,
@@ -115,6 +118,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
       foxOriginOutpoint={foxOriginOutpoint}
       backgroundRemovalStrategy={backgroundRemovalStrategy}
       playerColor={playerColor}
+      qualityPresetId={qualityPresetId}
       gameStatus={gameStatus}
       countdown={countdown}
       isManualCamera={manualCamera.isManualCamera}
@@ -148,19 +152,19 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
       otherPlayers={getRacingWorldPlayerCollisionTargets(otherPlayers) as RacingWorldPlayerCollisionTarget[]}
       spawnPosition={spawnPosition}
       localChatMessage={localChatMessage}
-      onPositionUpdate={(position: THREE.Vector3, rotation?: number, speed?: number) => {
+      onPositionUpdate={(position: THREE.Vector3, rotation?: number, speed?: number, headlightsEnabled?: boolean) => {
         manualCamera.updateCarPosition(position)
 
         if (!onPositionUpdateForSocket) return
 
         if (socketPositionEmitMode === 'require-complete-values') {
           if (rotation !== undefined && speed !== undefined) {
-            onPositionUpdateForSocket(position, rotation, speed)
+            onPositionUpdateForSocket(position, rotation, speed, headlightsEnabled)
           }
           return
         }
 
-        onPositionUpdateForSocket(position, rotation ?? 0, speed ?? 0)
+        onPositionUpdateForSocket(position, rotation ?? 0, speed ?? 0, headlightsEnabled)
       }}
       {...optionalCollisionProps}
     />

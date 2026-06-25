@@ -1,12 +1,10 @@
 import React, { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
-import { TreeInstances } from '../../../components/TreeInstances'
 import type { RacingQualityPreset } from '../../../performance/qualitySettings'
 import { BoardLogoDecal, CurvedBoard } from '../../../../components/foxracingbelgium/AdvertisingBoards'
 import {
   createUnitedKingdomAdvertisingBoards,
   createUnitedKingdomAdvertisingLogoDecals,
-  createUnitedKingdomTreePlacements,
   type UnitedKingdomAdvertisingBoard,
   type UnitedKingdomTreePlacement
 } from './unitedKingdomSceneryData'
@@ -31,21 +29,14 @@ export const UnitedKingdomScenery: React.FC<UnitedKingdomSceneryProps> = ({
   onTreesGenerated,
   onBoardsGenerated
 }) => {
-  const trees = useMemo(() => {
-    const placements = createUnitedKingdomTreePlacements(trackCurve, qualityPreset)
-    if (!getHeightAtPosition) return placements
-
-    return placements.map(tree => ({
-      ...tree,
-      y: getHeightAtPosition(tree.x, tree.z)
-    }))
-  }, [getHeightAtPosition, trackCurve, qualityPreset])
   const boards = useMemo(() => createUnitedKingdomAdvertisingBoards(trackCurve), [trackCurve])
   const logoDecals = useMemo(() => createUnitedKingdomAdvertisingLogoDecals(boards), [boards])
 
+  // The billboard forest is the only tree layer here now; report no simple-tree
+  // collision targets so nothing invisible remains where the instanced trees used to be.
   useEffect(() => {
-    onTreesGenerated?.(trees)
-  }, [onTreesGenerated, trees])
+    onTreesGenerated?.([])
+  }, [onTreesGenerated])
 
   useEffect(() => {
     onBoardsGenerated?.(boards)
@@ -58,15 +49,6 @@ export const UnitedKingdomScenery: React.FC<UnitedKingdomSceneryProps> = ({
         qualityPreset={qualityPreset}
         getHeightAtPosition={getHeightAtPosition}
         options={forestOptions}
-      />
-      <TreeInstances
-        trees={trees}
-        palette={{
-          trunk: '#4a3522',
-          foliage1: '#244d34',
-          foliage2: '#2f6b45',
-          foliage3: '#4e8f59'
-        }}
       />
       {boards.map((board, index) => (
         <CurvedBoard

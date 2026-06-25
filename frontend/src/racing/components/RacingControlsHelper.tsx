@@ -14,9 +14,15 @@ export const getCameraSnapLabel = (variant: RacingControlsVariant): string => {
   return variant === 'snowmobile' ? 'Ride to snap camera back.' : 'Drive to snap camera back.'
 }
 
+export const getHeadlightsControlLabel = (variant: RacingControlsVariant): string | null => {
+  return variant === 'car' ? 'L — Toggle headlights' : null
+}
+
 export const RacingControlsHelper = memo<RacingControlsHelperProps>(function RacingControlsHelper({
   variant = 'car'
 }) {
+  const headlightsControlLabel = getHeadlightsControlLabel(variant)
+
   return (
     <div style={{
       position: 'absolute',
@@ -40,6 +46,7 @@ export const RacingControlsHelper = memo<RacingControlsHelperProps>(function Rac
       <div>{getGasControlLabel(variant)}</div>
       <div>S / ↓ — Brake</div>
       <div>A / D / ← / → — Steer</div>
+      {headlightsControlLabel && <div>{headlightsControlLabel}</div>}
       <div>C — Toggle manual camera</div>
       <div style={{ color: '#888', fontSize: '11px' }}>
         (drag to orbit in manual mode)

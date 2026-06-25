@@ -1,226 +1,262 @@
 # Pixel Fox Racing Suite Plan
 
-This plan is a shared place for contributors to discuss useful improvements. The long-term idea is to see how good Pixel Fox Racing can become when any human builder or coding agent can contribute, fork, test ideas, and send back improvements.
+Pixel Fox Racing Suite is an open-source racing sandbox built around shared racing systems, modular tracks, and fork-friendly content. The current priority is to make seven tracks look better without turning every visual upgrade into a track-specific copy-paste job.
 
-The current frontend grew track-by-track, so some game code is duplicated and each track has subtle differences. Refactors should be careful and incremental. Small focused pull requests are easier to review, merge, and reuse.
+The suite should keep the personality of the existing game while becoming easier to extend: new tracks, better scenery, richer lighting, mobile-friendly performance, and clean hooks for downstream forks.
 
-For the detailed track and shared-systems refactor plan, see `REFACTOR.md`.
+For lower-level refactor notes, see `REFACTOR.md`.
 
-Pixel Racing Classic can live separately as the original pre-refactor code and feel. The open-source Pixel Fox Racing Suite is the prompt anyone can build on: keep the personality, but let the shared version become deeper, better-looking, easier to maintain, and eventually different enough that it is not limited by the classic implementation.
+## Current Track Set
 
-## Roadmap
+The suite currently has seven named tracks:
 
-Near-term directions for the suite:
+- `Australia`
+- `San Luis`
+- `Belgium`
+- `Aspen`
+- `United Kingdom`
+- `Germany`
+- `Volcanoes`
 
-1. Complete the wallet capability adapter to remove wallet-specific branches from game and collectible code. Metanet is a selected provider, not a silent fallback.
-2. Persist collectible claims and delivery receipts server-side. Retries must return the same receipt and outpoint without creating duplicate collectibles.
-3. Build the no-Pixel-Fox faucet on the same idempotent receipt pipeline.
-4. Keep the open-source transaction server canonical. Production-specific behavior should be thin configuration or deployment composition, not divergent core files.
-5. Build shared touch controls for mobile, deferring Metanet Mobile wallet validation until login can be tested.
+These tracks are not all implemented the same way yet. Some are older custom component folders, and newer car tracks increasingly use shared imported-track definitions, shared terrain, shared car handling, shared multiplayer rendering, and shared quality settings.
 
-## Goals
+The goal is not to make every track visually identical. The goal is to let every track opt into shared budgets and reusable scenery modules while keeping its own theme.
 
-- Keep the suite easy to run locally with one install and simple dev commands.
-- Keep the open-source default clean of private keys, private servers, and non-redistributable assets.
-- Make it straightforward for forks to rebrand the app, change routes, add tracks, and configure their own transaction metadata.
-- Improve the shared racing code in ways that help both this project and downstream forks.
-- Improve the feel, look, depth, and replay value of the racing experience over time.
-- Welcome contributions from people and agents while keeping code changes reviewable and understandable.
+## Graphics Budget Direction
 
-## Current App Shape
+Low, medium, and high graphics settings should be real budgets, not just labels.
 
-- `frontend` - Vite, React, Three.js racing frontend at `/pixelfoxracing`.
-- `socket-server` - Socket.IO server for shared world state and collectible pickups.
-- `transaction-server` - Express API for dummy or real BSV ordinal transaction creation.
+Existing shared budget areas:
 
-## Track Work
+- Renderer budget: device pixel ratio cap, shadows, and antialiasing.
+- Remote-player budget: render distance and maximum visible remote players.
+- Minimap budget: update cadence.
+- Scenery density budget: shared tree, forest, and placement counts.
+- Effect budget: mesh detail scale, active light scale, and particle density scale.
 
-Existing tracks:
+Budget rules:
 
-- `Australia` - custom country-themed layout authored for this project.
-- `San Luis` - custom hand-authored in-game layout that is narrower than the other current tracks.
-- `Belgium` - custom country-themed layout authored for this project.
-- `Aspen` - custom winter mountain layout authored for this project.
-- `United Kingdom` - custom imported GeoJSON layout with authored elevation.
-- `Germany` - custom imported GeoJSON layout with authored elevation.
+- Low must reduce expensive work enough for low-end browsers and mobile devices.
+- Medium should be the default target for visual quality and stable performance.
+- High can add density and polish, but should not change gameplay collision or track layout.
+- Quality settings should affect rendering cost, not player advantage.
+- Track-specific effects should translate shared budget knobs into local visuals.
 
-Useful track improvements:
+Examples:
 
-- Improve track graphics, scenery, lighting, weather, and environmental detail.
-- Add a clearer track selection UI with track previews and metadata.
-- Normalize shared track APIs so new tracks can be added with less copied game code.
-- Build terrain around the road corridor instead of drawing roads over arbitrary hills. The road centerline, width, shoulders, grade, and blend zone should shape terrain so future hilly Australia, San Luis, and Belgium variants do not clip through the road.
-- Add contributor documentation for building a new track environment.
-- Add more original or permissively licensed tracks.
-- Review track names and attributions whenever a real-world layout is adapted into a fictional setting.
+- Forest tracks use `densityScale` for tree and billboard forest counts.
+- Mountain tracks can use `meshDetailScale` for terrain/scenery mesh resolution.
+- Night or cave tracks can use `activeLightScale` for live point lights.
+- Weather, dust, snow, lava, sparks, and smoke can use `particleDensityScale`.
 
-## Gameplay Ideas
+## Scenery Architecture
 
-- Add career mode with progression, events, unlocks, records, and long-term goals.
-- Add more race formats, such as time trials, ghost laps, seasons, tournaments, or multiplayer challenges.
-- Establish one shared car handling model for every car track so Australia, San Luis, and Belgium feel consistent even as cars, customization, and track art improve.
-- Keep snowmobile handling separate because Aspen/snow racing is intentionally a different vehicle experience.
-- Add collectible, upgrade, or reward systems that can work in dummy mode and real transaction mode.
-- Add better AI or ghost competitors for solo play.
-- Add difficulty settings and assist options for different players.
+Scenery upgrades should be modular enough that tracks can share improvements.
 
-## Car Customization
+Preferred pattern:
 
-- Add more customizable car bodies, colors, decals, wheels, and visual parts.
-- Add saved car presets per player or wallet.
-- Keep car customization mostly visual at first so different car bodies do not fragment the shared car handling model.
-- Add optional performance tuning only if it fits the game balance and can be applied consistently across car tracks.
-- Keep customization fork-friendly so builders can add their own asset packs.
+1. Put generic budget helpers in `frontend/src/racing/performance`.
+2. Put reusable visual components in `frontend/src/racing/components`.
+3. Put shared imported-track scenery in `frontend/src/racing/tracks/imported`.
+4. Put unique track flavor in that track's own folder only when it is truly unique.
+5. Keep generated placement data deterministic so tests, collisions, and minimaps stay stable.
 
-## Platforms
+Reusable scenery modules worth building:
 
-- Improve desktop browser support first.
-- Improve mobile browser controls, layout, and performance.
-- Explore packaged desktop builds if the browser version becomes stable enough.
-- Explore controller support.
-- Keep deployment simple for web hosting and local development.
+- Quality-scaled forests and tree lines.
+- Trackside rocks, shrubs, fences, banners, and small props.
+- Terrain-aware advertising boards.
+- Distant mountains, volcanoes, skyline silhouettes, or landmark backdrops.
+- Weather layers such as snow, fog, rain, dust, ash, and heat haze.
+- Shared crowd/stadium visibility budgets.
+- Low-cost impostor or billboard versions of expensive scenery.
 
-## Architecture Direction
+Tree-system policy:
 
-- Treat React and Three.js as the current web renderer, not as the whole game architecture.
-- Move racing rules, track metadata, road corridor terrain shaping, terrain height, lap timing, gates, collisions, input mapping, and scoring toward portable TypeScript modules.
-- Current shared racing modules cover track geometry, spatial track lookup, start gates, road corridor influence, lap validation, monotonic race timing, and the first shared car control/handling functions. Keep expanding this layer with tests before deleting old track folders or merging vehicle components.
-- Keep camera follow logic tied to stable normalized vehicle heading. The old car/camera failure around full 360-degree rotation should remain covered by shared rotation helpers instead of track-specific camera hacks.
-- Keep camera tuning in shared helpers where practical: follow distance, height, smoothing, frame delta caps, and camera reset thresholds should be testable before deeper camera refactors.
-- Preserve the current multiple camera modes as named presets until better profiling or playtesting says otherwise; they can help different browsers and machines avoid flicker or choppiness.
-- Move collision math toward shared helpers so obstacle, gate, vehicle, and future track-boundary collisions can be tuned consistently.
-- Keep rendering, UI, wallet flows, servers, and platform adapters separated from core simulation logic.
-- Make assets and track definitions data-driven so better renderers, mobile packages, desktop builds, or future ports can reuse the same game design.
-- Avoid burying gameplay behavior inside large JSX components because that makes future optimization, deeper simulation, or ports to other engines and languages harder.
+- Avoid running tiny `SimpleTrees` on tracks that already use the shared billboard forest. The small mesh trees are hard to see next to the larger billboard trees, but they still add draw calls and collision bookkeeping.
+- Preserve `SimpleTrees` where they are still part of the older scene identity, especially San Luis and Aspen, until those tracks get their own deliberate scenery migration.
+- If a track needs close-up hero trees plus billboard forests, make that an explicit foreground-tree layer with its own budget instead of keeping old `SimpleTrees` by accident.
 
-## Frontend Ideas
+Track-specific scenery should stay thin:
 
-- Refactor cautiously because the track components were added one at a time and do not all behave exactly the same.
-- Split large game components into reusable systems for shared car control, separate snowmobile control, lap timing, collectibles, and transaction submission.
-- Add a settings panel for graphics quality, camera behavior, and audio.
-- Improve loading states and empty states across wallet, stats, and transaction views.
-- Add responsive polish for small screens and touch controls.
-- Add optional sound packs that forks can install separately with clear licensing.
+- Australia can theme shared props toward dry terrain and open-country racing.
+- San Luis can emphasize compact technical racing, stadium details, and city/park flavor.
+- Belgium can emphasize forest, boards, and rolling countryside.
+- Aspen can keep winter/snowmobile-specific visuals and snow terrain.
+- United Kingdom can use denser green scenery, hedges, and wet-weather options.
+- Germany can use clean road, forest, hillside, and European trackside details.
+- Volcanoes can use lava, caves, rocks, smoke, embers, jumps, and volcanic lighting.
 
-## Wallet Architecture
+## Shared Surface Materials
 
-The frontend supports two explicit wallet choices. The landing page does not auto-connect, probe wallets, or open the player modal before the player clicks a button.
+Procedural asphalt and grass should stay shared surface systems, not per-track texture copies. Asphalt belongs on normal car-track road ribbons. Procedural grass can be used on all standard green terrain tracks, but should not be forced onto tracks where the surface identity is different.
 
-### Yours Wallet
+Target surface policy:
 
-Yours uses `WalletClient('window.CWI')` and the modern BRC-100 flow through `@1sat/react`, `@bsv/sdk`, and `@1sat/actions`.
+- Use shared asphalt on car tracks that render the shared road ribbon.
+- Use shared grass on Australia, San Luis, Belgium, United Kingdom, and Germany where their terrain path supports it.
+- Keep Aspen on snow/winter terrain.
+- Keep Volcanoes on volcanic rock/lava terrain.
+- Keep material-quality budgets tied to low/medium/high, but do not force them into scenery/effect budgets until the shape of the shared renderer is clearer.
 
-- `createContext(wallet, { chain: 'main', services })` creates the actions context.
-- `getOrdinals.execute(ctx, ...)` lists Pixel Foxes.
-- `deriveDepositAddresses.execute(ctx, { startIndex: 0, count: 2 })` derives the payment and ordinal receive addresses.
-- Race collectibles use `deliveryTarget: { type: 'address' }` with the derived ordinal address.
-- The transaction server mints the collectible to that address and broadcasts it. The Yours extension automatically tracks that address so the collectible appears in the wallet without any frontend action — no `internalizeAction` call.
+## Volcanoes Track Notes
 
-The deprecated `window.yours` provider is not used.
+`Volcanoes` is the first track using a richer special-effect scenery layer:
 
-### Metanet Desktop
+- Lava basin and lava pit meshes.
+- Lava jump ramps.
+- Rock spires and boulders.
+- Smoke and ember particles.
+- Quality-scaled live lava lighting.
 
-Metanet uses `WalletClient('json-api')`, the local Metanet JSON API transport.
+Volcanoes should be treated as a proving ground for modular effect budgets. If an improvement works there, extract the general part so other tracks can reuse it.
 
-- Foxes are listed from the `pixel foxes` basket with `wallet.listOutputs`.
-- Race collectibles use `deliveryTarget: { type: 'protocol-key' }` with the protocol ID, key ID, counterparty, destination basket, and public key derived by the wallet adapter.
-- The transaction server uses `GROUP_SIGNING_WIF` to derive a BRC-42 destination from the player's protocol key, mints and broadcasts the collectible reliably, then returns Atomic BEEF plus the actual output index and remittance metadata.
-- The frontend calls `internalizeAction` on the Metanet client to import that output into the `pixel foxes` basket. This basket import step — not the server send — is what the three exponential-backoff retry attempts cover. If all retries fail, the broadcast transaction is still on-chain and visible in activity.
+Examples:
 
-Metanet is a first-class selected wallet, not a fallback for Yours.
+- Lava particles prove out particle-density budgets.
+- Lava lights prove out active-light budgets.
+- Lava pool tessellation proves out mesh-detail budgets.
+- Rock fields prove out quality-scaled instanced scenery.
 
-### Transaction Server Delivery
+## Near-Term Work
 
-The transaction server receives a validated `deliveryTarget` union from the frontend:
+1. Audit all seven tracks and document which shared budgets each one consumes.
+2. Add a small developer-facing quality-budget table for each track.
+3. Move more track scenery toward reusable modules instead of local duplicated JSX.
+4. Make imported-track scenery options more data-driven: forest, boards, landmarks, weather, props, and hazards.
+5. Add focused tests for budget helpers and deterministic placement generators.
+6. Add a simple visual QA checklist for low, medium, and high on each track.
+7. Keep build size and runtime cost visible as scenery improves.
 
-- `address` — mints and broadcasts the collectible to the Yours-derived ordinal receive address. No client-side action required.
-- `protocol-key` — uses the server's stateless `ProtoWallet` (`GROUP_SIGNING_WIF`) with BRC-42 to derive a unique destination from the player's protocol key. Returns Atomic BEEF and remittance metadata for the frontend to pass to `internalizeAction`.
+## Track Budget Checklist
 
-`GROUP_SIGNING_WIF` serves two purposes: it signs Sigma issuer proofs on inscriptions, and it provides the server's BRC-42 sender identity key for Metanet collectible delivery. For every Metanet collectible the Metanet client must store the sender's public key, protocol ID, and key ID at `internalizeAction` time to later derive the spending private key — this is always required, not only when the key changes. Yours Wallet collectibles sent to an ordinal address have no derivation requirement and are not affected by this key.
+Every track should eventually answer these questions:
 
-Collectible routing is isolated in `src/collectibles.ts`. PostgreSQL supplies the funding UTXO; `PAYMENT_WIF` signs the funding input separately. No server wallet database is required.
+- Does low/medium/high change tree, prop, or crowd density?
+- Does low/medium/high change particle count?
+- Does low/medium/high change active dynamic lights?
+- Does low/medium/high change mesh detail or draw distance?
+- Does low/medium/high keep collision and gameplay behavior stable?
+- Are expensive effects batched, instanced, or billboarded where practical?
+- Can the track run acceptably on medium without special hardware?
 
-### Player Identity
+## Performance Principles
 
-- `identityKey` is the primary player identifier for sockets, sessions, and collectible delivery.
-- `originOutpoint` is the stable fox identifier. Use it as the racing identity; do not rely on client-supplied fox metadata alone.
-- Race-history inscriptions go to the single configured `PIXELRACING_RESULTS_ADDRESS`. This is independent from the three collectible reward paths, which belong to the player.
-- Ordinal and payment addresses are kept out of public sockets and race history inscriptions.
-- Race history uses `recordVersion: 2` and omits player addresses. Legacy records with `playerowner` / `owneraddress` are still parsed when reading history.
+- Prefer instancing for repeated props.
+- Prefer deterministic generated placements over hand-authored arrays when the data can be regenerated safely.
+- Prefer shared impostor/billboard systems for far scenery.
+- Avoid many dynamic point lights unless quality settings cap them.
+- Keep particle systems bounded by explicit budgets.
+- Keep collision data separate from decorative density so low settings do not remove gameplay obstacles unless the track explicitly supports that.
+- Profile before raising counts that affect every track.
 
-### Roadmap Items
+## Gameplay And Systems
 
-- Add a wallet capability adapter in the frontend (`identityKey`, `listOrdinalOutputs`, `receiveCounterpartyDelivery`, `internalizeOrdinal`) so wallet-specific branches move out of game and collectible code.
-- Add server-side idempotency for collectible claims bound to `identityKey`, race/pickup ID, and a claim ID so retries cannot create duplicate collectibles.
-- Add request-bound `getAuthToken` sign-in.
-- Build the fox faucet flow: detect an empty wallet-specific fox source, show
-  explicit `Get a Fox` action, deliver foxes through the selected wallet path,
-  internalize when required, and verify. Yours should use the address/1Sat
-  ordinals path; Metanet should use `[0, 'pixel foxes']` and the `pixel foxes`
-  basket.
-- Add shared touch controls for mobile.
+Graphics work should support the racing experience rather than burying it.
 
-### Standards Reference
+Ongoing shared-system goals:
 
-- BRC-100: the client wallet API (`WalletInterface`, `getPublicKey`, `internalizeAction`, `listOutputs`).
-- BRC-42/BRC-43: counterparty key derivation and protocol/key-ID invoice convention used for Metanet delivery.
-- BEEF/Atomic BEEF: transaction and ancestry proof material returned by the transaction server for Metanet internalization.
-- `p 1sat ordinals`: the Yours/1Sat wallet basket label for ordinals.
-  `[0, 'p 1sat']` is the 1Sat action protocol identifier, distinct from the
-  basket name. Metanet uses the app-specific `[0, 'pixel foxes']` protocol and
-  `pixel foxes` basket because Metanet Client can reject the `p 1sat ordinals`
-  module path.
+- Keep car handling consistent across car tracks.
+- Keep snowmobile handling separate where it serves Aspen and winter racing.
+- Continue moving lap timing, gates, collisions, camera logic, terrain sampling, and multiplayer rendering into tested shared modules.
+- Keep track metadata data-driven enough for selection screens, previews, records, and forks.
+- Build track previews that show theme and difficulty without loading the full race world.
 
-Identity and recipient decisions:
+## Player-Car Collision Feel
 
-- Use `identityKey` as the stable, intentionally shareable account/player identifier in sockets, sessions, authentication, counterparty delivery, and optional identity presentation.
-- Do not treat the identity public key as a P2PKH address or place it directly in a locking script. The current mint path asks the stateless server `ProtoWallet` for a `[0, 'p 1sat']` counterparty-derived public key and locks the ordinal to its P2PKH address. Existing wallet-owned ordinals should still use the high-level `transferOrdinals` counterparty path.
-## Graphics Ideas
+Multiplayer car-to-car collisions need better behavior. The current collision response can make a fast car feel like it hits an invisible wall: if one player rear-ends or clips another car, repeated collision frames can bring the local car to a dead stop even when both cars are moving quickly.
 
-- Improve vehicle models and animations.
-- Improve trackside scenery, materials, sky, lighting, particles, and effects.
-- Add graphics quality presets for low-end and high-end machines.
-- Keep the graphics pipeline modular enough to support better asset formats, level-of-detail, batching, instancing, texture compression, and future renderer/platform changes.
-- Keep expensive crowd and scenery rendering behind shared distance/quality systems. Stadium fox crowds, billboard atlases, instancing, and visibility thresholds should be tunable once for desktop/mobile instead of copied per track.
-- Add more polished loading transitions between menus and tracks.
-- Add screenshots or short GIFs to the README once visuals are stable.
+Desired behavior:
 
-## Socket Server Ideas
+- Rear-end contact at speed should usually become a bump-draft style interaction, not a hard stop.
+- If both cars are moving in roughly the same direction, the trailing car should bleed toward the lead car's speed instead of instantly losing most of its velocity.
+- Small overlaps should resolve with separation and a modest speed correction.
+- Side impacts should still deflect and cost speed, but should not repeatedly multiply speed down to zero while cars remain overlapped.
+- Head-on or large-angle impacts should be harsher than same-direction contact, but not necessarily symmetric: one car can "win" the impact based on speed, angle, lane position, or authority, while the other gets deflected or slowed more.
+- Collision response should be deterministic and testable in shared vehicle/multiplayer helpers.
 
-- Add lightweight health and version endpoints.
-- Add room configuration so forks can run multiple game worlds.
-- Treat multiplayer above 4-5 simultaneous players as uncharted until tested. Add a dev-only fake-player/load harness so rendering, socket update cadence, interpolation, collision budgets, and Current Players UI can be tested at 20, 50, and 100 remote players without needing real users.
-- Make multiplayer rendering capability-aware: low-end devices should render fewer/farther-cheaper players, while high-end devices can show more remote players with smoother interpolation and richer models.
-- Early Australia fake-load testing with 50 configured remote players confirmed the quality caps: Low renders 8, Medium renders 16, and High renders 32. High measured roughly 30-50 FPS on the tested machine, so remote-player LOD and cheaper mid/far representations should come before raising caps.
-- Add stronger validation around player state and collectible pickup events.
-- Document deployment options for low-cost public multiplayer servers.
+Implementation direction:
 
-## Transaction Server Ideas
+1. Include enough remote-player motion data for collision response: at minimum current position, heading, and speed.
+2. Classify contact by relative heading and approach direction: rear-end, side-swipe, head-on, or low-speed overlap.
+3. For head-on or opposite-direction impacts, choose an impact winner from relative speed/heading instead of averaging both cars into the same response.
+4. Replace the single `vehicleCollisionSpeedMultiplier` response with a relative-velocity response.
+5. Add cooldown or overlap-state handling so one physical contact does not apply full speed loss every frame.
+6. Keep visual separation independent from speed transfer so cars do not sink into each other.
+7. Add tests for high-speed rear-end contact, same-direction side contact, head-on winner/loser impact, and repeated overlap frames.
 
-- Keep dummy mode useful for local development and demos.
-- Improve real-mode setup docs with a clear checklist.
-- Add server-side idempotency for lap-result and collectible transaction routes. Frontend duplicate guards are useful, but real transaction mode should accept an idempotency key, persist request/result state, and return the existing txid for repeated equivalent requests instead of creating duplicate inscriptions.
-- Add safer startup validation for real transaction mode.
-- Add tests around transaction payloads, MAP metadata, and error responses.
-- Keep inscription app/name fields configurable for forks.
+## Multiplayer Grid Starts And Remote Orientation
 
-## Documentation Ideas
+Race starts need proper grid placement. Multiple players currently can appear lumped into the same start position instead of using staggered race-grid slots like a normal track. Remote players can also appear facing the wrong direction until they move, which makes the starting area look broken and can make collisions worse.
 
-- Add screenshots or short GIFs once release visuals are stable.
-- Add a contributor guide for adding tracks, collectibles, and transaction routes.
-- Add deployment notes for frontend-only, full-stack local, and full-stack hosted setups.
-- Add examples for rebranding a fork without accidentally keeping Pixel Fox Racing-specific metadata.
+Desired behavior:
+
+- Each track should expose a deterministic starting grid based on the start/finish pose, track direction, lane width, and car spacing.
+- Players should be assigned stable grid slots for race start, countdown, reconnect, and late join display.
+- Grid positions should stagger forward/back and left/right around the start line without placing cars outside the road corridor.
+- Spawn placement should use terrain height sampling so cars sit on the road surface.
+- Remote players with no fresh rotation update should face the track's start direction, not world zero.
+- Remote players should preserve the last known rotation once received, and only fall back to track-aware direction when no useful rotation exists.
+- Collision should be disabled or softened during countdown/grid staging so stacked or late-arriving state does not knock cars around before the race starts.
+
+Implementation direction:
+
+1. Add a shared `startGrid` helper that derives grid slots from a track's `startFinishPosition`, `startFinishDirection`, gate width, and optional per-track grid config.
+2. Include grid-slot assignment in multiplayer join/game-state data, or derive it deterministically from ordered player IDs when the server does not provide a slot.
+3. Replace `[0, 0.1, 0]` and `[0, 0, 0]` remote-player join fallbacks with track-aware default position and rotation.
+4. Make remote-player display use track start direction until the first authoritative rotation arrives.
+5. Add tests for two-player, four-player, and many-player staggered grids; track-direction fallback rotation; reconnect stability; and no-overlap spacing.
+
+## Scheduled Race Events
+
+The suite should support scheduled multiplayer events, such as an hourly featured race. This can give players a reason to return, concentrate multiplayer activity into predictable windows, and show off the full track catalog.
+
+Desired behavior:
+
+- Run a featured race every hour or on a configurable schedule.
+- Rotate the featured track so each hour can highlight a different track.
+- Let players sign up before the race starts.
+- Show countdown, track name, expected start time, registered players, and prize information.
+- Lock or snapshot entries near race start so the grid and bracket are stable.
+- Support special prizes for winners, podium finishes, participation, fastest lap, clean race, or track-specific challenges.
+- Keep events playable in dummy/local mode without funded prizes.
+- Make real prize delivery optional and server-configured so forks can run their own events safely.
+
+Implementation direction:
+
+1. Add event metadata: event ID, track ID, start time, signup window, max players, prize rules, and status.
+2. Add a lightweight event scheduler on the server or a deterministic schedule that clients can preview.
+3. Add signup/cancel signup endpoints with identity-based duplicate protection.
+4. Feed event entrants into the starting-grid system so registered players get stable slots.
+5. Store event results separately from casual laps.
+6. Reuse the existing collectible/transaction pipeline for prizes only after idempotency and eligibility checks are solid.
+7. Add admin/config hooks for forks to define track rotation, prize types, and event cadence.
+
+## Open-Source Standards
+
+- Keep the app easy to run locally.
+- Keep private keys, private servers, and non-redistributable assets out of the open-source default.
+- Include attribution and license details for third-party assets.
+- Keep pull requests focused enough to review.
+- Prefer small shared improvements that help multiple tracks.
+- Avoid large rewrites unless they retire real duplication or unblock future track work.
 
 ## Good First Issues
 
-- Improve README clarity where setup is confusing.
-- Add missing comments only where the code is hard to follow.
-- Add small UI polish fixes that do not change transaction behavior.
-- Add tests for pure helpers and server request validation.
-- Improve attribution notes for any added assets or track data.
+- Add budget usage notes for one track.
+- Add tests around a pure scenery placement helper.
+- Convert one repeated prop type to an instanced reusable component.
+- Improve one track's low/medium/high visual behavior without changing gameplay.
+- Add missing attribution for assets or generated track data.
+- Improve README setup or track-authoring documentation.
 
-## Contribution Notes
+## Definition Of Done For Graphics Upgrades
 
-Pull requests should be focused and should include enough context to review the change. If a contribution adds third-party assets, track data, fonts, sounds, or external code, include source and license details in `ATTRIBUTIONS.md`.
+A graphics upgrade is ready when:
 
-Contributions are accepted under the project MIT license so merged improvements can remain part of the shared suite and can also be reused by forks.
+- It works on low, medium, and high.
+- It does not change gameplay collision accidentally.
+- It is shared or clearly track-specific.
+- It has bounded counts for lights, particles, meshes, or instances.
+- It builds successfully.
+- Any new assets have source and license notes.

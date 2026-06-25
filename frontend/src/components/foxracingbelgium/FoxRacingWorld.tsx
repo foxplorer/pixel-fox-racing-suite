@@ -19,6 +19,8 @@ import { CarTrackWorldShell } from '../../racing/components/CarTrackWorldShell'
 import { CarTrackLocalVehicle } from '../../racing/components/CarTrackLocalVehicle'
 import { useCarTrackWorldRuntime } from '../../racing/components/useCarTrackWorldRuntime'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
+import { getRacingSurfaceTextureConfig, getSurfaceTextureRepeat } from '../../racing/components/materials/proceduralSurfaceConfig'
+import { RacingSurfaceMaterial } from '../../racing/components/materials/RacingSurfaceMaterial'
 import { belgiumCarTrackDefinition } from '../../racing/tracks/carTrackDefinitions'
 import { RacingCameraControlButtons } from '../../racing/components/RacingCameraControlButtons'
 
@@ -50,7 +52,7 @@ interface FoxRacingWorldProps {
   items?: GameItem[]
   onCollectItem?: (itemId: string) => void
   otherPlayers?: RacingWorldPlayer[]
-  onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number) => void
+  onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
   cameraMode?: CameraMode
@@ -82,6 +84,7 @@ interface SpaStaticSceneryProps {
   setAdvertisingBoardPositions: React.Dispatch<React.SetStateAction<AdvertisingBoardPlacement[]>>
   additionalStadiumData: StadiumPlacement[]
   isSoundEnabled: boolean
+  qualityPresetId: RacingQualityPresetId
 }
 
 const SpaStaticScenery = React.memo(({
@@ -90,7 +93,8 @@ const SpaStaticScenery = React.memo(({
   advertisingBoardPositions,
   setAdvertisingBoardPositions,
   additionalStadiumData,
-  isSoundEnabled
+  isSoundEnabled,
+  qualityPresetId
 }: SpaStaticSceneryProps) => (
   <>
     {/* Sky blue background */}
@@ -111,14 +115,14 @@ const SpaStaticScenery = React.memo(({
       shadow-camera-bottom={-1000}
     />
 
-    {/* Simple grass plane */}
+    {/* Shared procedural grass plane */}
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.2, 0]} receiveShadow>
       <planeGeometry args={[8000, 8000]} />
-      <meshStandardMaterial
+      <RacingSurfaceMaterial
+        surface="grass"
+        qualityPresetId={qualityPresetId}
+        repeat={getSurfaceTextureRepeat(8000, getRacingSurfaceTextureConfig('grass', qualityPresetId).tileWorldSize)}
         color="#4a8c59"
-        roughness={0.8}
-        metalness={0.1}
-        side={THREE.DoubleSide}
       />
     </mesh>
 
@@ -141,6 +145,7 @@ const SpaStaticScenery = React.memo(({
       frames={trackFrames}
       segments={trackSegments}
       getHeight={undefined}
+      qualityPresetId={qualityPresetId}
     />
 
     {/* Advertising boards around entire track - act as barriers */}
@@ -267,7 +272,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     return (
       <CarTrackShowroomShell canvasQuality={worldRuntime.canvasQuality}>
         {gameStatus === 'showroom' && (
-           <Showroom foxOriginOutpoint={foxOriginOutpoint} backgroundRemovalStrategy={backgroundRemovalStrategy} playerColor={playerColor} />
+           <Showroom foxOriginOutpoint={foxOriginOutpoint} backgroundRemovalStrategy={backgroundRemovalStrategy} playerColor={playerColor} qualityPresetId={qualityPresetId} />
         )}
       </CarTrackShowroomShell>
     )
@@ -292,11 +297,13 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
           setAdvertisingBoardPositions={setAdvertisingBoardPositions}
           additionalStadiumData={additionalStadiumData}
           isSoundEnabled={isSoundEnabled}
+          qualityPresetId={qualityPresetId}
         />
       )}
       localVehicle={(
         <CarTrackLocalVehicle
           VehicleComponent={FreeRoamCar}
+          qualityPresetId={qualityPresetId}
           foxOriginOutpoint={foxOriginOutpoint}
           backgroundRemovalStrategy={backgroundRemovalStrategy}
           playerColor={playerColor}

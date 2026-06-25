@@ -7,6 +7,7 @@ import type { TerrainHeightSampler } from '../../racing/core/roadCorridor'
 import { getCarForwardVector } from '../../racing/vehicles/carHandling'
 import { getVehicleVisualTilt, smoothVehicleVisualTilt } from '../../racing/vehicles/vehicleElevation'
 import { applyVehicleVisualSurfaceFrameRotation, createVehicleVisualSurfaceFrameScratch } from '../../racing/vehicles/vehicleVisualSurfaceFrame'
+import { CarHeadlightBeam } from '../../racing/components/CarHeadlightBeam'
 
 interface OtherPlayerCarProps {
   id: string
@@ -16,6 +17,7 @@ interface OtherPlayerCarProps {
   foxTextureUrl?: string
   chatMessage?: string
   chatTimestamp?: number
+  headlightsEnabled?: boolean
   lodTier?: RemotePlayerLodTier
   getHeightAtPosition?: TerrainHeightSampler
 }
@@ -25,6 +27,7 @@ interface RemoteCarVisualProps {
   foxTextureUrl?: string
   chatMessage?: string
   chatTimestamp?: number
+  headlightsEnabled?: boolean
   lodTier: RemotePlayerLodTier
 }
 
@@ -33,6 +36,7 @@ interface FullRemoteCarModelProps {
   foxTextureUrl?: string
   chatMessage?: string
   chatTimestamp?: number
+  headlightsEnabled?: boolean
 }
 
 const LERP_FACTOR = 0.12
@@ -46,7 +50,54 @@ const MID_WHEEL_POSITIONS: Array<[number, number, number]> = [
   [0.95, 0.28, -1.05]
 ]
 
-const MidRemoteCarModel = memo<{ carColor: string }>(function MidRemoteCarModel({ carColor }) {
+const RemoteCarHeadlights = memo<{ headlightsEnabled?: boolean }>(function RemoteCarHeadlights({ headlightsEnabled = false }) {
+  return (
+    <>
+      {[-0.55, 0.55].map(x => (
+        <mesh key={x} position={[x, 0.55, 1.92]}>
+          <boxGeometry args={[0.34, 0.14, 0.08]} />
+          <meshStandardMaterial
+            color={headlightsEnabled ? '#fffbe0' : '#c9c2a4'}
+            emissive={headlightsEnabled ? '#fff4c2' : '#000000'}
+            emissiveIntensity={headlightsEnabled ? 1.8 : 0}
+          />
+        </mesh>
+      ))}
+      {headlightsEnabled && (
+        <>
+          {[-0.55, 0.55].map(x => (
+            <pointLight
+              key={`remote-headlight-glow-${x}`}
+              position={[x, 0.55, 2.05]}
+              color="#fff4c2"
+              intensity={2.2}
+              distance={18}
+              decay={1.6}
+            />
+          ))}
+          {[-0.55, 0.55].map(x => (
+            <CarHeadlightBeam
+              key={`remote-headlight-beam-${x}`}
+              x={x}
+              lightPosition={[x, 0.6, 2.85]}
+              targetPosition={[x, -0.8, 72]}
+              intensity={26}
+              distance={140}
+              angle={0.36}
+              penumbra={0.65}
+              decay={0.75}
+            />
+          ))}
+        </>
+      )}
+    </>
+  )
+})
+
+const MidRemoteCarModel = memo<{ carColor: string; headlightsEnabled?: boolean }>(function MidRemoteCarModel({
+  carColor,
+  headlightsEnabled
+}) {
   return (
     <>
       <mesh position={[0, 0.45, 0]} castShadow receiveShadow>
@@ -67,6 +118,7 @@ const MidRemoteCarModel = memo<{ carColor: string }>(function MidRemoteCarModel(
           <meshStandardMaterial color="#111" />
         </mesh>
       ))}
+      <RemoteCarHeadlights headlightsEnabled={headlightsEnabled} />
     </>
   )
 })
@@ -96,7 +148,8 @@ const FullRemoteCarModel = memo<FullRemoteCarModelProps>(function FullRemoteCarM
   carColor,
   foxTextureUrl,
   chatMessage,
-  chatTimestamp
+  chatTimestamp,
+  headlightsEnabled
 }) {
   return (
     <>
@@ -119,6 +172,8 @@ const FullRemoteCarModel = memo<FullRemoteCarModelProps>(function FullRemoteCarM
         <boxGeometry args={[2, 0.7, 1.0]} />
         <meshStandardMaterial color={carColor} metalness={0.8} roughness={0.2} />
       </mesh>
+
+      <RemoteCarHeadlights headlightsEnabled={headlightsEnabled} />
 
       <mesh position={[0, 0.55, -1.4]} castShadow receiveShadow>
         <boxGeometry args={[2, 0.7, 1.0]} />
@@ -173,16 +228,18 @@ const RemoteCarVisual = memo<RemoteCarVisualProps>(function RemoteCarVisual({
   foxTextureUrl,
   chatMessage,
   chatTimestamp,
+  headlightsEnabled,
   lodTier
 }) {
   return lodTier === 'mid'
-    ? <MidRemoteCarModel carColor={carColor} />
+    ? <MidRemoteCarModel carColor={carColor} headlightsEnabled={headlightsEnabled} />
     : (
       <FullRemoteCarModel
         carColor={carColor}
         foxTextureUrl={foxTextureUrl}
         chatMessage={chatMessage}
         chatTimestamp={chatTimestamp}
+        headlightsEnabled={headlightsEnabled}
       />
     )
 })
@@ -194,6 +251,7 @@ export const OtherPlayerCar: React.FC<OtherPlayerCarProps> = ({
   foxTextureUrl,
   chatMessage,
   chatTimestamp,
+  headlightsEnabled,
   lodTier = 'near',
   getHeightAtPosition
 }) => {
@@ -286,6 +344,7 @@ export const OtherPlayerCar: React.FC<OtherPlayerCarProps> = ({
               foxTextureUrl={foxTextureUrl}
               chatMessage={chatMessage}
               chatTimestamp={chatTimestamp}
+              headlightsEnabled={headlightsEnabled}
               lodTier={lodTier}
             />
           </group>

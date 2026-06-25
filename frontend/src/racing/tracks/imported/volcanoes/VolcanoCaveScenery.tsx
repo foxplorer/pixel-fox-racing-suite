@@ -6,7 +6,10 @@ import type { TerrainHeightSampler } from '../../../core/roadCorridor'
 import type { RacingQualityPreset } from '../../../performance/qualitySettings'
 import type { BillboardForestOptions } from '../../../components/forest/billboardForestPlacement'
 import { SeededRandom } from '../../../core/seededRandom'
-import { getQualityScaledCount } from '../../../performance/sceneryQuality'
+import {
+  getRacingSceneryQualitySettings,
+  getScaledQualityValue
+} from '../../../performance/sceneryQuality'
 import type {
   ImportedSceneryAdvertisingBoard,
   ImportedSceneryTreePlacement
@@ -47,7 +50,32 @@ const LAVA_POOL_SURFACE_LIFT = 0.3
 // than that flat interpolation, rock pokes through as bands of "dry land" along the
 // pit. Subdividing across (each interior vertex draped to its own ground height) lets
 // the molten sheet hug those bumps so it reads as a filled pool, not strips.
-const LAVA_POOL_ACROSS_COLUMNS = 12
+const BASE_LAVA_POOL_ACROSS_COLUMNS = 12
+const BASE_LAVA_BASIN_SHAPE_SEGMENTS = 48
+const BASE_BASIN_EMITTER_COUNT = 24
+const BASE_EMITTERS_PER_POOL = 10
+const BASE_PARTICLES_PER_SOURCE = 6
+const BASE_BASIN_LIGHT_BOUNDARY_STRIDE = 24
+const BASE_CROSSING_LIGHT_COUNT = 5
+
+const getVolcanoEffectQuality = (qualityPreset: RacingQualityPreset) => {
+  const { effects } = getRacingSceneryQualitySettings(qualityPreset)
+  return {
+    lavaPoolAcrossColumns: getScaledQualityValue(BASE_LAVA_POOL_ACROSS_COLUMNS, effects.meshDetailScale, 6),
+    lavaBasinShapeSegments: getScaledQualityValue(BASE_LAVA_BASIN_SHAPE_SEGMENTS, effects.meshDetailScale, 20),
+    basinEmitterCount: getScaledQualityValue(BASE_BASIN_EMITTER_COUNT, effects.particleDensityScale, 8),
+    emittersPerPool: getScaledQualityValue(BASE_EMITTERS_PER_POOL, effects.particleDensityScale, 3),
+    particlesPerSource: getScaledQualityValue(BASE_PARTICLES_PER_SOURCE, effects.particleDensityScale, 2),
+    basinLightBoundaryStride: Math.max(
+      BASE_BASIN_LIGHT_BOUNDARY_STRIDE,
+      Math.round(BASE_BASIN_LIGHT_BOUNDARY_STRIDE / effects.activeLightScale)
+    ),
+    crossingLightStride: Math.max(
+      1,
+      Math.ceil(BASE_CROSSING_LIGHT_COUNT / getScaledQualityValue(BASE_CROSSING_LIGHT_COUNT, effects.activeLightScale, 1))
+    )
+  }
+}
 
 // Builds a terrain-draped ribbon spanning the pool's two amoeba edges. Each vertex
 // takes its own ground height (+lift), so the lava hugs sloped/bumpy pits instead of
@@ -58,10 +86,11 @@ const LAVA_POOL_ACROSS_COLUMNS = 12
 // XZ so the lava shader's molten-cell size matches the basin and every other pit.
 const createLavaPoolGeometry = (
   pool: LavaPitPool,
-  sampler: TerrainHeightSampler | undefined
+  sampler: TerrainHeightSampler | undefined,
+  acrossColumns: number
 ): THREE.BufferGeometry => {
   const rows = pool.centerline.length
-  const cols = LAVA_POOL_ACROSS_COLUMNS
+  const cols = acrossColumns
   const vertsPerRow = cols + 1
   const positions = new Float32Array(rows * vertsPerRow * 3)
   const uvs = new Float32Array(rows * vertsPerRow * 2)
@@ -173,10 +202,12 @@ const LavaField: React.FC<{
   basin: LavaBasinPlacement
   crossings: LavaCrossingPlacement[]
   pools: LavaPitPool[]
+  qualityPreset: RacingQualityPreset
   getHeightAtPosition?: TerrainHeightSampler
-}> = ({ basin, crossings, pools, getHeightAtPosition }) => {
+}> = ({ basin, crossings, pools, qualityPreset, getHeightAtPosition }) => {
   const material = useMemo(() => createLavaSurfaceMaterial(), [])
   const lightRefs = useRef<THREE.PointLight[]>([])
+  const effectQuality = useMemo(() => getVolcanoEffectQuality(qualityPreset), [qualityPreset])
 
   useEffect(() => () => material.dispose(), [material])
 
@@ -189,13 +220,13 @@ const LavaField: React.FC<{
       else shape.lineTo(x, y)
     })
     shape.closePath()
-    const geometry = new THREE.ShapeGeometry(shape, 48)
+    const geometry = new THREE.ShapeGeometry(shape, effectQuality.lavaBasinShapeSegments)
     const y = computeLavaBasinSurfaceY(basin, getHeightAtPosition)
     return {
       geometry,
       position: [basin.centerX, y, basin.centerZ] as [number, number, number]
     }
-  }, [basin, getHeightAtPosition])
+  }, [basin, effectQuality.lavaBasinShapeSegments, getHeightAtPosition])
 
   useEffect(() => () => basinSurface.geometry.dispose(), [basinSurface])
 
@@ -208,10 +239,10 @@ const LavaField: React.FC<{
     () =>
       pools.map((pool, index) => ({
         key: `${index}`,
-        geometry: createLavaPoolGeometry(pool, getHeightAtPosition),
+        geometry: createLavaPoolGeometry(pool, getHeightAtPosition, effectQuality.lavaPoolAcrossColumns),
         position: [pool.centerX, 0, pool.centerZ] as [number, number, number]
       })),
-    [pools, getHeightAtPosition]
+    [effectQuality.lavaPoolAcrossColumns, pools, getHeightAtPosition]
   )
 
   useEffect(
@@ -228,7 +259,7 @@ const LavaField: React.FC<{
         phase: 0
       },
       ...basin.boundary
-        .filter((_, index) => index % 40 === 0)
+        .filter((_, index) => index % effectQuality.basinLightBoundaryStride === 0)
         .map((point, index) => ({
           x: point.x,
           z: point.z,
@@ -239,11 +270,10 @@ const LavaField: React.FC<{
       ...source,
       y: sampleHeight(getHeightAtPosition, source.x, source.z) + 10
     }))
-    // Light only every other crossing — the unlit molten surface still glows on
-    // its own, so this keeps the live point-light count low enough for the
-    // standard-material shaders to stay cheap.
+    // Light only the quality-selected crossing subset; the unlit molten surface
+    // still glows on its own, so this keeps the live point-light count bounded.
     const crossingLights = crossings
-      .filter((_, index) => index % 2 === 0)
+      .filter((_, index) => index % effectQuality.crossingLightStride === 0)
       .map(crossing => ({
         x: crossing.x,
         y: sampleHeight(getHeightAtPosition, crossing.x, crossing.z) + 9,
@@ -252,12 +282,12 @@ const LavaField: React.FC<{
         phase: crossing.phase
       }))
     return [...basinLights, ...crossingLights]
-  }, [basin, crossings, getHeightAtPosition])
+  }, [basin, crossings, effectQuality.basinLightBoundaryStride, effectQuality.crossingLightStride, getHeightAtPosition])
 
   useFrame(state => {
     const t = state.clock.elapsedTime
     material.uniforms.uTime.value = t
-    lightRefs.current.forEach((light, index) => {
+    lightRefs.current.slice(0, litSources.length).forEach((light, index) => {
       if (!light) return
       const phase = litSources[index]?.phase ?? 0
       light.intensity = 2.4 + Math.sin(t * 5.5 + phase) * 0.7 + Math.sin(t * 13.0 + phase * 2.0) * 0.3
@@ -487,17 +517,17 @@ const CaveParticles: React.FC<{
   useEffect(() => () => sprite.dispose(), [sprite])
 
   const { smoke, embers } = useMemo(() => {
-    const perSource = Math.max(getQualityScaledCount(6, qualityPreset, 2), 2)
+    const { particlesPerSource } = getVolcanoEffectQuality(qualityPreset)
     const rng = new SeededRandom(90100 + sources.length)
     const buildLayer = (height: number) => {
-      const total = sources.length * perSource
+      const total = sources.length * particlesPerSource
       const positions = new Float32Array(total * 3)
       const speeds = new Float32Array(total)
       const spans = new Float32Array(total)
       const bases = new Float32Array(total)
       let i = 0
       for (const source of sources) {
-        for (let p = 0; p < perSource; p++) {
+        for (let p = 0; p < particlesPerSource; p++) {
           const angle = rng.next() * Math.PI * 2
           const r = rng.next() * source.radius * 0.8
           positions[i * 3] = source.x + Math.cos(angle) * r
@@ -586,6 +616,7 @@ export const VolcanoCaveScenery: React.FC<VolcanoCaveSceneryProps> = ({
     () => createVolcanoCavePlacements(trackDefinition.trackCurve, qualityPreset, forestOptions?.exclusionZones),
     [forestOptions?.exclusionZones, qualityPreset, trackDefinition.trackCurve]
   )
+  const effectQuality = useMemo(() => getVolcanoEffectQuality(qualityPreset), [qualityPreset])
 
   // Amoeba lava pools for the five jump pits, shared by the rendered surface and the
   // flame emitters so both sit exactly on the molten footprint.
@@ -610,8 +641,7 @@ export const VolcanoCaveScenery: React.FC<VolcanoCaveSceneryProps> = ({
     const basin = placements.lavaBasin
     const basinY = computeLavaBasinSurfaceY(basin, getHeightAtPosition)
     const basinRng = new SeededRandom(33000 + basin.boundary.length)
-    const BASIN_EMITTER_COUNT = 24
-    for (let i = 0; i < BASIN_EMITTER_COUNT; i++) {
+    for (let i = 0; i < effectQuality.basinEmitterCount; i++) {
       const edge = basin.boundary[Math.floor(basinRng.next() * basin.boundary.length)]
       const reach = 0.16 + basinRng.next() * 0.68
       const x = basin.centerX + (edge.x - basin.centerX) * reach
@@ -624,10 +654,9 @@ export const VolcanoCaveScenery: React.FC<VolcanoCaveSceneryProps> = ({
     // so the molten lava throws up rising embers across its whole footprint.
     lavaPools.forEach((pool, poolIndex) => {
       const poolRng = new SeededRandom(81000 + poolIndex)
-      const EMITTERS_PER_POOL = 10
       const radius = Math.min(pool.halfWidth * 0.28, 18)
       const samples = pool.centerline.length
-      for (let i = 0; i < EMITTERS_PER_POOL; i++) {
+      for (let i = 0; i < effectQuality.emittersPerPool; i++) {
         // Bias toward the wide middle of the pool; skip the narrow caps at the ends.
         const sampleIndex = Math.floor((0.12 + poolRng.next() * 0.76) * (samples - 1))
         const center = pool.centerline[sampleIndex]
@@ -647,7 +676,7 @@ export const VolcanoCaveScenery: React.FC<VolcanoCaveSceneryProps> = ({
       }
     })
     return sources
-  }, [getHeightAtPosition, placements.lavaBasin, lavaPools])
+  }, [effectQuality.basinEmitterCount, effectQuality.emittersPerPool, getHeightAtPosition, placements.lavaBasin, lavaPools])
 
   useEffect(() => {
     onTreesGenerated?.(collidableRocks)
@@ -664,6 +693,7 @@ export const VolcanoCaveScenery: React.FC<VolcanoCaveSceneryProps> = ({
         basin={placements.lavaBasin}
         crossings={placements.lavaCrossings}
         pools={lavaPools}
+        qualityPreset={qualityPreset}
         getHeightAtPosition={getHeightAtPosition}
       />
       <JumpRamps

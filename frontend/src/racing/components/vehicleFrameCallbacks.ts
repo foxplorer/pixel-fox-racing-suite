@@ -16,14 +16,16 @@ export const notifyVehiclePositionUpdate = <TPosition>({
   position,
   rotation,
   speed,
+  headlightsEnabled,
   onPositionUpdate
 }: {
   position: TPosition
   rotation: number
   speed: number
-  onPositionUpdate?: (position: TPosition, rotation?: number, speed?: number) => void
+  headlightsEnabled?: boolean
+  onPositionUpdate?: (position: TPosition, rotation?: number, speed?: number, headlightsEnabled?: boolean) => void
 }): void => {
-  onPositionUpdate?.(position, rotation, speed)
+  onPositionUpdate?.(position, rotation, speed, headlightsEnabled)
 }
 
 export const commitVehiclePose = <TPosition>({

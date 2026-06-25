@@ -1,5 +1,10 @@
 import React, { useMemo } from 'react'
 import * as THREE from 'three'
+import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
+import { getRacingSurfaceTextureConfig, getSurfaceTextureRepeat } from '../../racing/components/materials/proceduralSurfaceConfig'
+import { RacingSurfaceMaterial } from '../../racing/components/materials/RacingSurfaceMaterial'
+
+const TRACK_WIDTH = 18
 
 interface TrackProps {
   curve: THREE.CatmullRomCurve3
@@ -11,6 +16,8 @@ interface TrackProps {
   segments: number
   getHeight?: (x: number, z: number) => number
   excludedIntervals?: Array<{ startT: number; endT: number }>
+  /** Quality tier driving asphalt texture resolution/detail. Defaults to medium. */
+  qualityPresetId?: RacingQualityPresetId
 }
 
 const wrapTrackT = (t: number): number => {
@@ -68,12 +75,25 @@ const isTrackTExcluded = (
   return t >= interval.startT || t <= interval.endT
 })
 
-export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight, excludedIntervals = [] }) => {
+export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight, excludedIntervals = [], qualityPresetId = 'medium' }) => {
+  // Procedural asphalt — tarmac speckle (+ a baked normal map on high) instead of a
+  // flat grey fill. Shared by every track that renders this ribbon, so improving it
+  // here lifts Australia, Belgium and the imported tracks at once. The texture is
+  // tiled per world-unit so tarmac grain stays a consistent size on any track length:
+  // the ribbon's U spans the road width and its V spans the full track length.
+  const asphaltRepeat = useMemo(() => {
+    const tileWorldSize = getRacingSurfaceTextureConfig('asphalt', qualityPresetId).tileWorldSize
+    return {
+      x: getSurfaceTextureRepeat(TRACK_WIDTH, tileWorldSize),
+      y: getSurfaceTextureRepeat(curve.getLength(), tileWorldSize)
+    }
+  }, [curve, qualityPresetId])
+
   const geometry = useMemo(() => {
     // Create a custom ribbon geometry manually
     // This avoids the ExtrudeGeometry "twist" issues by explicitly using our computed frames
-    
-    const width = 18 // Wider track for better racing
+
+    const width = TRACK_WIDTH // Wider track for better racing
     const tubularSegments = segments
     const sampleStep = 1 / tubularSegments
     
@@ -169,7 +189,7 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
 
   // Create line geometry for markings
   const lineGeometry = useMemo(() => {
-    const width = 18 // Wider track for better racing
+    const width = TRACK_WIDTH // Wider track for better racing
     const linePositions = []
     const dashedLinePositions = []
     
@@ -338,12 +358,11 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
   return (
     <group>
       <mesh geometry={geometry} receiveShadow>
-        <meshStandardMaterial 
-          color="#333" 
-          roughness={0.8}
-          metalness={0.1}
-          side={THREE.DoubleSide}
-          flatShading={true}
+        <RacingSurfaceMaterial
+          surface="asphalt"
+          qualityPresetId={qualityPresetId}
+          repeat={asphaltRepeat}
+          color="#333"
         />
       </mesh>
       

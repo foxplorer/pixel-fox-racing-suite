@@ -18,6 +18,8 @@ import { CarTrackWorldShell } from '../../racing/components/CarTrackWorldShell'
 import { CarTrackLocalVehicle } from '../../racing/components/CarTrackLocalVehicle'
 import { useCarTrackWorldRuntime } from '../../racing/components/useCarTrackWorldRuntime'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
+import { getRacingSurfaceTextureConfig, getSurfaceTextureRepeat } from '../../racing/components/materials/proceduralSurfaceConfig'
+import { RacingSurfaceMaterial } from '../../racing/components/materials/RacingSurfaceMaterial'
 import { sanLuisCarTrackDefinition } from '../../racing/tracks/carTrackDefinitions'
 import { RacingCameraControlButtons } from '../../racing/components/RacingCameraControlButtons'
 
@@ -43,7 +45,7 @@ interface FoxRacingWorldProps {
   items?: GameItem[]
   onCollectItem?: (itemId: string) => void
   otherPlayers?: RacingWorldPlayer[]
-  onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number) => void
+  onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
   cameraMode?: CameraMode
@@ -266,7 +268,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     return (
       <CarTrackShowroomShell canvasQuality={worldRuntime.canvasQuality}>
         {gameStatus === 'showroom' && (
-           <Showroom foxOriginOutpoint={foxOriginOutpoint} backgroundRemovalStrategy={backgroundRemovalStrategy} playerColor={playerColor} />
+           <Showroom foxOriginOutpoint={foxOriginOutpoint} backgroundRemovalStrategy={backgroundRemovalStrategy} playerColor={playerColor} qualityPresetId={worldRuntime.qualityPreset.id} />
         )}
       </CarTrackShowroomShell>
     )
@@ -306,10 +308,12 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
             receiveShadow
           >
             <planeGeometry args={[8000, 8000]} />
-            <meshStandardMaterial
+            <RacingSurfaceMaterial
+              surface="grass"
+              qualityPresetId={qualityPresetId}
+              repeat={getSurfaceTextureRepeat(8000, getRacingSurfaceTextureConfig('grass', qualityPresetId).tileWorldSize)}
               color="#4a7c59"
-              roughness={0.8}
-              metalness={0.1}
+              side={THREE.FrontSide}
             />
           </mesh>
           <DistantMountains radius={2000} layers={5} />
@@ -330,6 +334,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       localVehicle={(
         <CarTrackLocalVehicle
           VehicleComponent={FreeRoamCar}
+          qualityPresetId={qualityPresetId}
           foxOriginOutpoint={foxOriginOutpoint}
           backgroundRemovalStrategy={backgroundRemovalStrategy}
           playerColor={playerColor}

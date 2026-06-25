@@ -66,6 +66,7 @@ interface PixelRacingPlayer {
   position: { x: number; y: number; z: number }
   rotation: { x: number; y: number; z: number }
   speed: number
+  headlightsEnabled?: boolean
   carColor: string
   gameStatus: 'idle' | 'showroom' | 'loading' | 'countdown' | 'racing' | 'crashed' | 'finished'
   trackName?: string
@@ -97,6 +98,7 @@ function serializablePlayers() {
       position: player.position,
       rotation: player.rotation,
       speed: player.speed,
+      headlightsEnabled: player.headlightsEnabled,
       carColor: player.carColor,
       gameStatus: player.gameStatus,
       trackName: player.trackName,
@@ -199,6 +201,7 @@ pixelRacingIo.on('connection', socket => {
       position: { x: startPos.x, y: startPos.y || 0.1, z: startPos.z },
       rotation: { x: 0, y: 0, z: 0 },
       speed: 0,
+      headlightsEnabled: false,
       carColor: data.carColor || '#FF6B6B',
       gameStatus: 'showroom',
       trackName: validateTrackName(data.trackName) || 'Australia',
@@ -231,12 +234,14 @@ pixelRacingIo.on('connection', socket => {
     position: { x: number; y: number; z: number }
     rotation: { x: number; y: number; z: number }
     speed: number
+    headlightsEnabled?: boolean
   }) => {
     const player = pixelRacingState.players.get(socket.id)
     if (!player) return
     player.position = { ...data.position }
     player.rotation = { ...data.rotation }
     player.speed = data.speed
+    player.headlightsEnabled = Boolean(data.headlightsEnabled)
 
     if (['loading', 'countdown', 'racing', 'crashed', 'finished'].includes(player.gameStatus)) {
       socket.broadcast.to(ROOM_ID).emit('playerPositionUpdate', {
@@ -244,6 +249,7 @@ pixelRacingIo.on('connection', socket => {
         position: player.position,
         rotation: player.rotation,
         speed: player.speed,
+        headlightsEnabled: player.headlightsEnabled,
       })
     }
   })

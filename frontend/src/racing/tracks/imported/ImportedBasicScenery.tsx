@@ -59,7 +59,11 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
   onTreesGenerated,
   onBoardsGenerated
 }) => {
+  // The billboard forest replaces the simple instanced trees on tracks that opt into it,
+  // so when `forest` is on we generate no simple-tree placements at all — that drops both
+  // their meshes and the collision targets reported via onTreesGenerated.
   const trees = useMemo(() => {
+    if (forest) return []
     const placements = createImportedBasicTreePlacements(trackDefinition.trackCurve, qualityPreset, treeOptions)
     if (!getHeightAtPosition) return placements
 
@@ -67,7 +71,7 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
       ...tree,
       y: getHeightAtPosition(tree.x, tree.z)
     }))
-  }, [getHeightAtPosition, qualityPreset, trackDefinition.trackCurve, treeOptions])
+  }, [forest, getHeightAtPosition, qualityPreset, trackDefinition.trackCurve, treeOptions])
 
   const boards = useMemo(() => {
     return createImportedBasicAdvertisingBoards(trackDefinition.trackCurve, boardOptions)
@@ -93,7 +97,7 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
           species={forestSpecies}
         />
       )}
-      <TreeInstances trees={trees} palette={treePalette} />
+      {!forest && <TreeInstances trees={trees} palette={treePalette} />}
       {boards.map((board, index) => (
         <CurvedBoard
           key={`imported-basic-board-${trackDefinition.trackId}-${index}`}

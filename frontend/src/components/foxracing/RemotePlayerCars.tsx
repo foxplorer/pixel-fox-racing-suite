@@ -20,6 +20,7 @@ export const RemotePlayerCars: React.FC<RemotePlayerCarsProps> = ({ players, get
         foxTextureUrl={player.foxTextureUrl}
         chatMessage={player.chatMessage}
         chatTimestamp={player.chatTimestamp}
+        headlightsEnabled={player.headlightsEnabled}
         lodTier={player.remoteLodTier}
         getHeightAtPosition={getHeightAtPosition}
       />

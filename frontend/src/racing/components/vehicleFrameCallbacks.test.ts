@@ -33,7 +33,7 @@ test('notifyManualCameraControlUsed only fires for active controls in manual cam
   assert.equal(calls, 1)
 })
 
-test('notifyVehiclePositionUpdate forwards position, rotation, and speed', () => {
+test('notifyVehiclePositionUpdate forwards position, rotation, speed, and headlights state', () => {
   const position = { x: 1, y: 2, z: 3 }
   let received: unknown[] = []
 
@@ -41,12 +41,13 @@ test('notifyVehiclePositionUpdate forwards position, rotation, and speed', () =>
     position,
     rotation: 4,
     speed: 5,
+    headlightsEnabled: true,
     onPositionUpdate: (...args) => {
       received = args
     }
   })
 
-  assert.deepEqual(received, [position, 4, 5])
+  assert.deepEqual(received, [position, 4, 5, true])
 })
 
 test('commitVehiclePose copies position and writes rotation by default', () => {

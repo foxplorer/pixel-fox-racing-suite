@@ -21,7 +21,8 @@ const payload: PlayerPositionSocketPayload = {
   playerId: 'remote-1',
   position: { x: 3, y: 4, z: 5 },
   rotation: { x: 0, y: 1.25, z: 0 },
-  speed: 7
+  speed: 7,
+  headlightsEnabled: true
 }
 
 test('applyPlayerPositionUpdate syncs a matching remote player', () => {
@@ -31,7 +32,7 @@ test('applyPlayerPositionUpdate syncs a matching remote player', () => {
   ]
 
   assert.deepEqual(applyPlayerPositionUpdate(players, payload), [
-    { id: 'remote-1', name: 'One', position: [3, 4, 5], rotation: [0, 1.25, 0], isWalking: true },
+    { id: 'remote-1', name: 'One', position: [3, 4, 5], rotation: [0, 1.25, 0], isWalking: true, headlightsEnabled: true },
     { id: 'remote-2', name: 'Two', position: [1, 1, 1], rotation: [0, 0, 0], isWalking: false }
   ])
 })
@@ -48,7 +49,8 @@ test('toQueuedPlayerPositionUpdate converts socket vectors to tuple state', () =
   assert.deepEqual(toQueuedPlayerPositionUpdate(payload), {
     position: [3, 4, 5],
     rotation: [0, 1.25, 0],
-    speed: 7
+    speed: 7,
+    headlightsEnabled: true
   })
 })
 
@@ -62,7 +64,7 @@ test('applyQueuedPlayerPositionUpdates syncs queued speed-aware players', () => 
   ])
 
   assert.deepEqual(applyQueuedPlayerPositionUpdates(players, updates), [
-    { id: 'remote-1', name: 'One', position: [3, 4, 5], rotation: [0, 1.25, 0], isWalking: true, speed: 7 },
+    { id: 'remote-1', name: 'One', position: [3, 4, 5], rotation: [0, 1.25, 0], isWalking: true, speed: 7, headlightsEnabled: true },
     { id: 'remote-2', name: 'Two', position: [1, 1, 1], rotation: [0, 0, 0], isWalking: true, speed: 3 }
   ])
 })
@@ -76,6 +78,6 @@ test('applyQueuedPlayerPositionUpdates syncs players without adding speed fields
   ])
 
   assert.deepEqual(applyQueuedPlayerPositionUpdates(players, updates), [
-    { id: 'remote-1', name: 'One', position: [3, 4, 5], rotation: [0, 1.25, 0], isWalking: true }
+    { id: 'remote-1', name: 'One', position: [3, 4, 5], rotation: [0, 1.25, 0], isWalking: true, headlightsEnabled: true }
   ])
 })

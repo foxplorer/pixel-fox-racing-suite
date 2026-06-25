@@ -93,7 +93,7 @@ interface FoxRacingWorldProps {
   items?: GameItem[]
   onCollectItem?: (itemId: string) => void
   otherPlayers?: RacingWorldPlayer[]
-  onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number) => void
+  onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
   cameraMode?: CameraMode
@@ -521,6 +521,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
             backgroundRemovalStrategy={backgroundRemovalStrategy}
             playerColor={playerColor}
             vehicleType="car"
+            qualityPresetId={worldRuntime.qualityPreset.id}
             onFoxLoaded={onShowroomLoaded}
           />
         )}
@@ -563,6 +564,8 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
               resolution={renderBudget.terrainResolution}
               yOffset={renderBudget.terrainYOffset}
               color={terrainColor}
+              qualityPresetId={worldRuntime.qualityPreset.id}
+              surface={isVolcano ? 'volcanic-rock' : 'grass'}
             />
           ) : (
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.2, 0]} receiveShadow>
@@ -602,6 +605,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
             segments={worldRuntime.trackSegments}
             getHeight={terrainHeightSampler}
             excludedIntervals={lavaPitRoadExclusionIntervals}
+            qualityPresetId={worldRuntime.qualityPreset.id}
           />
           {!isTerrainAwareScenery && sceneryMode === 'australia' && <AdvertisingBoards onBoardsGenerated={setAdvertisingBoardPositions} />}
           {!isTerrainAwareScenery && sceneryMode === 'australia' && <StadiumSeating isSoundEnabled={isSoundEnabled} />}
@@ -634,6 +638,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       localVehicle={(
         <CarTrackLocalVehicle
           VehicleComponent={FreeRoamCar}
+          qualityPresetId={worldRuntime.qualityPreset.id}
           foxOriginOutpoint={foxOriginOutpoint}
           backgroundRemovalStrategy={backgroundRemovalStrategy}
           playerColor={playerColor}

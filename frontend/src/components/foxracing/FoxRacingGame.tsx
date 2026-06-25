@@ -296,7 +296,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   }, [gameStatus, hasJoined])
   
   // Callback to emit position updates to socket for multiplayer and update minimap
-  const handlePositionUpdateForSocket = useCallback((position: THREE.Vector3, rotation: number, speed: number) => {
+  const handlePositionUpdateForSocket = useCallback((position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => {
     // Update car position for minimap
     setCarPosition({ x: position.x, y: position.y, z: position.z })
     
@@ -304,7 +304,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       socketRef.current.emit('updatePosition', {
         position: { x: position.x, y: position.y, z: position.z },
         rotation: { x: 0, y: rotation, z: 0 }, // Only Y rotation for car
-        speed: speed
+        speed: speed,
+        headlightsEnabled: Boolean(headlightsEnabled)
       })
     }
   }, [])
@@ -324,6 +325,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     originOutpoint?: string
     chatMessage?: string
     chatTimestamp?: number
+    headlightsEnabled?: boolean
   }>>([])
   const otherPlayersRef = useRef(otherPlayers)
   const queueRemotePlayerPositionUpdate = useBatchedPlayerPositionUpdates(setOtherPlayers)

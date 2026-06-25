@@ -7,6 +7,7 @@ import { UnitedKingdomScenery } from './unitedKingdom/unitedKingdomScenery'
 import { ImportedBasicScenery } from './ImportedBasicScenery'
 import { VolcanoCaveScenery } from './volcanoes/VolcanoCaveScenery'
 import type { BillboardForestOptions } from '../../components/forest/billboardForestPlacement'
+import { TrackBirds } from '../../components/birds/TrackBirds'
 
 export interface ImportedSceneryTreePlacement {
   x: number
@@ -41,55 +42,57 @@ export const ImportedCarTrackScenery: React.FC<ImportedCarTrackSceneryProps> = (
   onTreesGenerated,
   onBoardsGenerated
 }) => {
-  switch (trackDefinition.trackId) {
-    case 'volcanoes':
-      return (
-        <VolcanoCaveScenery
-          trackDefinition={trackDefinition}
-          qualityPreset={qualityPreset}
-          getHeightAtPosition={getHeightAtPosition}
-          forestOptions={forestOptions}
-          onTreesGenerated={onTreesGenerated}
-          onBoardsGenerated={onBoardsGenerated}
-        />
-      )
-    case 'united-kingdom':
-      return (
-        <UnitedKingdomScenery
-          trackCurve={trackDefinition.trackCurve}
-          qualityPreset={qualityPreset}
-          getHeightAtPosition={getHeightAtPosition}
-          forestOptions={forestOptions}
-          onTreesGenerated={onTreesGenerated}
-          onBoardsGenerated={onBoardsGenerated}
-        />
-      )
-    case 'australia':
-    case 'belgium':
-    case 'germany':
-      return (
-        <ImportedBasicScenery
-          trackDefinition={trackDefinition}
-          qualityPreset={qualityPreset}
-          getHeightAtPosition={getHeightAtPosition}
-          showBoardTextureLogos
-          forest
-          forestOptions={forestOptions}
-          onTreesGenerated={onTreesGenerated}
-          onBoardsGenerated={onBoardsGenerated}
-        />
-      )
-    default:
-      return (
-        <ImportedBasicScenery
-          trackDefinition={trackDefinition}
-          qualityPreset={qualityPreset}
-          getHeightAtPosition={getHeightAtPosition}
-          forest
-          forestOptions={forestOptions}
-          onTreesGenerated={onTreesGenerated}
-          onBoardsGenerated={onBoardsGenerated}
-        />
-      )
+  // The volcano cave is enclosed, so birds only make sense over the open-sky billboard
+  // tracks. Everything else routed through here shares the same flock layer.
+  if (trackDefinition.trackId === 'volcanoes') {
+    return (
+      <VolcanoCaveScenery
+        trackDefinition={trackDefinition}
+        qualityPreset={qualityPreset}
+        getHeightAtPosition={getHeightAtPosition}
+        forestOptions={forestOptions}
+        onTreesGenerated={onTreesGenerated}
+        onBoardsGenerated={onBoardsGenerated}
+      />
+    )
   }
+
+  const scenery = trackDefinition.trackId === 'united-kingdom'
+    ? (
+      <UnitedKingdomScenery
+        trackCurve={trackDefinition.trackCurve}
+        qualityPreset={qualityPreset}
+        getHeightAtPosition={getHeightAtPosition}
+        forestOptions={forestOptions}
+        onTreesGenerated={onTreesGenerated}
+        onBoardsGenerated={onBoardsGenerated}
+      />
+    )
+    : (
+      <ImportedBasicScenery
+        trackDefinition={trackDefinition}
+        qualityPreset={qualityPreset}
+        getHeightAtPosition={getHeightAtPosition}
+        showBoardTextureLogos={
+          trackDefinition.trackId === 'australia' ||
+          trackDefinition.trackId === 'belgium' ||
+          trackDefinition.trackId === 'germany'
+        }
+        forest
+        forestOptions={forestOptions}
+        onTreesGenerated={onTreesGenerated}
+        onBoardsGenerated={onBoardsGenerated}
+      />
+    )
+
+  return (
+    <>
+      {scenery}
+      <TrackBirds
+        trackCurve={trackDefinition.trackCurve}
+        qualityPreset={qualityPreset}
+        getHeightAtPosition={getHeightAtPosition}
+      />
+    </>
+  )
 }

@@ -50,6 +50,7 @@ import { applyVehicleVisualSurfaceFrameRotation, createVehicleVisualSurfaceFrame
 import { collectFirstNearbyItem } from '../../racing/collectibles/collectiblePickup'
 import { useReportedSpawnPosition, useVehicleLoadedNotification, useVehicleStatusCallback } from '../../racing/components/useVehicleLoadedNotification'
 import { CarTrackVehicleModel } from '../../racing/components/CarTrackVehicleModel'
+import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import type { RacingGameCollectibleItem as GameItem } from '../../racing/collectibles/collectibleTypes'
 import type { RacingWorldPlayerCollisionTarget } from '../../racing/multiplayer/worldPlayers'
 import type { SpatialTrackIndex } from '../../racing/core/spatialTrackIndex'
@@ -67,6 +68,7 @@ interface FreeRoamCarProps {
   foxOriginOutpoint?: string | null
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
+  qualityPresetId?: RacingQualityPresetId
   gameStatus: GameStatus
   countdown?: number
   isManualCamera?: boolean
@@ -92,7 +94,7 @@ interface FreeRoamCarProps {
   onCrash?: () => void
   advertisingBoards?: RacingAdvertisingBoard[]
   onDistanceUpdate?: (distance: number) => void
-  onPositionUpdate?: (position: THREE.Vector3, rotation?: number, speed?: number) => void
+  onPositionUpdate?: (position: THREE.Vector3, rotation?: number, speed?: number, headlightsEnabled?: boolean) => void
   onLapComplete?: (lapTime: number) => void
   onLapTimeUpdate?: (currentLapTime: number) => void // Callback to update visual timer with current lap time
   onSpeedUpdate?: (speed: number) => void // Callback to update speed display (m/s)
@@ -112,6 +114,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   foxOriginOutpoint,
   backgroundRemovalStrategy = 'default',
   playerColor,
+  qualityPresetId,
   gameStatus,
   countdown = 0,
   isManualCamera = false,
@@ -150,6 +153,8 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
 }) => {
   const { camera } = useThree()
   const carRef = useRef<THREE.Group>(null)
+  const [headlightsEnabled, setHeadlightsEnabled] = useState(false)
+  const headlightsEnabledRef = useRef(false)
   const carVisualRef = useRef<THREE.Group>(null)
 
   // Lava burn-up death sequence (Volcanoes): alive → red-hot → explode → game over.
@@ -270,7 +275,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     vehicleRef: carRef,
     onVehicleLoaded: onCarLoaded,
     onLoaded: () => {
-      onPositionUpdate?.(position.current, rotation.current, speed.current)
+      onPositionUpdate?.(position.current, rotation.current, speed.current, headlightsEnabledRef.current)
     }
   })
   
@@ -278,7 +283,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     gameStatus,
     targetStatus: 'countdown',
     onStatusReached: onPositionUpdate
-      ? () => onPositionUpdate(position.current, rotation.current, speed.current)
+      ? () => onPositionUpdate(position.current, rotation.current, speed.current, headlightsEnabledRef.current)
       : undefined
   })
   
@@ -314,6 +319,12 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     isGasSoundPlaying,
     onGasPressed,
     onGasReleased,
+    onHeadlightsToggle: () => setHeadlightsEnabled(enabled => {
+      const nextValue = !enabled
+      headlightsEnabledRef.current = nextValue
+      onPositionUpdate?.(position.current, rotation.current, speed.current, nextValue)
+      return nextValue
+    }),
     onGasPlayError: err => logRacingDiagnostic('Gas sound play failed:', err)
   })
 
@@ -926,6 +937,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       position: position.current,
       rotation: rotation.current,
       speed: speed.current,
+      headlightsEnabled: headlightsEnabledRef.current,
       onPositionUpdate
     })
 
@@ -1139,6 +1151,8 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
           foxOriginOutpoint={foxOriginOutpoint}
           backgroundRemovalStrategy={backgroundRemovalStrategy}
           playerColor={playerColor}
+          qualityPresetId={qualityPresetId}
+          headlightsEnabled={headlightsEnabled}
           localChatMessage={localChatMessage}
         />
       </group>

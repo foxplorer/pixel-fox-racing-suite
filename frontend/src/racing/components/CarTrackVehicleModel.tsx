@@ -1,21 +1,47 @@
 import React from 'react'
 import { VoxelFox } from '../../components/VoxelFox'
 import type { VoxelBackgroundRemovalStrategy } from '../../components/voxelization/voxelBackgroundStrategy'
+import type { RacingQualityPresetId } from '../performance/qualitySettings'
 import { getOrdinalContentUrl } from '../transactions/ordinalLinks'
+import { CarHeadlightBeam } from './CarHeadlightBeam'
+import { CarTrackVehicleModelDetailed } from './CarTrackVehicleModelDetailed'
 
 interface CarTrackVehicleModelProps {
   foxOriginOutpoint?: string | null
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
   localChatMessage?: { text: string; timestamp: number } | null
+  qualityPresetId?: RacingQualityPresetId
+  headlightsEnabled?: boolean
+  /** Fired once the fox texture finishes loading (used by the showroom loading indicator). */
+  onFoxLoaded?: () => void
 }
 
 export const CarTrackVehicleModel: React.FC<CarTrackVehicleModelProps> = ({
   foxOriginOutpoint,
   backgroundRemovalStrategy = 'default',
   playerColor,
-  localChatMessage = null
+  localChatMessage = null,
+  qualityPresetId = 'low',
+  headlightsEnabled = false,
+  onFoxLoaded
 }) => {
+  // Low keeps the lightweight boxy kart; Medium/High get the sculpted sports-car model,
+  // with High adding extra trim and a clearcoat finish.
+  if (qualityPresetId === 'medium' || qualityPresetId === 'high') {
+    return (
+      <CarTrackVehicleModelDetailed
+        foxOriginOutpoint={foxOriginOutpoint}
+        backgroundRemovalStrategy={backgroundRemovalStrategy}
+        playerColor={playerColor}
+        localChatMessage={localChatMessage}
+        highDetail={qualityPresetId === 'high'}
+        headlightsEnabled={headlightsEnabled}
+        onFoxLoaded={onFoxLoaded}
+      />
+    )
+  }
+
   return (
     <group rotation={[0, Math.PI, 0]}>
       <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
@@ -37,6 +63,46 @@ export const CarTrackVehicleModel: React.FC<CarTrackVehicleModelProps> = ({
         <boxGeometry args={[2, 0.7, 1.0]} />
         <meshStandardMaterial color={playerColor} metalness={0.8} roughness={0.2} />
       </mesh>
+
+      {/* Headlights */}
+      {[-0.55, 0.55].map(x => (
+        <mesh key={x} position={[x, 0.55, 1.92]}>
+          <boxGeometry args={[0.34, 0.14, 0.08]} />
+          <meshStandardMaterial
+            color={headlightsEnabled ? '#fffbe0' : '#c9c2a4'}
+            emissive={headlightsEnabled ? '#fff4c2' : '#000000'}
+            emissiveIntensity={headlightsEnabled ? 1.8 : 0}
+          />
+        </mesh>
+      ))}
+
+      {headlightsEnabled && (
+        <>
+          {[-0.55, 0.55].map(x => (
+            <pointLight
+              key={`headlight-glow-${x}`}
+              position={[x, 0.55, 2.05]}
+              color="#fff4c2"
+              intensity={2.2}
+              distance={18}
+              decay={1.6}
+            />
+          ))}
+          {[-0.55, 0.55].map(x => (
+            <CarHeadlightBeam
+              key={`headlight-beam-${x}`}
+              x={x}
+              lightPosition={[x, 0.6, 2.85]}
+              targetPosition={[x, -0.8, 72]}
+              intensity={26}
+              distance={140}
+              angle={0.36}
+              penumbra={0.65}
+              decay={0.75}
+            />
+          ))}
+        </>
+      )}
 
       <mesh position={[0, 0.55, -1.4]} castShadow receiveShadow>
         <boxGeometry args={[2, 0.7, 1.0]} />
@@ -120,6 +186,7 @@ export const CarTrackVehicleModel: React.FC<CarTrackVehicleModelProps> = ({
           color={playerColor}
           message={localChatMessage?.text}
           messageTime={localChatMessage?.timestamp}
+          onTextureLoaded={onFoxLoaded}
         />
       </group>
     </group>

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react'
+import React, { useRef, useEffect, useMemo, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { VoxelBackgroundRemovalStrategy } from '../voxelization/voxelBackgroundStrategy'
@@ -17,6 +17,7 @@ import { createPreloadedAudio } from '../../racing/components/audioElements'
 import { commitVehiclePose, notifyManualCameraControlUsed, notifyVehiclePositionUpdate } from '../../racing/components/vehicleFrameCallbacks'
 import { useVehicleLoadedNotification } from '../../racing/components/useVehicleLoadedNotification'
 import { CarTrackVehicleModel } from '../../racing/components/CarTrackVehicleModel'
+import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import { getTrackRuntimeConfig } from '../../racing/tracks/trackRuntimeConfig'
 import { getCarSurfaceVisualY } from '../../racing/vehicles/carBounce'
 import { capCameraDelta, clampCameraDistance, getCarCameraSmoothingRate, getExponentialSmoothingFactor, SHARED_CAR_CAMERA } from '../../racing/vehicles/carCamera'
@@ -36,6 +37,7 @@ interface FreeRoamCarProps {
   foxOriginOutpoint?: string | null
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
+  qualityPresetId?: RacingQualityPresetId
   gameStatus: GameStatus
   countdown?: number
   isManualCamera?: boolean
@@ -45,7 +47,7 @@ interface FreeRoamCarProps {
   treePositions?: Array<{ x: number; z: number; scale: number; radius: number }>
   startingGatePoles?: Array<{ x: number; z: number; radius: number }>
   onDistanceUpdate?: (distance: number) => void
-  onPositionUpdate?: (position: THREE.Vector3, rotation?: number, speed?: number) => void
+  onPositionUpdate?: (position: THREE.Vector3, rotation?: number, speed?: number, headlightsEnabled?: boolean) => void
   onLapComplete?: (lapTime: number) => void
   onLapTimeUpdate?: (currentLapTime: number) => void // Callback to update visual timer with current lap time
   onSpeedUpdate?: (speed: number) => void // Callback to update speed display (m/s)
@@ -65,6 +67,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   foxOriginOutpoint,
   backgroundRemovalStrategy = 'default',
   playerColor,
+  qualityPresetId,
   gameStatus,
   countdown = 0,
   isManualCamera = false,
@@ -91,6 +94,8 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
 }) => {
   const { camera } = useThree()
   const carRef = useRef<THREE.Group>(null)
+  const [headlightsEnabled, setHeadlightsEnabled] = useState(false)
+  const headlightsEnabledRef = useRef(false)
   
   // Initialize position from spawnPosition if provided, otherwise default to start line
   const initialPosition = spawnPosition 
@@ -203,6 +208,12 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     isGasSoundPlaying,
     onGasPressed,
     onGasReleased,
+    onHeadlightsToggle: () => setHeadlightsEnabled(enabled => {
+      const nextValue = !enabled
+      headlightsEnabledRef.current = nextValue
+      onPositionUpdate?.(position.current, rotation.current, speed.current, nextValue)
+      return nextValue
+    }),
     onGasPlayError: err => logRacingDiagnostic('Gas sound play failed:', err)
   })
 
@@ -392,6 +403,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       position: position.current,
       rotation: rotation.current,
       speed: speed.current,
+      headlightsEnabled: headlightsEnabledRef.current,
       onPositionUpdate
     })
     
@@ -491,6 +503,8 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
         foxOriginOutpoint={foxOriginOutpoint}
         backgroundRemovalStrategy={backgroundRemovalStrategy}
         playerColor={playerColor}
+        qualityPresetId={qualityPresetId}
+        headlightsEnabled={headlightsEnabled}
         localChatMessage={localChatMessage}
       />
     </group>
