@@ -25,6 +25,9 @@ interface RacingSurfaceMaterialProps {
   roughness?: number
   /** Metalness for the fallback material (textured surfaces use their own budget). */
   metalness?: number
+  roughnessOverride?: number
+  metalnessOverride?: number
+  colorOverride?: string
   side?: THREE.Side
 }
 
@@ -35,6 +38,9 @@ export const RacingSurfaceMaterial: React.FC<RacingSurfaceMaterialProps> = ({
   color = '#4a8c59',
   roughness = 0.86,
   metalness = 0.05,
+  roughnessOverride,
+  metalnessOverride,
+  colorOverride,
   side = THREE.DoubleSide
 }) => {
   // Depend on the numeric repeat components, not the `repeat` object's identity, so a
@@ -49,7 +55,14 @@ export const RacingSurfaceMaterial: React.FC<RacingSurfaceMaterialProps> = ({
   useEffect(() => () => textures?.dispose(), [textures])
 
   if (!textures) {
-    return <meshStandardMaterial color={color} roughness={roughness} metalness={metalness} side={side} />
+    return (
+      <meshStandardMaterial
+        color={colorOverride ?? color}
+        roughness={roughnessOverride ?? roughness}
+        metalness={metalnessOverride ?? metalness}
+        side={side}
+      />
+    )
   }
 
   return (
@@ -59,9 +72,9 @@ export const RacingSurfaceMaterial: React.FC<RacingSurfaceMaterialProps> = ({
       normalScale={textures.normalMap
         ? new THREE.Vector2(textures.config.normalScale, textures.config.normalScale)
         : undefined}
-      color="#ffffff"
-      roughness={textures.config.roughness}
-      metalness={textures.config.metalness}
+      color={colorOverride ?? '#ffffff'}
+      roughness={roughnessOverride ?? textures.config.roughness}
+      metalness={metalnessOverride ?? textures.config.metalness}
       side={side}
     />
   )

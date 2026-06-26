@@ -209,6 +209,56 @@ Pick one small task:
 
 Avoid starting with a broad visual rewrite.
 
+## Pending Backlog (added 2026-06-25)
+
+Two follow-ups raised during the road-paint work. Both are paused, not started.
+
+### 1. Advertising boards: consolidate, then add low/medium/high blue "paint"
+
+The blue board panels read as flat plain blue (panel fill `#36bffa`), the same way the
+edge/centre line paint did before it got a procedural texture. We want the board's blue
+surface to get a shared procedural panel texture (subtle tonal variation, fine brushed/
+scuffed grain, faint grime) with low/medium/high tiers, ideally driven through the existing
+`proceduralSurface*` material system rather than per-board copies. Logos stay untouched.
+
+Blocker discovered: there are FOUR near-duplicate board components (copy-paste descendants of
+one original `CurvedBoard` that have since drifted), so adding the texture naively means
+editing the same blue-fill path four times:
+
+- `frontend/src/components/foxracing/AdvertisingBoards.tsx` — Australia. `meshStandardMaterial`,
+  blue `#36bffa`, logos baked into the canvas.
+- `frontend/src/components/foxracingbelgium/AdvertisingBoards.tsx` — shared by Belgium, Germany,
+  and United Kingdom (imported tracks import its `CurvedBoard` / `BoardLogoDecal`).
+  `meshBasicMaterial` + `#777777` colour modulation, separate `BoardLogoDecal`, and a gradual
+  GPU texture-upload throttle (`showTextureLogos`).
+- `frontend/src/components/foxracingaspen/AdvertisingBoards.tsx` — Aspen (snow), close to Australia.
+- `frontend/src/components/snowmobilerace/TerrainAwareAdvertisingBoards.tsx` — Snowmobile,
+  terrain-aware variant (height sampling, `globalTrackLength`, `cumulativeLengthBefore`).
+
+Volcanoes and San Luis render NO boards, so they are out of scope by definition.
+
+No board component currently receives `qualityPresetId`; it would need threading from each
+world (the worlds already have it). User scope decision on record: apply to ALL boarded tracks
+(the 4 car tracks plus Aspen and Snowmobile), not car-tracks-only.
+
+Recommended order: CONSOLIDATE the four into one parameterised `CurvedBoard` first
+(props for material mode, terrain sampler, logo strategy), delete the duplicates, THEN add the
+blue panel texture once. The geometry building (front/back/edge/top-bottom faces, UV
+orientation toggles, support posts) is ~60-70% identical across the four. If a full refactor is
+too risky in one pass, fallback is to build the shared `proceduralBoardPanel` texture module
+once and wire it into all four with quality plumbing, then consolidate later.
+
+### 2. Headlights don't consistently illuminate track, grass, or boards
+
+While driving, the car headlights sometimes stop shining on the track/grass surfaces, and they
+do not shine on the advertising boards at all. Likely causes to investigate: per-material light
+limits / `onBeforeCompile` light counts, the boards using `meshBasicMaterial` (unlit — would
+never receive headlight light by design), surfaces falling outside the spotlight cone/range as
+the car moves, or shared `activeLightScale` budget culling the headlight. Confirm whether boards
+are intended to be self-lit (Belgium boards deliberately use `meshBasicMaterial` for perf) before
+"fixing" them to receive light. Relevant: `frontend/src/racing/components/CarHeadlightBeam.tsx`
+and the per-surface materials.
+
 ## Verification Requirements
 
 For code changes:

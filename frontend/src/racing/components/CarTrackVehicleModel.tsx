@@ -3,7 +3,6 @@ import { VoxelFox } from '../../components/VoxelFox'
 import type { VoxelBackgroundRemovalStrategy } from '../../components/voxelization/voxelBackgroundStrategy'
 import type { RacingQualityPresetId } from '../performance/qualitySettings'
 import { getOrdinalContentUrl } from '../transactions/ordinalLinks'
-import { CarHeadlightBeam } from './CarHeadlightBeam'
 import { CarTrackVehicleModelDetailed } from './CarTrackVehicleModelDetailed'
 
 interface CarTrackVehicleModelProps {
@@ -86,19 +85,6 @@ export const CarTrackVehicleModel: React.FC<CarTrackVehicleModelProps> = ({
               intensity={2.2}
               distance={18}
               decay={1.6}
-            />
-          ))}
-          {[-0.55, 0.55].map(x => (
-            <CarHeadlightBeam
-              key={`headlight-beam-${x}`}
-              x={x}
-              lightPosition={[x, 0.6, 2.85]}
-              targetPosition={[x, -0.8, 72]}
-              intensity={26}
-              distance={140}
-              angle={0.36}
-              penumbra={0.65}
-              decay={0.75}
             />
           ))}
         </>

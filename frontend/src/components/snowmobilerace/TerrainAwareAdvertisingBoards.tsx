@@ -683,7 +683,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
   return (
     <group>
       <mesh geometry={frontFaceGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={frontTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -691,7 +691,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
       </mesh>
 
       <mesh geometry={backFaceGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={backTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -699,7 +699,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
       </mesh>
 
       <mesh geometry={leftEdgeFrontGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={leftEdgeTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -707,7 +707,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
       </mesh>
 
       <mesh geometry={leftEdgeBackGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={leftEdgeTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -715,7 +715,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
       </mesh>
 
       <mesh geometry={rightEdgeFrontGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={rightEdgeTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -723,7 +723,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
       </mesh>
 
       <mesh geometry={rightEdgeBackGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={rightEdgeTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -731,7 +731,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
       </mesh>
 
       <mesh geometry={topBottomGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           color="#1a5f8a"
           side={THREE.DoubleSide}
         />

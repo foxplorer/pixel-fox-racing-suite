@@ -50,6 +50,7 @@ import { applyVehicleVisualSurfaceFrameRotation, createVehicleVisualSurfaceFrame
 import { collectFirstNearbyItem } from '../../racing/collectibles/collectiblePickup'
 import { useReportedSpawnPosition, useVehicleLoadedNotification, useVehicleStatusCallback } from '../../racing/components/useVehicleLoadedNotification'
 import { CarTrackVehicleModel } from '../../racing/components/CarTrackVehicleModel'
+import { CarHeadlightBeam } from '../../racing/components/CarHeadlightBeam'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import type { RacingGameCollectibleItem as GameItem } from '../../racing/collectibles/collectibleTypes'
 import type { RacingWorldPlayerCollisionTarget } from '../../racing/multiplayer/worldPlayers'
@@ -69,6 +70,7 @@ interface FreeRoamCarProps {
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
   qualityPresetId?: RacingQualityPresetId
+  wetSurface?: boolean
   gameStatus: GameStatus
   countdown?: number
   isManualCamera?: boolean
@@ -108,6 +110,7 @@ interface FreeRoamCarProps {
   otherPlayers?: RacingWorldPlayerCollisionTarget[]
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
+  initialHeadlightsEnabled?: boolean
 }
 
 export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
@@ -115,6 +118,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   backgroundRemovalStrategy = 'default',
   playerColor,
   qualityPresetId,
+  wetSurface = false,
   gameStatus,
   countdown = 0,
   isManualCamera = false,
@@ -149,12 +153,13 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   onCollectItem,
   otherPlayers = [],
   spawnPosition = null,
-  localChatMessage = null
+  localChatMessage = null,
+  initialHeadlightsEnabled = true
 }) => {
   const { camera } = useThree()
   const carRef = useRef<THREE.Group>(null)
-  const [headlightsEnabled, setHeadlightsEnabled] = useState(false)
-  const headlightsEnabledRef = useRef(false)
+  const [headlightsEnabled, setHeadlightsEnabled] = useState(initialHeadlightsEnabled)
+  const headlightsEnabledRef = useRef(initialHeadlightsEnabled)
   const carVisualRef = useRef<THREE.Group>(null)
 
   // Lava burn-up death sequence (Volcanoes): alive → red-hot → explode → game over.
@@ -177,6 +182,11 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     return new THREE.Vector3(providedStartFinishPosition.x, trackY, providedStartFinishPosition.z)
   }
   const initialPosition = getInitialPosition()
+
+  useEffect(() => {
+    setHeadlightsEnabled(initialHeadlightsEnabled)
+    headlightsEnabledRef.current = initialHeadlightsEnabled
+  }, [initialHeadlightsEnabled])
   const position = useRef(initialPosition.clone()) // Car position follows track height
   const isInitialized = useRef(false) // Track if car has been initialized on track
   // Initialize rotation to face track direction at start/finish line
@@ -1146,6 +1156,9 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
 
   return (
     <group ref={carRef} position={[0, 0, 0]}>
+      {headlightsEnabled && [-0.55, 0.55].map(x => (
+        <CarHeadlightBeam key={`stable-headlight-beam-${x}`} x={x} localForward={-1} />
+      ))}
       <group ref={carVisualRef}>
         <CarTrackVehicleModel
           foxOriginOutpoint={foxOriginOutpoint}

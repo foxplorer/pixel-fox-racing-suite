@@ -726,14 +726,16 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
 
   return (
     <group>
-      {/* PERFORMANCE: Using meshBasicMaterial instead of meshStandardMaterial
-          - No complex PBR shader compilation needed
-          - No lighting calculations (boards are self-lit like real billboards)
-          - Much faster to render and compile */}
+      {/* Lit boards: meshStandardMaterial so the panels actually catch scene lighting,
+          including car headlights at night, instead of rendering fully self-lit and
+          letting the headlight beam pass straight through them. Per-fragment (standard,
+          not lambert) so a beam landing on the board's mid-section is shaded per pixel
+          on this low-poly geometry. Trade-off: more shader/light cost than the old
+          unlit meshBasicMaterial. */}
 
       {/* Front face with texture-mapped logos */}
       <mesh geometry={frontFaceGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={frontTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -742,7 +744,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
 
       {/* Back face with texture-mapped logos */}
       <mesh geometry={backFaceGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={backTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -751,7 +753,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
 
       {/* Left edge front face with texture-mapped logos */}
       <mesh geometry={leftEdgeFrontGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={leftEdgeTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -760,7 +762,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
 
       {/* Left edge back face with texture-mapped logos */}
       <mesh geometry={leftEdgeBackGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={leftEdgeTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -769,7 +771,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
 
       {/* Right edge front face with texture-mapped logos */}
       <mesh geometry={rightEdgeFrontGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={rightEdgeTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -778,7 +780,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
 
       {/* Right edge back face with texture-mapped logos */}
       <mesh geometry={rightEdgeBackGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           map={rightEdgeTexture || fallbackTexture}
           color="#777777"
           side={THREE.DoubleSide}
@@ -787,7 +789,7 @@ const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({ curve, startT, endT
 
       {/* Top and bottom edges with solid color (no texture) */}
       <mesh geometry={topBottomGeometry}>
-        <meshBasicMaterial
+        <meshStandardMaterial
           color="#1a5f8a"
           side={THREE.DoubleSide}
         />

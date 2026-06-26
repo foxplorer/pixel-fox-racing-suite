@@ -75,19 +75,6 @@ const RemoteCarHeadlights = memo<{ headlightsEnabled?: boolean }>(function Remot
               decay={1.6}
             />
           ))}
-          {[-0.55, 0.55].map(x => (
-            <CarHeadlightBeam
-              key={`remote-headlight-beam-${x}`}
-              x={x}
-              lightPosition={[x, 0.6, 2.85]}
-              targetPosition={[x, -0.8, 72]}
-              intensity={26}
-              distance={140}
-              angle={0.36}
-              penumbra={0.65}
-              decay={0.75}
-            />
-          ))}
         </>
       )}
     </>
@@ -337,6 +324,9 @@ export const OtherPlayerCar: React.FC<OtherPlayerCarProps> = ({
   return (
     <group ref={groupRef}>
       <group ref={rotationGroupRef}>
+        {headlightsEnabled && [-0.55, 0.55].map(x => (
+          <CarHeadlightBeam key={`stable-remote-headlight-beam-${x}`} x={x} localForward={-1} />
+        ))}
         <group ref={visualTiltGroupRef}>
           <group rotation={[0, Math.PI, 0]}>
             <RemoteCarVisual

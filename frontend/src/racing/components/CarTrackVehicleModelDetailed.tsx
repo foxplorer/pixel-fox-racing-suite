@@ -3,7 +3,6 @@ import { RoundedBox } from '@react-three/drei'
 import { VoxelFox } from '../../components/VoxelFox'
 import type { VoxelBackgroundRemovalStrategy } from '../../components/voxelization/voxelBackgroundStrategy'
 import { getOrdinalContentUrl } from '../transactions/ordinalLinks'
-import { CarHeadlightBeam } from './CarHeadlightBeam'
 
 interface CarTrackVehicleModelDetailedProps {
   foxOriginOutpoint?: string | null
@@ -178,19 +177,6 @@ export const CarTrackVehicleModelDetailed: React.FC<CarTrackVehicleModelDetailed
               intensity={highDetail ? 2.8 : 2.4}
               distance={highDetail ? 24 : 20}
               decay={1.5}
-            />
-          ))}
-          {[-0.5, 0.5].map(x => (
-            <CarHeadlightBeam
-              key={`headlight-beam-${x}`}
-              x={x}
-              lightPosition={[x, 0.6, 2.85]}
-              targetPosition={[x, -0.8, 72]}
-              intensity={26}
-              distance={140}
-              angle={0.36}
-              penumbra={0.65}
-              decay={0.75}
             />
           ))}
         </>

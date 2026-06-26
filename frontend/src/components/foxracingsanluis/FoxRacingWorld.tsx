@@ -22,6 +22,7 @@ import { getRacingSurfaceTextureConfig, getSurfaceTextureRepeat } from '../../ra
 import { RacingSurfaceMaterial } from '../../racing/components/materials/RacingSurfaceMaterial'
 import { sanLuisCarTrackDefinition } from '../../racing/tracks/carTrackDefinitions'
 import { RacingCameraControlButtons } from '../../racing/components/RacingCameraControlButtons'
+import { TrackBirds } from '../../racing/components/birds/TrackBirds'
 
 interface FoxRacingWorldProps {
   gameStatus: GameStatus
@@ -323,10 +324,16 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
             trackCurve={worldRuntime.trackCurve}
             onTreesGenerated={setTreePositions}
           />
+          <TrackBirds
+            trackCurve={worldRuntime.trackCurve}
+            qualityPreset={worldRuntime.qualityPreset}
+            getHeightAtPosition={getTerrainHeight}
+          />
           <Track
             curve={worldRuntime.trackCurve}
             frames={worldRuntime.trackFrames}
             segments={worldRuntime.trackSegments}
+            qualityPresetId={qualityPresetId}
           />
           <StadiumSeating isSoundEnabled={isSoundEnabled} />
         </>

@@ -8,7 +8,12 @@ import { resolveRacingQualityPresetId } from '../../performance/qualitySettings'
 // colour palette. The canvas/THREE texture builder consumes this config, and the
 // pure shape keeps the quality decisions unit-testable without a DOM.
 
-export type RacingSurfaceId = 'asphalt' | 'grass' | 'volcanic-rock'
+export type RacingSurfaceId =
+  | 'asphalt'
+  | 'grass'
+  | 'volcanic-rock'
+  | 'road-paint-yellow'
+  | 'road-paint-white'
 
 export interface RacingSurfacePalette {
   /** Base fill colour for the surface. */
@@ -30,7 +35,7 @@ export interface RacingSurfaceTextureConfig {
   detailPasses: number
   /** Texture anisotropy — sharpens the surface at grazing angles. */
   anisotropy: number
-  /** Whether to also bake a normal map (only worth it on the top tier). */
+  /** Whether to also bake a normal map. Disabled for shared racing surfaces by default. */
   normalMap: boolean
   /** Strength of the baked normal map, ignored when normalMap is false. */
   normalScale: number
@@ -42,13 +47,14 @@ export interface RacingSurfaceTextureConfig {
 }
 
 const SURFACE_PALETTES: Record<RacingSurfaceId, RacingSurfacePalette> = {
-  // Worn racing asphalt: charcoal base with clearly lighter aggregate stones and
-  // dark oil/shadow streaks so it reads as mottled tarmac rather than a flat fill.
+  // Worn racing asphalt: a mid-dark grey base (lifted from near-charcoal so it actually
+  // catches diffuse headlight instead of staying black at night) with lighter aggregate
+  // stones and dark oil/shadow streaks so it reads as mottled tarmac, not a flat fill.
   asphalt: {
-    base: '#3b3c41',
-    shadow: '#26272b',
-    highlight: '#5e616b',
-    accent: '#878a96'
+    base: '#4e4f56',
+    shadow: '#34353a',
+    highlight: '#6a6d77',
+    accent: '#979aa6'
   },
   // Mown trackside grass: a mid green with distinctly darker clumps and bright
   // sun-bleached tips so the turf reads as blades, not a single solid green sheet.
@@ -66,6 +72,24 @@ const SURFACE_PALETTES: Record<RacingSurfaceId, RacingSurfacePalette> = {
     shadow: '#41230f',
     highlight: '#a8602f',
     accent: '#d98a3e'
+  },
+  // Worn yellow edge paint: a real road yellow (not a flat saturated #FFD700) with
+  // grimy faded-down patches, sun-bleached bright streaks, and an accent that is dark
+  // tarmac — used for chips where the paint has worn through to the asphalt beneath, so
+  // the line reads as aged thermoplastic rather than a plastic-flat strip.
+  'road-paint-yellow': {
+    base: '#e3b021',
+    shadow: '#9a7414',
+    highlight: '#f7d65b',
+    accent: '#2f3034'
+  },
+  // Worn white centre-dash paint: an off-white road white that has greyed with grime,
+  // with fresh bright spots and the same dark-tarmac chip accent as the yellow paint.
+  'road-paint-white': {
+    base: '#d9d9cf',
+    shadow: '#9b9b90',
+    highlight: '#f5f5ef',
+    accent: '#2f3034'
   }
 }
 
@@ -74,13 +98,17 @@ const SURFACE_PALETTES: Record<RacingSurfaceId, RacingSurfacePalette> = {
 // first pass did) just multiplies the texture repeat, and once a texture repeats a few
 // hundred times across the ground the GPU mips it down to its average colour, so the
 // painted detail vanishes and only a flat tint remains. Keeping the tile fixed means
-// the detail stays the same real-world size and is genuinely visible near the camera;
-// quality then changes *sharpness and relief* (resolution + a baked normal map on high)
-// rather than shifting the average brightness. textureSize / detailPasses / anisotropy
-// are the real per-tier budget.
+// the detail stays the same real-world size and is genuinely visible near the camera.
+// Quality changes sharpness through resolution, detail passes, and anisotropy. Baked
+// tangent-space normals stay disabled for now because the moving headlight cone can
+// expose sharp triangle-diagonal seams on generated road, paint, and terrain meshes.
 const ASPHALT_TILE_WORLD_SIZE = 7
 const GRASS_TILE_WORLD_SIZE = 26
 const VOLCANIC_ROCK_TILE_WORLD_SIZE = 22
+// Road paint tiles along the thin line ribbon. A short tile keeps the wear/grime
+// pattern at a believable real-world cadence (chips and scuffs every few metres)
+// rather than one stretched smear over the whole lap.
+const ROAD_PAINT_TILE_WORLD_SIZE = 4
 
 const SURFACE_QUALITY_TABLE: Record<
   RacingSurfaceId,
@@ -94,8 +122,8 @@ const SURFACE_QUALITY_TABLE: Record<
       anisotropy: 1,
       normalMap: false,
       normalScale: 0,
-      roughness: 0.92,
-      metalness: 0.04
+      roughness: 0.96,
+      metalness: 0
     },
     medium: {
       textureSize: 512,
@@ -104,18 +132,18 @@ const SURFACE_QUALITY_TABLE: Record<
       anisotropy: 4,
       normalMap: false,
       normalScale: 0,
-      roughness: 0.88,
-      metalness: 0.05
+      roughness: 0.96,
+      metalness: 0
     },
     high: {
       textureSize: 1024,
       tileWorldSize: ASPHALT_TILE_WORLD_SIZE,
       detailPasses: 4200,
       anisotropy: 8,
-      normalMap: true,
-      normalScale: 0.85,
-      roughness: 0.84,
-      metalness: 0.06
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.96,
+      metalness: 0
     }
   },
   grass: {
@@ -126,7 +154,7 @@ const SURFACE_QUALITY_TABLE: Record<
       anisotropy: 1,
       normalMap: false,
       normalScale: 0,
-      roughness: 0.95,
+      roughness: 0.96,
       metalness: 0
     },
     medium: {
@@ -136,7 +164,7 @@ const SURFACE_QUALITY_TABLE: Record<
       anisotropy: 4,
       normalMap: false,
       normalScale: 0,
-      roughness: 0.93,
+      roughness: 0.96,
       metalness: 0
     },
     high: {
@@ -144,9 +172,9 @@ const SURFACE_QUALITY_TABLE: Record<
       tileWorldSize: GRASS_TILE_WORLD_SIZE,
       detailPasses: 9000,
       anisotropy: 8,
-      normalMap: true,
-      normalScale: 0.7,
-      roughness: 0.9,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.96,
       metalness: 0
     }
   },
@@ -176,10 +204,76 @@ const SURFACE_QUALITY_TABLE: Record<
       tileWorldSize: VOLCANIC_ROCK_TILE_WORLD_SIZE,
       detailPasses: 6000,
       anisotropy: 8,
-      normalMap: true,
-      normalScale: 0.9,
+      normalMap: false,
+      normalScale: 0,
       roughness: 0.9,
       metalness: 0.03
+    }
+  },
+  // Paint is glossier than the tarmac it sits on (slight thermoplastic sheen), so it
+  // runs a lower roughness. detailPasses here are grime flecks + worn chips.
+  'road-paint-yellow': {
+    low: {
+      textureSize: 128,
+      tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
+      detailPasses: 110,
+      anisotropy: 1,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.72,
+      metalness: 0.0
+    },
+    medium: {
+      textureSize: 256,
+      tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
+      detailPasses: 360,
+      anisotropy: 4,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.66,
+      metalness: 0.0
+    },
+    high: {
+      textureSize: 512,
+      tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
+      detailPasses: 900,
+      anisotropy: 8,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.6,
+      metalness: 0.0
+    }
+  },
+  'road-paint-white': {
+    low: {
+      textureSize: 128,
+      tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
+      detailPasses: 110,
+      anisotropy: 1,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.72,
+      metalness: 0.0
+    },
+    medium: {
+      textureSize: 256,
+      tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
+      detailPasses: 360,
+      anisotropy: 4,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.66,
+      metalness: 0.0
+    },
+    high: {
+      textureSize: 512,
+      tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
+      detailPasses: 900,
+      anisotropy: 8,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.6,
+      metalness: 0.0
     }
   }
 }

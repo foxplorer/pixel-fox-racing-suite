@@ -18,6 +18,7 @@ interface TrackProps {
   excludedIntervals?: Array<{ startT: number; endT: number }>
   /** Quality tier driving asphalt texture resolution/detail. Defaults to medium. */
   qualityPresetId?: RacingQualityPresetId
+  wetSurface?: boolean
 }
 
 const wrapTrackT = (t: number): number => {
@@ -75,7 +76,7 @@ const isTrackTExcluded = (
   return t >= interval.startT || t <= interval.endT
 })
 
-export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight, excludedIntervals = [], qualityPresetId = 'medium' }) => {
+export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight, excludedIntervals = [], qualityPresetId = 'medium', wetSurface = false }) => {
   // Procedural asphalt — tarmac speckle (+ a baked normal map on high) instead of a
   // flat grey fill. Shared by every track that renders this ribbon, so improving it
   // here lifts Australia, Belgium and the imported tracks at once. The texture is
@@ -171,10 +172,10 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
       const c = (i === tubularSegments - 1) ? 0 : (i + 1) * 2
       const d = (i === tubularSegments - 1) ? 1 : (i + 1) * 2 + 1
       
-      // Face 1
-      indices.push(a, b, d)
-      // Face 2
-      indices.push(a, d, c)
+      // Top-facing winding. These meshes are horizontal, so the lit/front face must
+      // point upward; otherwise DoubleSide renders the road but flips lighting normals.
+      indices.push(a, d, b)
+      indices.push(a, c, d)
     }
     
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
@@ -233,6 +234,10 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
     
     const yellowVerts = []
     const whiteVerts = []
+    const yellowUVs = []
+    const whiteUVs = []
+    const yellowNormals = []
+    const whiteNormals = []
     const yellowIndices = []
     const whiteIndices = [] // Disjoint triangles for center dashes
     
@@ -273,6 +278,17 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
       // Add vertices (4 per segment: left inner, left outer, right inner, right outer for yellow)
       yellowVerts.push(l1.x, l1.y, l1.z, l2.x, l2.y, l2.z)
       yellowVerts.push(r1.x, r1.y, r1.z, r2.x, r2.y, r2.z)
+
+      // UVs: U spans across the narrow paint width (0..1), V runs along the track so the
+      // worn-paint texture tiles down the line. Both edge strips share the same V.
+      const v = i / tubularSegments
+      yellowUVs.push(0, v, 1, v, 0, v, 1, v)
+
+      // Flat-shade the paint with the road's surface normal so it lights with the scene.
+      const paintNormal = normal.clone().normalize()
+      for (let n = 0; n < 4; n++) {
+        yellowNormals.push(paintNormal.x, paintNormal.y, paintNormal.z)
+      }
     }
     
     // Indices
@@ -293,12 +309,12 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
         const next = (i === tubularSegments - 1) ? 0 : (i + 1) * 4
         
         // Left line quad
-        yellowIndices.push(base, base+1, next)
-        yellowIndices.push(base+1, next+1, next)
+        yellowIndices.push(base, next, base+1)
+        yellowIndices.push(base+1, next, next+1)
         
         // Right line quad
-        yellowIndices.push(base+2, base+3, next+2)
-        yellowIndices.push(base+3, next+3, next+2)
+        yellowIndices.push(base+2, next+2, base+3)
+        yellowIndices.push(base+3, next+2, next+3)
         
         const segmentStart = curve.getPointAt(i / tubularSegments)
         const segmentEnd = curve.getPointAt((i + 1) / tubularSegments)
@@ -322,6 +338,10 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
       const left = point.clone().add(right.clone().multiplyScalar(-lineWidth / 2)).add(up)
       const rightPoint = point.clone().add(right.clone().multiplyScalar(lineWidth / 2)).add(up)
       whiteVerts.push(left.x, left.y, left.z, rightPoint.x, rightPoint.y, rightPoint.z)
+      // V follows distance along the track; dashes are horizontal here so the surface
+      // normal is world-up.
+      whiteUVs.push(0, t, 1, t)
+      whiteNormals.push(0, 1, 0, 0, 1, 0)
     }
 
     for (let dashStart = 0; dashStart < trackLength; dashStart += centerDashCycleLength) {
@@ -340,20 +360,34 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
         const segmentMidDistance = dashStart + dashLength * ((step + 0.5) / dashSteps)
         const segmentMidT = ((segmentMidDistance % trackLength) + trackLength) % trackLength / trackLength
         if (!isTrackTExcluded(segmentMidT, excludedIntervals)) {
-          whiteIndices.push(base, base + 1, next)
-          whiteIndices.push(base + 1, next + 1, next)
+          whiteIndices.push(base, next, base + 1)
+          whiteIndices.push(base + 1, next, next + 1)
         }
       }
     }
     
     yellowGeom.setAttribute('position', new THREE.Float32BufferAttribute(yellowVerts, 3))
+    yellowGeom.setAttribute('uv', new THREE.Float32BufferAttribute(yellowUVs, 2))
+    yellowGeom.setAttribute('normal', new THREE.Float32BufferAttribute(yellowNormals, 3))
     yellowGeom.setIndex(yellowIndices)
-    
+
     whiteGeom.setAttribute('position', new THREE.Float32BufferAttribute(whiteVerts, 3))
+    whiteGeom.setAttribute('uv', new THREE.Float32BufferAttribute(whiteUVs, 2))
+    whiteGeom.setAttribute('normal', new THREE.Float32BufferAttribute(whiteNormals, 3))
     whiteGeom.setIndex(whiteIndices)
-    
+
     return { yellowGeom, whiteGeom }
   }, [curve, frames, segments, getHeight, excludedIntervals])
+
+  // Tile the worn-paint texture along the line length (U is the thin paint width, V the
+  // lap distance). Same tileWorldSize for both paints, so one repeat covers both ribbons.
+  const paintRepeat = useMemo(() => ({
+    x: 1,
+    y: getSurfaceTextureRepeat(
+      curve.getLength(),
+      getRacingSurfaceTextureConfig('road-paint-yellow', qualityPresetId).tileWorldSize
+    )
+  }), [curve, qualityPresetId])
 
   return (
     <group>
@@ -363,17 +397,36 @@ export const Track: React.FC<TrackProps> = ({ curve, frames, segments, getHeight
           qualityPresetId={qualityPresetId}
           repeat={asphaltRepeat}
           color="#333"
+          roughnessOverride={wetSurface ? 0.72 : undefined}
+          metalnessOverride={wetSurface ? 0 : undefined}
+          colorOverride={wetSurface ? '#c5ccd6' : undefined}
         />
       </mesh>
       
-      {/* Yellow Edge Lines */}
-      <mesh geometry={lineGeometry.yellowGeom} position={[0, 0.01, 0]}>
-        <meshBasicMaterial color="#FFD700" side={THREE.DoubleSide} />
+      {/* Yellow Edge Lines — worn procedural paint, lit and quality-scaled like the road */}
+      <mesh geometry={lineGeometry.yellowGeom} position={[0, 0.01, 0]} receiveShadow>
+        <RacingSurfaceMaterial
+          surface="road-paint-yellow"
+          qualityPresetId={qualityPresetId}
+          repeat={paintRepeat}
+          color="#FFD700"
+          roughnessOverride={wetSurface ? 0.66 : undefined}
+          metalnessOverride={wetSurface ? 0 : undefined}
+          colorOverride={wetSurface ? '#f3dda0' : undefined}
+        />
       </mesh>
-      
-      {/* White Dashed Line */}
-      <mesh geometry={lineGeometry.whiteGeom} position={[0, 0.01, 0]}>
-        <meshBasicMaterial color="#FFFFFF" side={THREE.DoubleSide} />
+
+      {/* White Dashed Line — worn procedural paint */}
+      <mesh geometry={lineGeometry.whiteGeom} position={[0, 0.01, 0]} receiveShadow>
+        <RacingSurfaceMaterial
+          surface="road-paint-white"
+          qualityPresetId={qualityPresetId}
+          repeat={paintRepeat}
+          color="#FFFFFF"
+          roughnessOverride={wetSurface ? 0.64 : undefined}
+          metalnessOverride={wetSurface ? 0 : undefined}
+          colorOverride={wetSurface ? '#eef4ff' : undefined}
+        />
       </mesh>
     </group>
   )

@@ -30,7 +30,9 @@ const surfaceCanvasCache = new Map<string, BakedSurfaceCanvases>()
 const SURFACE_SEEDS: Record<RacingSurfaceId, number> = {
   asphalt: WORLD_SEED + 1301,
   grass: WORLD_SEED + 2207,
-  'volcanic-rock': WORLD_SEED + 3413
+  'volcanic-rock': WORLD_SEED + 3413,
+  'road-paint-yellow': WORLD_SEED + 4519,
+  'road-paint-white': WORLD_SEED + 5623
 }
 
 const canCreateCanvas = (): boolean =>
@@ -96,7 +98,58 @@ const paintAlbedo = (
   }
   ctx.globalAlpha = 1
 
-  if (surface === 'grass') {
+  if (surface === 'road-paint-yellow' || surface === 'road-paint-white') {
+    // Worn road paint. The canvas V axis (y) runs ALONG the line, U (x) across its
+    // narrow width, so grime/tyre scuffing is painted as long faint streaks down the
+    // line while chips that expose the dark tarmac (accent) are small scattered specks.
+    // Three passes share the detailPasses budget: grime flecks, longitudinal scuffs and
+    // worn-through chips, so a low tier still reads as aged paint, just coarser.
+    const grimeFlecks = Math.round(config.detailPasses * 0.55)
+    for (let i = 0; i < grimeFlecks; i++) {
+      const cx = rng.next() * size
+      const cy = rng.next() * size
+      const r = (size / 256) * (0.5 + rng.next() * 1.6)
+      ctx.fillStyle = rng.next() < 0.6 ? shadow : highlight
+      ctx.globalAlpha = 0.12 + rng.next() * 0.3
+      drawWrapped(cx, cy, r, (x, y) => {
+        ctx.beginPath()
+        ctx.arc(x, y, r, 0, Math.PI * 2)
+        ctx.fill()
+      })
+    }
+
+    const scuffStreaks = Math.round(config.detailPasses * 0.18)
+    ctx.strokeStyle = shadow
+    for (let i = 0; i < scuffStreaks; i++) {
+      const cx = rng.next() * size
+      const cy = rng.next() * size
+      const len = size * (0.15 + rng.next() * 0.5)
+      const drift = (rng.next() - 0.5) * size * 0.08
+      ctx.globalAlpha = 0.08 + rng.next() * 0.18
+      ctx.lineWidth = (size / 256) * (0.6 + rng.next() * 1.4)
+      drawWrapped(cx, cy, len, (x, y) => {
+        ctx.beginPath()
+        ctx.moveTo(x, y)
+        ctx.lineTo(x + drift, y - len)
+        ctx.stroke()
+      })
+    }
+
+    const chips = config.detailPasses - grimeFlecks - scuffStreaks
+    ctx.fillStyle = accent
+    for (let i = 0; i < chips; i++) {
+      const cx = rng.next() * size
+      const cy = rng.next() * size
+      const r = (size / 256) * (0.5 + rng.next() * 1.9)
+      // Most chips are subtle scratches; a few fully expose the tarmac beneath.
+      ctx.globalAlpha = rng.next() < 0.2 ? 0.5 + rng.next() * 0.4 : 0.12 + rng.next() * 0.25
+      drawWrapped(cx, cy, r, (x, y) => {
+        ctx.beginPath()
+        ctx.arc(x, y, r, 0, Math.PI * 2)
+        ctx.fill()
+      })
+    }
+  } else if (surface === 'grass') {
     // Grass blades: short angled strokes in varied greens give a turf-like grain.
     const bladeLength = Math.max(3, size / 70)
     for (let i = 0; i < config.detailPasses; i++) {

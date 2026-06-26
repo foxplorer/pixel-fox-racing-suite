@@ -17,6 +17,7 @@ import { createPreloadedAudio } from '../../racing/components/audioElements'
 import { commitVehiclePose, notifyManualCameraControlUsed, notifyVehiclePositionUpdate } from '../../racing/components/vehicleFrameCallbacks'
 import { useVehicleLoadedNotification } from '../../racing/components/useVehicleLoadedNotification'
 import { CarTrackVehicleModel } from '../../racing/components/CarTrackVehicleModel'
+import { CarHeadlightBeam } from '../../racing/components/CarHeadlightBeam'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import { getTrackRuntimeConfig } from '../../racing/tracks/trackRuntimeConfig'
 import { getCarSurfaceVisualY } from '../../racing/vehicles/carBounce'
@@ -61,6 +62,7 @@ interface FreeRoamCarProps {
   otherPlayers?: RacingWorldPlayerCollisionTarget[]
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
+  initialHeadlightsEnabled?: boolean
 }
 
 export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
@@ -90,12 +92,13 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   onCollectItem,
   otherPlayers = [],
   spawnPosition = null,
-  localChatMessage = null
+  localChatMessage = null,
+  initialHeadlightsEnabled = true
 }) => {
   const { camera } = useThree()
   const carRef = useRef<THREE.Group>(null)
-  const [headlightsEnabled, setHeadlightsEnabled] = useState(false)
-  const headlightsEnabledRef = useRef(false)
+  const [headlightsEnabled, setHeadlightsEnabled] = useState(initialHeadlightsEnabled)
+  const headlightsEnabledRef = useRef(initialHeadlightsEnabled)
   
   // Initialize position from spawnPosition if provided, otherwise default to start line
   const initialPosition = spawnPosition 
@@ -114,6 +117,11 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       }
     }
   }, [spawnPosition])
+
+  useEffect(() => {
+    setHeadlightsEnabled(initialHeadlightsEnabled)
+    headlightsEnabledRef.current = initialHeadlightsEnabled
+  }, [initialHeadlightsEnabled])
   const speed = useRef(0)
   const velocity = useRef(new THREE.Vector3(0, 0, 0))
   const lastCameraTarget = useRef(new THREE.Vector3(0, 8, 15)) // For targetsmooth camera mode
@@ -499,6 +507,9 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
 
   return (
     <group ref={carRef} position={[0, 0, 0]}>
+      {headlightsEnabled && [-0.55, 0.55].map(x => (
+        <CarHeadlightBeam key={`stable-san-luis-headlight-beam-${x}`} x={x} localForward={-1} />
+      ))}
       <CarTrackVehicleModel
         foxOriginOutpoint={foxOriginOutpoint}
         backgroundRemovalStrategy={backgroundRemovalStrategy}

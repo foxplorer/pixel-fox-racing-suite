@@ -6,7 +6,7 @@ import {
 } from './proceduralSurfaceConfig'
 
 test('surface config scales texture budget up with quality', () => {
-  for (const surface of ['asphalt', 'grass', 'volcanic-rock'] as const) {
+  for (const surface of ['asphalt', 'grass', 'volcanic-rock', 'road-paint-yellow', 'road-paint-white'] as const) {
     const low = getRacingSurfaceTextureConfig(surface, 'low')
     const medium = getRacingSurfaceTextureConfig(surface, 'medium')
     const high = getRacingSurfaceTextureConfig(surface, 'high')
@@ -20,11 +20,11 @@ test('surface config scales texture budget up with quality', () => {
   }
 })
 
-test('only the high tier pays for a baked normal map', () => {
-  for (const surface of ['asphalt', 'grass', 'volcanic-rock'] as const) {
+test('procedural surface normals stay disabled to avoid headlight triangle seams', () => {
+  for (const surface of ['asphalt', 'grass', 'volcanic-rock', 'road-paint-yellow', 'road-paint-white'] as const) {
     assert.equal(getRacingSurfaceTextureConfig(surface, 'low').normalMap, false)
     assert.equal(getRacingSurfaceTextureConfig(surface, 'medium').normalMap, false)
-    assert.equal(getRacingSurfaceTextureConfig(surface, 'high').normalMap, true)
+    assert.equal(getRacingSurfaceTextureConfig(surface, 'high').normalMap, false)
   }
 })
 

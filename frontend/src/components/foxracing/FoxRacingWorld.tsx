@@ -343,6 +343,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   const isImportedScenery = sceneryMode !== 'australia'
   const isRainyAustralia = sceneryMode === 'australia'
   const isVolcano = trackDefinition.trackId === 'volcanoes'
+  const initialHeadlightsEnabled = true
   const terrainHeightSampler = worldRuntime.terrainHeightSampler
   const sceneHeightSampler = useMemo(() => createStartStadiumTerrainSampler(
     terrainHeightSampler,
@@ -417,7 +418,6 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     side: 'left' | 'right'
     height: number
   }>>([])
-
   // Additional stadium seating positions around the track (outside only)
   const additionalStadiumData = useMemo(() => {
     if (sceneryMode !== 'australia' || sceneHeightSampler) return []
@@ -606,6 +606,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
             getHeight={terrainHeightSampler}
             excludedIntervals={lavaPitRoadExclusionIntervals}
             qualityPresetId={worldRuntime.qualityPreset.id}
+            wetSurface={sceneryMode === 'australia'}
           />
           {!isTerrainAwareScenery && sceneryMode === 'australia' && <AdvertisingBoards onBoardsGenerated={setAdvertisingBoardPositions} />}
           {!isTerrainAwareScenery && sceneryMode === 'australia' && <StadiumSeating isSoundEnabled={isSoundEnabled} />}
@@ -639,6 +640,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
         <CarTrackLocalVehicle
           VehicleComponent={FreeRoamCar}
           qualityPresetId={worldRuntime.qualityPreset.id}
+          wetSurface={sceneryMode === 'australia'}
           foxOriginOutpoint={foxOriginOutpoint}
           backgroundRemovalStrategy={backgroundRemovalStrategy}
           playerColor={playerColor}
@@ -678,6 +680,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
           spawnPosition={spawnPosition}
           cameraMode={cameraMode}
           localChatMessage={localChatMessage}
+          initialHeadlightsEnabled={initialHeadlightsEnabled}
           onPositionUpdateForSocket={onPositionUpdateForSocket}
         />
       )}

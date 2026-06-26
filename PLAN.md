@@ -164,6 +164,8 @@ Ongoing shared-system goals:
 
 ## Player-Car Collision Feel
 
+Detailed scenario planning lives in `COLLISION_PLAN.md`.
+
 Multiplayer car-to-car collisions need better behavior. The current collision response can make a fast car feel like it hits an invisible wall: if one player rear-ends or clips another car, repeated collision frames can bring the local car to a dead stop even when both cars are moving quickly.
 
 Desired behavior:

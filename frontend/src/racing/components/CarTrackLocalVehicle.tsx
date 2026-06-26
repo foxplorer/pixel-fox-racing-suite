@@ -30,6 +30,7 @@ interface CarTrackLocalVehicleProps {
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
   qualityPresetId?: RacingQualityPresetId
+  wetSurface?: boolean
   gameStatus: CarTrackVehicleStatus
   countdown: number
   manualCamera: CarTrackManualCameraRuntime
@@ -63,6 +64,7 @@ interface CarTrackLocalVehicleProps {
   otherPlayers: RacingWorldPlayer[]
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
+  initialHeadlightsEnabled?: boolean
   onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
   socketPositionEmitMode?: SocketPositionEmitMode
 }
@@ -73,6 +75,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
   backgroundRemovalStrategy = 'default',
   playerColor,
   qualityPresetId,
+  wetSurface = false,
   gameStatus,
   countdown,
   manualCamera,
@@ -106,6 +109,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
   otherPlayers,
   spawnPosition = null,
   localChatMessage = null,
+  initialHeadlightsEnabled = true,
   onPositionUpdateForSocket,
   socketPositionEmitMode = 'default-missing-values'
 }) => {
@@ -119,6 +123,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
       backgroundRemovalStrategy={backgroundRemovalStrategy}
       playerColor={playerColor}
       qualityPresetId={qualityPresetId}
+      wetSurface={wetSurface}
       gameStatus={gameStatus}
       countdown={countdown}
       isManualCamera={manualCamera.isManualCamera}
@@ -152,6 +157,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
       otherPlayers={getRacingWorldPlayerCollisionTargets(otherPlayers) as RacingWorldPlayerCollisionTarget[]}
       spawnPosition={spawnPosition}
       localChatMessage={localChatMessage}
+      initialHeadlightsEnabled={initialHeadlightsEnabled}
       onPositionUpdate={(position: THREE.Vector3, rotation?: number, speed?: number, headlightsEnabled?: boolean) => {
         manualCamera.updateCarPosition(position)
 
