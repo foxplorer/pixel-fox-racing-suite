@@ -2,13 +2,15 @@ import React from 'react'
 import { OtherPlayerCar } from './OtherPlayerCar'
 import type { RacingWorldPlayer } from '../../racing/multiplayer/worldPlayers'
 import type { TerrainHeightSampler } from '../../racing/core/roadCorridor'
+import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 
 interface RemotePlayerCarsProps {
   players: RacingWorldPlayer[]
   getHeightAtPosition?: TerrainHeightSampler
+  qualityPresetId?: RacingQualityPresetId
 }
 
-export const RemotePlayerCars: React.FC<RemotePlayerCarsProps> = ({ players, getHeightAtPosition }) => (
+export const RemotePlayerCars: React.FC<RemotePlayerCarsProps> = ({ players, getHeightAtPosition, qualityPresetId = 'medium' }) => (
   <>
     {players.map((player) => (
       <OtherPlayerCar
@@ -22,6 +24,7 @@ export const RemotePlayerCars: React.FC<RemotePlayerCarsProps> = ({ players, get
         chatTimestamp={player.chatTimestamp}
         headlightsEnabled={player.headlightsEnabled}
         lodTier={player.remoteLodTier}
+        qualityPresetId={qualityPresetId}
         getHeightAtPosition={getHeightAtPosition}
       />
     ))}

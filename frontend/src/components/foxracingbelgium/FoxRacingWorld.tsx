@@ -332,7 +332,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
           onPositionUpdateForSocket={onPositionUpdateForSocket}
         />
       )}
-      remotePlayers={<RemotePlayerCars players={otherPlayers} />}
+      remotePlayers={<RemotePlayerCars players={otherPlayers} qualityPresetId={qualityPresetId} />}
     />
     {(gameStatus === 'racing' || gameStatus === 'countdown') && (
       <RacingCameraControlButtons

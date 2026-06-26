@@ -8,6 +8,8 @@ import { getCarForwardVector } from '../../racing/vehicles/carHandling'
 import { getVehicleVisualTilt, smoothVehicleVisualTilt } from '../../racing/vehicles/vehicleElevation'
 import { applyVehicleVisualSurfaceFrameRotation, createVehicleVisualSurfaceFrameScratch } from '../../racing/vehicles/vehicleVisualSurfaceFrame'
 import { CarHeadlightBeam } from '../../racing/components/CarHeadlightBeam'
+import { CarTrackVehicleModel } from '../../racing/components/CarTrackVehicleModel'
+import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 
 interface OtherPlayerCarProps {
   id: string
@@ -19,6 +21,7 @@ interface OtherPlayerCarProps {
   chatTimestamp?: number
   headlightsEnabled?: boolean
   lodTier?: RemotePlayerLodTier
+  qualityPresetId?: RacingQualityPresetId
   getHeightAtPosition?: TerrainHeightSampler
 }
 
@@ -29,6 +32,7 @@ interface RemoteCarVisualProps {
   chatTimestamp?: number
   headlightsEnabled?: boolean
   lodTier: RemotePlayerLodTier
+  qualityPresetId: RacingQualityPresetId
 }
 
 interface FullRemoteCarModelProps {
@@ -216,17 +220,22 @@ const RemoteCarVisual = memo<RemoteCarVisualProps>(function RemoteCarVisual({
   chatMessage,
   chatTimestamp,
   headlightsEnabled,
-  lodTier
+  lodTier,
+  qualityPresetId
 }) {
   return lodTier === 'mid'
-    ? <MidRemoteCarModel carColor={carColor} headlightsEnabled={headlightsEnabled} />
+    ? (
+      <group rotation={[0, Math.PI, 0]}>
+        <MidRemoteCarModel carColor={carColor} headlightsEnabled={headlightsEnabled} />
+      </group>
+    )
     : (
-      <FullRemoteCarModel
-        carColor={carColor}
+      <CarTrackVehicleModel
+        playerColor={carColor}
         foxTextureUrl={foxTextureUrl}
-        chatMessage={chatMessage}
-        chatTimestamp={chatTimestamp}
+        qualityPresetId={qualityPresetId}
         headlightsEnabled={headlightsEnabled}
+        localChatMessage={chatMessage ? { text: chatMessage, timestamp: chatTimestamp ?? Date.now() } : null}
       />
     )
 })
@@ -240,6 +249,7 @@ export const OtherPlayerCar: React.FC<OtherPlayerCarProps> = ({
   chatTimestamp,
   headlightsEnabled,
   lodTier = 'near',
+  qualityPresetId = 'medium',
   getHeightAtPosition
 }) => {
   const groupRef = useRef<THREE.Group>(null)
@@ -328,16 +338,15 @@ export const OtherPlayerCar: React.FC<OtherPlayerCarProps> = ({
           <CarHeadlightBeam key={`stable-remote-headlight-beam-${x}`} x={x} localForward={-1} />
         ))}
         <group ref={visualTiltGroupRef}>
-          <group rotation={[0, Math.PI, 0]}>
-            <RemoteCarVisual
-              carColor={carColor}
-              foxTextureUrl={foxTextureUrl}
-              chatMessage={chatMessage}
-              chatTimestamp={chatTimestamp}
-              headlightsEnabled={headlightsEnabled}
-              lodTier={lodTier}
-            />
-          </group>
+          <RemoteCarVisual
+            carColor={carColor}
+            foxTextureUrl={foxTextureUrl}
+            chatMessage={chatMessage}
+            chatTimestamp={chatTimestamp}
+            headlightsEnabled={headlightsEnabled}
+            lodTier={lodTier}
+            qualityPresetId={qualityPresetId}
+          />
         </group>
       </group>
     </group>

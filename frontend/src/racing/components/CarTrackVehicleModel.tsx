@@ -7,6 +7,7 @@ import { CarTrackVehicleModelDetailed } from './CarTrackVehicleModelDetailed'
 
 interface CarTrackVehicleModelProps {
   foxOriginOutpoint?: string | null
+  foxTextureUrl?: string
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
   localChatMessage?: { text: string; timestamp: number } | null
@@ -18,6 +19,7 @@ interface CarTrackVehicleModelProps {
 
 export const CarTrackVehicleModel: React.FC<CarTrackVehicleModelProps> = ({
   foxOriginOutpoint,
+  foxTextureUrl,
   backgroundRemovalStrategy = 'default',
   playerColor,
   localChatMessage = null,
@@ -31,6 +33,7 @@ export const CarTrackVehicleModel: React.FC<CarTrackVehicleModelProps> = ({
     return (
       <CarTrackVehicleModelDetailed
         foxOriginOutpoint={foxOriginOutpoint}
+        foxTextureUrl={foxTextureUrl}
         backgroundRemovalStrategy={backgroundRemovalStrategy}
         playerColor={playerColor}
         localChatMessage={localChatMessage}
@@ -167,7 +170,7 @@ export const CarTrackVehicleModel: React.FC<CarTrackVehicleModelProps> = ({
         <VoxelFox
           position={[0, 0, 0]}
           rotation={[0, -Math.PI / 2, 0]}
-          foxTextureUrl={getOrdinalContentUrl(foxOriginOutpoint) || undefined}
+          foxTextureUrl={foxTextureUrl ?? (getOrdinalContentUrl(foxOriginOutpoint) || undefined)}
           backgroundRemovalStrategy={backgroundRemovalStrategy}
           color={playerColor}
           message={localChatMessage?.text}

@@ -684,7 +684,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
           onPositionUpdateForSocket={onPositionUpdateForSocket}
         />
       )}
-      remotePlayers={<RemotePlayerCars players={otherPlayers} getHeightAtPosition={terrainHeightSampler} />}
+      remotePlayers={<RemotePlayerCars players={otherPlayers} getHeightAtPosition={terrainHeightSampler} qualityPresetId={worldRuntime.qualityPreset.id} />}
     />
     {(gameStatus === 'racing' || gameStatus === 'countdown') && (
       <RacingCameraControlButtons

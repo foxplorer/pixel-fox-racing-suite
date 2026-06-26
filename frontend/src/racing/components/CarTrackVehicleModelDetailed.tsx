@@ -6,6 +6,7 @@ import { getOrdinalContentUrl } from '../transactions/ordinalLinks'
 
 interface CarTrackVehicleModelDetailedProps {
   foxOriginOutpoint?: string | null
+  foxTextureUrl?: string
   backgroundRemovalStrategy?: VoxelBackgroundRemovalStrategy
   playerColor: string
   localChatMessage?: { text: string; timestamp: number } | null
@@ -79,6 +80,7 @@ const Wheel: React.FC<{
 // (which use a fixed collider radius) and the camera all stay aligned.
 export const CarTrackVehicleModelDetailed: React.FC<CarTrackVehicleModelDetailedProps> = ({
   foxOriginOutpoint,
+  foxTextureUrl,
   backgroundRemovalStrategy = 'default',
   playerColor,
   localChatMessage = null,
@@ -236,7 +238,7 @@ export const CarTrackVehicleModelDetailed: React.FC<CarTrackVehicleModelDetailed
         <VoxelFox
           position={[0, 0, 0]}
           rotation={[0, -Math.PI / 2, 0]}
-          foxTextureUrl={getOrdinalContentUrl(foxOriginOutpoint) || undefined}
+          foxTextureUrl={foxTextureUrl ?? (getOrdinalContentUrl(foxOriginOutpoint) || undefined)}
           backgroundRemovalStrategy={backgroundRemovalStrategy}
           color={playerColor}
           message={localChatMessage?.text}
