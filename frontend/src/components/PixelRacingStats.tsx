@@ -225,6 +225,7 @@ const processFetchedGames = (games: PixelRacingGameResult[]) => {
 };
 
 const ACTIVITY_PAGE_SIZE = 5;
+const LEGACY_ERA_DISPLAY_COUNT = 1410;
 
 const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOrdinalAddress, customTitle, renderBeforeLeaderboard }: PixelRacingStatsProps) {
   const [liveActivity, setLiveActivity] = useState<PixelRacingGameResult[]>([]); // ONLY live items/games
@@ -717,6 +718,8 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
   const activeFetchError = statsEra === 'legacy' ? legacyFetchError : fetchError;
   const activeHistoryResults = statsEra === 'legacy' ? legacyHistoryResults : historyResults;
   const activeShowMoreHistory = statsEra === 'legacy' ? displayShowMoreLegacyHistory : displayshowmorehistory;
+  const currentEraResultCount = gamecount.toLocaleString();
+  const legacyEraResultCount = LEGACY_ERA_DISPLAY_COUNT.toLocaleString();
   const trackTabs = [
     ...trackNamesForTabs.map(trackName => ({
       id: getPixelRacingStatsTrackTabId(trackName),
@@ -1059,7 +1062,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
             style={tabBarStyles.pill(statsEra === 'current') as React.CSSProperties}
           >
             <span>🏁</span>
-            <span>Current Tracks</span>
+            <span>Current Tracks ({currentEraResultCount})</span>
           </button>
           <button
             type="button"
@@ -1067,7 +1070,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
             style={tabBarStyles.pill(statsEra === 'legacy') as React.CSSProperties}
           >
             <span>📜</span>
-            <span>Legacy Era</span>
+            <span>Legacy Era ({legacyEraResultCount})</span>
           </button>
         </div>
         {statsEra === 'legacy' && (
