@@ -1106,13 +1106,18 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
             name={foxName}
             originOutpoint={foxOriginOutpoint}
             addresses={[
-              { label: 'ID:', value: identityKey, canCopy: true }
+              { label: identityKey?.startsWith('02') || identityKey?.startsWith('03') ? 'ID:' : 'Ord:', value: identityKey, canCopy: true }
             ]}
+            position="fixed"
+            top={10}
+            left={10}
+            zIndex={2000}
             walletItems={[
               { label: 'Blueberries', iconUrl: blueberryUrl, count: walletBlueberryCount },
               { label: 'Salads', iconUrl: saladUrl, count: walletSaladCount },
               { label: 'Rabbits', iconUrl: rabbitUrl, count: walletRabbitCount }
             ]}
+            maxHeight="calc(100vh - 20px)"
           />
         )}
 

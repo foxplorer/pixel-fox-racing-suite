@@ -78,9 +78,6 @@ export const useCollectibleItemActions = ({
     }
 
     try {
-      if (!wallet) {
-        throw new Error('Cannot prepare collectible delivery without a connected wallet')
-      }
       const deliveryTarget = await prepareCollectibleDeliveryTarget(
         wallet,
         providerType,

@@ -19,13 +19,19 @@ export type CollectibleDeliveryTarget =
       address: string
     }
 
+const isMetanetIdentityKey = (value: string): boolean => /^(02|03)[0-9a-fA-F]{64}$/.test(value)
+
 export async function prepareCollectibleDeliveryTarget(
-  wallet: WalletInterface,
+  wallet: WalletInterface | null | undefined,
   providerType: string | null,
   identityKey: string,
   ordinalAddress?: string | null,
 ): Promise<CollectibleDeliveryTarget> {
-  if (providerType === METANET_WALLET_PROVIDER) {
+  if (providerType === METANET_WALLET_PROVIDER && isMetanetIdentityKey(identityKey)) {
+    if (!wallet) {
+      throw new Error('Metanet collectible delivery requires a connected wallet')
+    }
+
     const protocolID: [0, string] = [0, 'pixel foxes']
     const keyID = '1'
     const counterparty = 'anyone'
@@ -47,7 +53,7 @@ export async function prepareCollectibleDeliveryTarget(
   }
 
   if (!ordinalAddress) {
-    throw new Error('Yours collectible delivery requires an ordinal deposit address')
+    throw new Error('Address collectible delivery requires an ordinal deposit address')
   }
 
   return {

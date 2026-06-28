@@ -2,8 +2,8 @@ import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import pixelRacingLogo from '../assets/pixel_racing_logo.png';
 import { NewGameChoosePlayerModal } from "../components/NewGameChoosePlayerModal";
 import { ExitButton } from "../components/ExitButton";
+import { RacingPlayerInfoPanel } from "../racing/components/RacingPlayerInfoPanel";
 import { useWallet } from "@1sat/react";
-import { useNavigate } from "react-router-dom";
 import { PulseLoader } from "react-spinners";
 import PixelRacingStats from "../components/PixelRacingStats";
 import type { PixelRacingGameResult } from "../components/foxracing/types";
@@ -27,7 +27,11 @@ import {
   verifyMetanetPixelFoxAccess
 } from "../wallet/oneSatWallet";
 import { METANET_WALLET_PROVIDER } from "../wallet/walletProviders";
-import { formatShortAddress } from "../racing/components/addressFormat";
+import {
+  getExistingShualletSession,
+  SHUALLET_CONNECTED_EVENT,
+  type ShualletSession
+} from "../wallet/shuallet";
 import { normalizeOrdinalOutpoint } from "../racing/transactions/ordinalOutpoint";
 
 const DEFAULT_TRACK_EVENT_ID: TrackEventId = 'australia-car';
@@ -53,13 +57,13 @@ const TrackEventLoadingFallback = () => (
 );
 
 export const FoxRacing = () => {
-  const navigate = useNavigate();
-  const { wallet, status, identityKey, providerType } = useWallet();
+  const { wallet, status, identityKey: walletIdentityKey, providerType } = useWallet();
   
   // Wallet & Player State
   const [myordaddress, setMyOrdAddress] = useState<string>("");
   const [bsvaddress, setBsvAddress] = useState<string | undefined>();
-  const [walletOrdinalSource, setWalletOrdinalSource] = useState<'onesat' | 'metanet'>('onesat');
+  const [walletOrdinalSource, setWalletOrdinalSource] = useState<'onesat' | 'metanet' | 'address'>('onesat');
+  const [shualletSession, setShualletSession] = useState<ShualletSession | null>(null);
   
   // Fox State
   const [foxSelected, setFoxSelected] = useState<boolean>(false);
@@ -89,6 +93,42 @@ export const FoxRacing = () => {
 
   // Game Racing State - to hide outer fox info panel when game shows its own
   const [isGameRacing, setIsGameRacing] = useState<boolean>(false);
+  const activeIdentityValue = walletOrdinalSource === 'metanet'
+    ? walletIdentityKey
+    : myordaddress || shualletSession?.identityKey;
+  const activeIdentityLabel = walletOrdinalSource === 'metanet' ? 'ID:' : 'Ord:';
+
+  const applyShualletSession = (session: ShualletSession | null, openChoosePlayer = false) => {
+    setShualletSession(session);
+    if (!session) {
+      setWalletOrdinalSource('onesat');
+      setMyOrdAddress('');
+      setBsvAddress(undefined);
+      setFoxSelected(false);
+      return;
+    }
+
+    setWalletOrdinalSource('address');
+    setMyOrdAddress(session.ordinalAddress);
+    setBsvAddress(session.paymentAddress);
+    setFoxSelected(false);
+    if (openChoosePlayer) {
+      setIsChoosePlayerModalOpen(true);
+    }
+  };
+
+  useEffect(() => {
+    applyShualletSession(getExistingShualletSession());
+
+    const handleShualletConnected = () => {
+      applyShualletSession(getExistingShualletSession());
+    };
+
+    window.addEventListener(SHUALLET_CONNECTED_EVENT, handleShualletConnected);
+    return () => {
+      window.removeEventListener(SHUALLET_CONNECTED_EVENT, handleShualletConnected);
+    };
+  }, []);
 
   useEffect(() => {
     if (status !== 'connected' || !wallet) return;
@@ -99,8 +139,9 @@ export const FoxRacing = () => {
         if (providerType === METANET_WALLET_PROVIDER) {
           await verifyMetanetPixelFoxAccess(wallet);
           if (cancelled) return;
+          setShualletSession(null);
           setWalletOrdinalSource('metanet');
-          setMyOrdAddress(identityKey || '');
+          setMyOrdAddress(walletIdentityKey || '');
           setBsvAddress(undefined);
           setIsChoosePlayerModalOpen(true);
           return;
@@ -108,6 +149,7 @@ export const FoxRacing = () => {
 
         const addrs = await derivePixelRacingAddresses(wallet);
         if (cancelled) return;
+        setShualletSession(null);
         setWalletOrdinalSource('onesat');
         setMyOrdAddress(addrs.ordAddress);
         setBsvAddress(addrs.bsvAddress);
@@ -121,9 +163,15 @@ export const FoxRacing = () => {
     return () => {
       cancelled = true;
     };
-  }, [status, wallet, identityKey, providerType]);
+  }, [status, wallet, walletIdentityKey, providerType]);
 
   const handleConnect = () => {
+    if (walletOrdinalSource === 'address' || getExistingShualletSession()) {
+      const session = getExistingShualletSession();
+      applyShualletSession(session, true);
+      return;
+    }
+
     if ((myordaddress || walletOrdinalSource === 'metanet') && !foxSelected) {
       setIsChoosePlayerModalOpen(true);
     }
@@ -204,7 +252,7 @@ export const FoxRacing = () => {
         return (
           <FoxRacingGame
             key={selectedImportedCarTrackId ?? 'australia-car'}
-            identityKey={identityKey}
+            identityKey={activeIdentityValue}
             onConnectWallet={handleConnect}
             foxName={foxname}
             foxOriginOutpoint={foximagesrc}
@@ -227,7 +275,7 @@ export const FoxRacing = () => {
       case 'san-luis-car':
         return (
           <FoxRacingGameSanLuis
-            identityKey={identityKey}
+            identityKey={activeIdentityValue}
             onConnectWallet={handleConnect}
             foxName={foxname}
             foxOriginOutpoint={foximagesrc}
@@ -250,7 +298,7 @@ export const FoxRacing = () => {
         return (
           <FoxRacingGame
             key="belgium-car"
-            identityKey={identityKey}
+            identityKey={activeIdentityValue}
             onConnectWallet={handleConnect}
             foxName={foxname}
             foxOriginOutpoint={foximagesrc}
@@ -276,7 +324,7 @@ export const FoxRacing = () => {
       case 'aspen-snowmobile':
         return (
           <FoxRacingGameAspen
-            identityKey={identityKey}
+            identityKey={activeIdentityValue}
             onConnectWallet={handleConnect}
             foxName={foxname}
             foxOriginOutpoint={foximagesrc}
@@ -326,171 +374,37 @@ export const FoxRacing = () => {
               right: 0,
               bottom: 0,
               pointerEvents: 'none',
-              zIndex: 1000
+              zIndex: 900
             }}>
               {/* Fox info display - hide when Aspen snowmobile game is racing because that track has its own panel */}
               {foxSelected && foximagesrc && !(isGameRacing && selectedEvent.vehicleMode === 'snowmobile') && (
-                <div style={{
-                  position: 'absolute',
-                  top: 10, // 60px Topbar + 10px padding
-                  left: 10,
-                  pointerEvents: 'auto',
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                borderRadius: '8px',
-                padding: '15px',
-                minWidth: '300px',
-                maxWidth: '400px',
-                border: '1px solid rgba(255, 255, 255, 0.1)'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '15px'
-                }}>
-                  {/* Fox Image */}
-                  <a 
-                    target="blank" 
-                    href={`https://ordfs.network/content/${foximagesrc}`}
-                    style={{ textDecoration: 'none' }}
-                  >
-                    <img 
-                      src={`https://ordfs.network/content/${foximagesrc}`}
-                      alt={foxname || 'Fox'}
-                      style={{
-                        width: '80px',
-                        height: '80px',
-                        borderRadius: '4px'
-                      }}
-                    />
-                  </a>
-                  
-                  {/* Fox Info */}
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '5px',
-                    flex: 1
-                  }}>
-                    {/* Fox Name */}
-                    <a 
-                      target="blank" 
-                      href={`https://ordfs.network/content/${foximagesrc}`}
-                      style={{ 
-                        textDecoration: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <span style={{ 
-                        color: '#36bffa', 
-                        fontSize: '1.1em',
-                        fontWeight: 'bold',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: 'block'
-                      }}>
-                        {foxname || 'Fox'}
-                      </span>
-                    </a>
-                    
-                    {/* Wallet Identity Section */}
-                    <div style={{
-                      marginTop: '8px',
-                      paddingTop: '8px',
-                      borderTop: '1px solid rgba(255, 255, 255, 0.1)'
-                    }}>
-                      {identityKey && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginBottom: '8px'
-                        }}>
-                          <span style={{
-                            color: '#888',
-                            fontSize: '0.85em',
-                            fontWeight: '600'
-                          }}>
-                            ID:
-                          </span>
-                          <span style={{
-                            color: '#ccc',
-                            fontSize: '0.85em',
-                            fontFamily: 'monospace'
-                          }}>
-                            {formatShortAddress(identityKey)}
-                          </span>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(identityKey);
-                              const button = document.activeElement as HTMLButtonElement;
-                              if (button) {
-                                const originalText = button.textContent;
-                                button.textContent = 'Copied!';
-                                setTimeout(() => {
-                                  button.textContent = originalText;
-                                }, 1000);
-                              }
-                            }}
-                            style={{
-                              backgroundColor: 'transparent',
-                              border: '1px solid #36bffa',
-                              color: '#36bffa',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              fontSize: '10px',
-                              cursor: 'pointer',
-                              fontFamily: 'monospace'
-                            }}
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Wallet Totals - Always show all three items below the identity */}
-                      <div style={{
-                        marginTop: '8px',
-                        paddingTop: '8px',
-                        borderTop: '1px solid rgba(255, 255, 255, 0.1)'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          flexWrap: 'wrap'
-                        }}>
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            <img src={blueberryUrl} alt="Blueberries" style={{ width: '16px', height: '16px' }} />
-                            <span style={{ color: '#ccc', fontSize: '0.85em' }}>{walletBlueberryCount}</span>
-                          </div>
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            <img src={saladUrl} alt="Salads" style={{ width: '16px', height: '16px' }} />
-                            <span style={{ color: '#ccc', fontSize: '0.85em' }}>{walletSaladCount}</span>
-                          </div>
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            <img src={rabbitUrl} alt="Rabbits" style={{ width: '16px', height: '16px' }} />
-                            <span style={{ color: '#ccc', fontSize: '0.85em' }}>{walletRabbitCount}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+                <RacingPlayerInfoPanel
+                  name={foxname}
+                  originOutpoint={foximagesrc}
+                  addresses={activeIdentityValue ? [{
+                    label: activeIdentityLabel,
+                    value: activeIdentityValue,
+                    canCopy: true
+                  }] : []}
+                  walletItems={[
+                    { label: 'Blueberries', iconUrl: blueberryUrl, count: walletBlueberryCount },
+                    { label: 'Salads', iconUrl: saladUrl, count: walletSaladCount },
+                    { label: 'Rabbits', iconUrl: rabbitUrl, count: walletRabbitCount }
+                  ]}
+                  position="fixed"
+                  top={70}
+                  left={10}
+                  zIndex={900}
+                  backgroundColor="rgba(0, 0, 0, 0.8)"
+                  borderColor="rgba(255, 255, 255, 0.1)"
+                  accentColor="#36bffa"
+                  mutedColor="#888"
+                  imageSize={80}
+                  minWidth={300}
+                  maxWidth={400}
+                  maxHeight="calc(100vh - 80px)"
+                />
+              )}
 
               {/* Exit Button - Upper Right */}
               {/* {foxSelected && (
@@ -525,7 +439,7 @@ export const FoxRacing = () => {
         }}
         ownerAddress={myordaddress || undefined}
         bsvAddress={bsvaddress}
-        identityKey={identityKey}
+        identityKey={activeIdentityValue}
         ordinalSource={walletOrdinalSource}
         logo={pixelRacingLogo}
         onFoxSelected={handleFoxSelected}

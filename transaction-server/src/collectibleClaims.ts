@@ -83,6 +83,10 @@ export function isIdentityKey(value: unknown): value is string {
   return typeof value === 'string' && /^(02|03)[0-9a-fA-F]{64}$/.test(value)
 }
 
+function parseRequesterIdentity(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 function parseDeliveryTarget(
   requestBody: CollectibleClaimBody,
   identityKey: string,
@@ -128,17 +132,17 @@ export async function processCollectibleClaim(
   requestBody: CollectibleClaimBody,
   options: ProcessCollectibleClaimOptions
 ): Promise<CollectibleClaimResult> {
-  if (!isIdentityKey(requestBody.identityKey)) {
+  const identityKey = parseRequesterIdentity(requestBody.identityKey)
+  if (!identityKey) {
     return {
       status: 400,
       body: {
         error: 'invalid_identity_key',
-        message: 'A compressed secp256k1 identity public key is required',
+        message: 'A non-empty requester identity is required',
       },
     }
   }
 
-  const identityKey = requestBody.identityKey
   const deliveryTarget = parseDeliveryTarget(requestBody, identityKey)
   if (!deliveryTarget) {
     return {
@@ -146,6 +150,16 @@ export async function processCollectibleClaim(
       body: {
         error: 'invalid_delivery_target',
         message: 'An explicit collectible deliveryTarget is required and must be supported',
+      },
+    }
+  }
+
+  if (deliveryTarget.type !== 'address' && !isIdentityKey(identityKey)) {
+    return {
+      status: 400,
+      body: {
+        error: 'invalid_identity_key',
+        message: 'A compressed secp256k1 identity public key is required for this delivery target',
       },
     }
   }

@@ -84,7 +84,9 @@ test('explicit counterparty targets select identity delivery', async () => {
 })
 
 test('explicit address targets select address delivery', async () => {
+  const addressRequester = '1requester-ordinal-address'
   const addressDelivery: CollectibleDelivery = async request => {
+    assert.equal(request.identityKey, addressRequester)
     assert.deepEqual(request.deliveryTarget, {
       type: 'address',
       address: '1ordinal-address',
@@ -99,7 +101,7 @@ test('explicit address targets select address delivery', async () => {
   const result = await processCollectibleClaim(
     'salad',
     {
-      identityKey,
+      identityKey: addressRequester,
       deliveryTarget: { type: 'address', address: ' 1ordinal-address ' },
     },
     {
@@ -111,6 +113,32 @@ test('explicit address targets select address delivery', async () => {
 
   assert.equal(result.status, 200)
   assert.equal(result.body.deliveryMode, 'address')
+  assert.equal(result.body.recipientIdentityKey, addressRequester)
+})
+
+test('non-address delivery targets still require compressed public key identities', async () => {
+  const result = await processCollectibleClaim(
+    'salad',
+    {
+      identityKey: '1requester-ordinal-address',
+      deliveryTarget: { type: 'counterparty', identityKey: '1requester-ordinal-address' },
+    },
+    {
+      mode: 'real',
+      makeDummyTxid: () => 'unused',
+      identityDelivery: async () => {
+        throw new Error('identity delivery should not run')
+      },
+    }
+  )
+
+  assert.deepEqual(result, {
+    status: 400,
+    body: {
+      error: 'invalid_identity_key',
+      message: 'A compressed secp256k1 identity public key is required for this delivery target',
+    },
+  })
 })
 
 test('explicit protocol-key targets select protocol delivery', async () => {

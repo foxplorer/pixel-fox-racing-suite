@@ -27,6 +27,11 @@ interface RacingPlayerInfoPanelProps {
   minWidth?: number
   maxWidth?: number
   showDetailsDivider?: boolean
+  position?: 'absolute' | 'fixed'
+  top?: number
+  left?: number
+  zIndex?: number
+  maxHeight?: string
 }
 
 const copyToClipboard = (value: string) => {
@@ -45,7 +50,12 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
   imageSize = 80,
   minWidth = 300,
   maxWidth = 400,
-  showDetailsDivider = true
+  showDetailsDivider = true,
+  position = 'absolute',
+  top = 10,
+  left = 10,
+  zIndex = 1000,
+  maxHeight,
 }) => {
   const contentUrl = getOrdinalContentUrl(originOutpoint)
   const displayName = name || 'Fox'
@@ -54,17 +64,19 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
 
   return (
     <div style={{
-      position: 'absolute',
-      top: 10,
-      left: 10,
-      zIndex: 1000,
+      position,
+      top,
+      left,
+      zIndex,
       backgroundColor,
       borderRadius: '8px',
       padding: '15px',
       minWidth,
       maxWidth,
       border: `1px solid ${borderColor}`,
-      pointerEvents: 'auto'
+      pointerEvents: 'auto',
+      maxHeight,
+      overflowY: maxHeight ? 'auto' : undefined
     }}>
       <div style={{
         display: 'flex',

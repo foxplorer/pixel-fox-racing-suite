@@ -6,6 +6,7 @@ import FooterHome from "./FooterHome";
 import pixelRacingLogo from '../assets/pixel_racing_logo.png';
 import { useWallet } from "@1sat/react";
 import {
+  loadPixelRacingOrdinalsByAddress,
   loadMetanetPixelFoxes,
   loadPixelRacingOrdinals
 } from "../wallet/oneSatWallet";
@@ -17,7 +18,7 @@ type NewGameChoosePlayerModalProps = {
   ownerAddress?: string; // Optional - if provided, use it; otherwise get from wallet
   bsvAddress?: string;
   identityKey?: string;
-  ordinalSource?: 'onesat' | 'metanet';
+  ordinalSource?: 'onesat' | 'metanet' | 'address';
   logo?: string; // Optional - custom logo image, defaults to pixel_racing_logo.png
   onFoxSelected: (foxData: {
     originoutpoint: string;
@@ -50,6 +51,8 @@ export const NewGameChoosePlayerModal = ({
   const [isFetchingFull, setIsFetchingFull] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const displayedWalletIdentifier = ordinalSource === 'metanet' ? identityKey : ownerAddress || identityKey;
+  const displayedWalletIdentifierLabel = ordinalSource === 'metanet' ? 'Public identity key' : 'Your ordinals address';
   useEffect(() => {
     if (!isOpen) return;
 
@@ -59,7 +62,7 @@ export const NewGameChoosePlayerModal = ({
     setIsQuickView(true);
     setLoadError(null);
 
-    if (status !== 'connected' || !wallet) {
+    if (ordinalSource !== 'address' && (status !== 'connected' || !wallet)) {
       setLoaded(true);
       setOrdinalsString('[]');
       return;
@@ -69,9 +72,11 @@ export const NewGameChoosePlayerModal = ({
     const loadOrdinals = async () => {
       try {
         const address = ownerAddress || bsvAddress || '';
-        const result = ordinalSource === 'metanet'
-          ? await loadMetanetPixelFoxes(wallet!, address, QUICK_VIEW_LIMIT)
-          : await loadPixelRacingOrdinals(wallet, address, QUICK_VIEW_LIMIT);
+        const result = ordinalSource === 'address'
+          ? await loadPixelRacingOrdinalsByAddress(address, QUICK_VIEW_LIMIT)
+          : ordinalSource === 'metanet'
+            ? await loadMetanetPixelFoxes(wallet!, address, QUICK_VIEW_LIMIT)
+            : await loadPixelRacingOrdinals(wallet!, address, QUICK_VIEW_LIMIT);
         if (cancelled) return;
         setOrdinalsString(JSON.stringify(result.ordinals));
         setIsQuickView(result.hasMore);
@@ -80,7 +85,9 @@ export const NewGameChoosePlayerModal = ({
         if (!cancelled) {
           setOrdinalsString('[]');
           setLoadError(
-            ordinalSource === 'metanet'
+            ordinalSource === 'address'
+              ? 'The SHUAllet address scan could not be loaded. Check the ord address, then retry.'
+              : ordinalSource === 'metanet'
               ? 'Pixel Fox Racing needs permission to read the "pixel foxes" basket in Metanet Client. Allow that permission, then retry.'
               : 'The wallet ordinals could not be loaded. Check the wallet connection, then retry.'
           );
@@ -106,15 +113,17 @@ export const NewGameChoosePlayerModal = ({
   const fetchFullOrdinals = async () => {
     if (
       isFetchingFull
-      || !wallet
+      || (ordinalSource !== 'address' && !wallet)
     ) return;
     setIsFetchingFull(true);
 
     try {
       const address = ownerAddress || bsvAddress || '';
-      const result = ordinalSource === 'metanet'
-        ? await loadMetanetPixelFoxes(wallet!, address)
-        : await loadPixelRacingOrdinals(wallet, address);
+      const result = ordinalSource === 'address'
+        ? await loadPixelRacingOrdinalsByAddress(address)
+        : ordinalSource === 'metanet'
+          ? await loadMetanetPixelFoxes(wallet!, address)
+          : await loadPixelRacingOrdinals(wallet!, address);
       setOrdinalsString(JSON.stringify(result.ordinals));
       setIsQuickView(false);
     } catch (error) {
@@ -244,7 +253,7 @@ export const NewGameChoosePlayerModal = ({
                 <p className="Heading"><span className="Demo"><b>Choose Player</b></span></p>
               </div>
 
-              {identityKey && (
+              {displayedWalletIdentifier && (
                 <div style={{
                   maxWidth: '900px',
                   margin: '0 auto 18px',
@@ -257,7 +266,7 @@ export const NewGameChoosePlayerModal = ({
                   textAlign: 'left'
                 }}>
                   <div style={{ color: '#36bffa', marginBottom: '8px' }}>
-                    Public identity key
+                    {displayedWalletIdentifierLabel}
                   </div>
                   <div style={{
                     display: 'flex',
@@ -269,11 +278,11 @@ export const NewGameChoosePlayerModal = ({
                       fontFamily: 'monospace',
                       userSelect: 'text'
                     }}>
-                      {formatShortAddress(identityKey)}
+                      {formatShortAddress(displayedWalletIdentifier)}
                     </span>
                     <button
                       type="button"
-                      onClick={() => navigator.clipboard?.writeText(identityKey)}
+                      onClick={() => navigator.clipboard?.writeText(displayedWalletIdentifier)}
                       style={{
                         padding: '2px 6px',
                         border: '1px solid #36bffa',
@@ -294,16 +303,22 @@ export const NewGameChoosePlayerModal = ({
                     fontSize: '13px',
                     lineHeight: 1.6
                   }}>
-                    Showing inscriptions from your{' '}
+                    {ordinalSource === 'address'
+                      ? 'Showing inscriptions at your '
+                      : 'Showing inscriptions from your '}
                     <span style={{
                       color: '#36bffa',
                       fontFamily: 'PublicPixel, monospace',
                       fontSize: '14px',
                       fontWeight: 700
                     }}>
-                      {ordinalSource === 'metanet' ? 'pixel foxes' : 'p 1sat ordinals'}
-                    </span>{' '}
-                    basket.
+                      {ordinalSource === 'metanet'
+                        ? 'pixel foxes'
+                        : ordinalSource === 'address'
+                          ? 'SHUAllet ord address'
+                          : 'p 1sat ordinals'}
+                    </span>
+                    {ordinalSource === 'address' ? '.' : ' basket.'}
                   </div>
                 </div>
               )}

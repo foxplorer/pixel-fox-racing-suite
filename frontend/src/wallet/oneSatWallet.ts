@@ -32,6 +32,22 @@ type LegacyOrdinal = {
   walletOutput: WalletOutput
 }
 
+type AddressOrdinal = Partial<Omit<LegacyOrdinal, 'walletOutput'>> & {
+  outpoint?: string
+  owner?: string
+  origin?: {
+    outpoint?: string
+    data?: {
+      map?: Record<string, unknown>
+    }
+  }
+  data?: {
+    map?: Record<string, unknown>
+  }
+  map?: Record<string, unknown>
+  tags?: string[]
+}
+
 export async function derivePixelRacingAddresses(
   wallet: WalletInterface,
 ): Promise<PixelRacingWalletAddresses> {
@@ -303,5 +319,56 @@ export async function loadPixelRacingOrdinals(
   return {
     ordinals,
     hasMore: Number.isFinite(requestedLimit) && outputs.length >= requestedLimit,
+  }
+}
+
+export function normalizeAddressScannedOrdinal(
+  ordinal: AddressOrdinal,
+  ownerAddress: string,
+): Omit<LegacyOrdinal, 'walletOutput'> {
+  const map = ordinal.origin?.data?.map
+    ?? ordinal.data?.map
+    ?? ordinal.map
+    ?? {}
+  const outpoint = normalizeOrdinalOutpoint(ordinal.outpoint ?? ordinal.origin?.outpoint ?? '')
+  const originOutpoint = normalizeOrdinalOutpoint(ordinal.origin?.outpoint ?? outpoint)
+
+  return {
+    ...ordinal,
+    outpoint,
+    owner: ordinal.owner || ownerAddress,
+    origin: {
+      outpoint: originOutpoint,
+      data: { map },
+    },
+    data: { map },
+    map,
+    tags: ordinal.tags,
+  }
+}
+
+export async function loadPixelRacingOrdinalsByAddress(
+  ownerAddress: string,
+  limit?: number,
+): Promise<{ ordinals: Array<Omit<LegacyOrdinal, 'walletOutput'>>; hasMore: boolean }> {
+  const requestedLimit = limit ?? 300000
+  const response = await fetch(
+    `https://ordinals.gorillapool.io/api/txos/address/${ownerAddress}/unspent?limit=${requestedLimit}`,
+    { method: 'GET' },
+  )
+
+  if (!response.ok) {
+    throw new Error(`Gorillapool address scan failed with status ${response.status}`)
+  }
+
+  const rawOrdinals = await response.json() as AddressOrdinal[]
+  const ordinals = rawOrdinals.map(ordinal => normalizeAddressScannedOrdinal(
+    ordinal,
+    ownerAddress,
+  ))
+
+  return {
+    ordinals,
+    hasMore: limit !== undefined && rawOrdinals.length >= requestedLimit,
   }
 }

@@ -5,6 +5,33 @@
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#000000" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="/SHUAllet.js/scripts/bsv.browser.min.js"></script>
+    <script src="/SHUAllet.js/scripts/message.js"></script>
+    <script src="/SHUAllet.js/scripts/api.js"></script>
+    <script src="/SHUAllet.js/scripts/params.js"></script>
+    <script src="/SHUAllet.js/scripts/bSocial.js"></script>
+    <script src="/SHUAllet.js/scripts/bSocialPost.js"></script>
+    <script src="/SHUAllet.js/scripts/bSocialLike.js"></script>
+    <script src="/SHUAllet.js/scripts/bHelpers.js"></script>
+    <script src="/SHUAllet.js/scripts/helpers.js"></script>
+    <script src="/SHUAllet.js/scripts/bsv-lock.js"></script>
+    <script src="/SHUAllet.js/scripts/idb.js"></script>
+    <script src="/SHUAllet.js/scripts/SHUAllet.js"></script>
+    <script src="/SHUAllet.js/scripts/oneSatOrdinals.js"></script>
+    <script src="/SHUAllet.js/scripts/bsv20.js"></script>
+    <script>
+      if (typeof setupWallet !== 'undefined') {
+        window.setupWallet = setupWallet;
+        window.backupWallet = backupWallet;
+        window.restoreWallet = restoreWallet;
+        window.getWalletBalance = getWalletBalance;
+        window.newPK = newPK;
+        window.getAddressFromPrivateKey = getAddressFromPrivateKey;
+        if (typeof inscribeTx !== 'undefined') window.inscribeTx = inscribeTx;
+        if (typeof broadcast !== 'undefined') window.broadcast = broadcast;
+        if (typeof payForRawTx !== 'undefined') window.payForRawTx = payForRawTx;
+      }
+    </script>
     <title>Pixel Fox Racing</title>
   </head>
   <body>

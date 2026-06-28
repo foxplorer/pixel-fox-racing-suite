@@ -108,9 +108,14 @@ The transaction server exposes these Pixel Fox Racing routes:
 - `POST /createsalad`
 - `POST /createrabbit`
 
+The open-source transaction server does not include the production Pixel Racing
+fox faucet. In production that feature lives outside this suite, with frontend
+calls to `/pixelracingfaucet/status` and `/pixelracingfaucet/claim` backed by
+the separate production transaction server.
+
 ## Wallet Behavior
 
-The frontend supports two explicit wallet choices. The landing page does not
+The frontend supports three explicit wallet choices. The landing page does not
 auto-connect or probe wallets before the player clicks a wallet button.
 
 - `Connect Yours Wallet` uses the modern BRC-100 flow through `@1sat/react`,
@@ -118,10 +123,27 @@ auto-connect or probe wallets before the player clicks a wallet button.
   `createContext(wallet, { chain: 'main', services })`, derives the payment and
   ordinal receive addresses with `deriveDepositAddresses`, and lists foxes with
   `getOrdinals` from the wallet-managed `p 1sat ordinals` basket. The
-  deprecated legacy `window.yours` provider is not used.
+  deprecated legacy `window.yours` provider is not used, and this code path does
+  not call the old `getAddresses` API directly.
 - `Connect Metanet` uses the local Metanet JSON API wallet transport. Foxes are
   listed from the app-specific `pixel foxes` basket, and race collectibles are
   delivered through the same Metanet protocol-key/basket path.
+- `Connect SHUAllet` uses the bundled SHUAllet scripts in
+  `frontend/public/SHUAllet.js`. The racing app stores/reads the SHUAllet
+  ordinal and payment addresses from local storage, treats the ordinal address
+  as the racing identity value, and scans that ordinal address for Pixel Foxes.
+  SHUAllet is not registered as a BRC-100 wallet provider in the
+  `@1sat/react` provider array.
+
+In the racing UI, Yours and SHUAllet players are shown by BSV ordinal address
+(`Ord:`). Metanet players are shown by the Metanet identity public key (`ID:`).
+Multiplayer state can carry both an identity key and an ordinal address, but
+the visible identity label follows that wallet split.
+
+Lap-result Pixel Racing inscriptions are keyed to the selected fox, not to the
+login wallet. `POST /createpixelracing` requires the fox's current outpoint,
+fox origin outpoint, fox name, lap time, and timestamp. It does not require or
+inscribe the player's wallet address or Metanet identity key.
 
 Race collectibles intentionally use different receive mechanics per wallet:
 
@@ -140,11 +162,27 @@ Race collectibles intentionally use different receive mechanics per wallet:
   basket import step fails, the frontend retries three times with exponential
   backoff. If all retries fail, the broadcast transaction remains on-chain and
   visible in activity.
+- SHUAllet collectibles use the same transaction-server address delivery mode
+  as Yours, but the frontend submits the SHUAllet ordinal address directly.
+  There is no SHUAllet `internalizeAction` step.
 
 The transaction server receives a validated `deliveryTarget` union from the
-frontend. The current modes are `address` for Yours-style address delivery and
-`protocol-key` for Metanet basket delivery. Legacy names such as
+frontend. The current modes are `address` for Yours/SHUAllet-style address
+delivery and `protocol-key` for Metanet basket delivery. Legacy names such as
 `address-fallback` are not part of the current main request contract.
+
+## Open Source vs Production Frontend
+
+This open-source frontend is intentionally scoped to Pixel Fox Racing and the
+route preview tool. Its routes are `/pixelfoxracing` and `/route`, with all
+unknown routes redirected back to `/pixelfoxracing`.
+
+The production frontend can carry additional closed-source game routes, such as
+the Foxplorer home page and Courier, plus a hamburger menu that links those
+experiences. Those production-only routes and menu links are not part of this
+open-source suite. Likewise, the production Pixel Racing faucet can be layered
+on top by pairing frontend faucet calls with the production transaction-server
+faucet routes described above.
 
 ## Real Transaction Mode
 
@@ -182,6 +220,7 @@ npm run check:transactions
 npm run test:transactions
 ```
 
-Manual wallet smoke tests should cover both wallet buttons, fox selection, one
-Yours collectible broadcast to the ordinal address, and one Metanet collectible
-internalization with retry behavior.
+Manual wallet smoke tests should cover all three wallet buttons, fox selection,
+one Yours collectible broadcast to the derived ordinal address, one SHUAllet
+collectible broadcast to the submitted ordinal address, and one Metanet
+collectible internalization with retry behavior.

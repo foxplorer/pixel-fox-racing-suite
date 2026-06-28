@@ -419,7 +419,7 @@ export const SnowmobileGame: React.FC<SnowmobileGameProps> = ({
         <RacingPlayerInfoPanel
           name={foxName}
           originOutpoint={foxOriginOutpoint}
-          addresses={[{ label: 'ID:', value: identityKey, canCopy: true }]}
+          addresses={[{ label: identityKey?.startsWith('02') || identityKey?.startsWith('03') ? 'ID:' : 'Ord:', value: identityKey, canCopy: true }]}
           backgroundColor="rgba(13, 31, 51, 0.9)"
           borderColor="rgba(135, 206, 235, 0.2)"
           accentColor="#87CEEB"

@@ -44,6 +44,46 @@ test('rejects Yours delivery without an ordinal deposit address', async () => {
   )
 })
 
+test('prepares an ordinal-address target without a wallet client', async () => {
+  const target = await prepareCollectibleDeliveryTarget(
+    null,
+    YOURS_WALLET_PROVIDER,
+    identityKey,
+    '1shuallet-ordinal-address',
+  )
+
+  assert.deepEqual(target, {
+    type: 'address',
+    address: '1shuallet-ordinal-address',
+  })
+})
+
+test('uses address delivery when a stale Metanet provider has an ordinal-address identity', async () => {
+  const target = await prepareCollectibleDeliveryTarget(
+    null,
+    METANET_WALLET_PROVIDER,
+    '1shuallet-ordinal-address',
+    '1shuallet-ordinal-address',
+  )
+
+  assert.deepEqual(target, {
+    type: 'address',
+    address: '1shuallet-ordinal-address',
+  })
+})
+
+test('rejects Metanet delivery without a connected wallet', async () => {
+  await assert.rejects(
+    prepareCollectibleDeliveryTarget(
+      null,
+      METANET_WALLET_PROVIDER,
+      identityKey,
+      null,
+    ),
+    /requires a connected wallet/,
+  )
+})
+
 test('prepares a complete protocol-key target for Metanet', async () => {
   let receivedArgs: unknown
   const publicKey = `03${'b'.repeat(64)}`

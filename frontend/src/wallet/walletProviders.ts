@@ -3,6 +3,7 @@ import { WalletClient, type WalletInterface } from '@bsv/sdk'
 
 export const YOURS_WALLET_PROVIDER = 'yours'
 export const METANET_WALLET_PROVIDER = 'metanet'
+export const SHUALLET_WALLET_PROVIDER = 'shuallet'
 
 type WalletClientFactory = (substrate: 'window.CWI' | 'json-api') => WalletInterface
 

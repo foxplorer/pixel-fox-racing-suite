@@ -15,7 +15,7 @@ import {
 
 type CollectibleResultsProps = {
   ordinalsstring: string
-  ordinalSource: 'onesat' | 'metanet'
+  ordinalSource: 'onesat' | 'metanet' | 'address'
 }
 
 const FALLBACK_IMAGES: Record<WalletCollectibleKind, string> = {
@@ -38,9 +38,13 @@ export default function CollectibleResults({
     }
   }, [ordinalsstring])
   const displayed = collectibles.slice(0, visibleCount)
-  const basketName = ordinalSource === 'metanet'
+  const sourceName = ordinalSource === 'metanet'
     ? 'pixel foxes'
-    : 'p 1sat ordinals'
+    : ordinalSource === 'address'
+      ? 'SHUAllet ord address'
+      : 'p 1sat ordinals'
+  const sourcePrefix = ordinalSource === 'address' ? 'At your' : 'From your'
+  const sourceSuffix = ordinalSource === 'address' ? '' : ' basket'
 
   useEffect(() => {
     setVisibleCount(RESULTS_PAGE_SIZE)
@@ -62,7 +66,7 @@ export default function CollectibleResults({
           Collectibles ({collectibles.length})
         </h3>
         <p style={{ color: '#aaa', fontSize: '12px', lineHeight: 1.6 }}>
-          From your <strong style={{ color: '#ffffff' }}>{basketName}</strong> basket
+          {sourcePrefix} <strong style={{ color: '#ffffff' }}>{sourceName}</strong>{sourceSuffix}
         </p>
       </div>
 

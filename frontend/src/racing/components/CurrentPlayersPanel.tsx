@@ -158,7 +158,7 @@ export const CurrentPlayersPanel: React.FC<CurrentPlayersPanelProps> = ({
                         overflow: 'hidden',
                         textOverflow: 'ellipsis'
                       }}>
-                        ID: {formatShortAddress(player.identityKey)}
+                        {player.identityKey.startsWith('02') || player.identityKey.startsWith('03') ? 'ID' : 'Ord'}: {formatShortAddress(player.identityKey)}
                       </span>
                     )}
                     <span className="player-track" style={{
