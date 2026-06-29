@@ -351,7 +351,7 @@ export const NewGameChoosePlayerModal = ({
                       fontFamily: 'PublicPixel, monospace'
                     }}
                   >
-                    Retry basket access
+                    {ordinalSource === 'metanet' ? 'Retry basket access' : 'Retry'}
                   </button>
                 </div>
               )}

@@ -19,8 +19,12 @@ import {
   type ShualletSession,
 } from '../wallet/shuallet';
 
+// Which wallet the user chose, so the page can route to that wallet's flow and
+// never reuse another wallet's (e.g. stale SHUAllet) session.
+export type WalletConnectSource = 'onesat' | 'metanet' | 'shuallet';
+
 export type FaucetPandaConnectButtonProps = {
-  onClick?: () => void | Promise<void>;
+  onClick?: (source?: WalletConnectSource) => void | Promise<void>;
   loading?: boolean;
 };
 
@@ -33,6 +37,8 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
   const [shualletError, setShualletError] = useState<string | null>(null);
   const [shualletModalOpen, setShualletModalOpen] = useState(false);
   const [shualletNotice, setShualletNotice] = useState<string | null>(null);
+  const [sessionIsNew, setSessionIsNew] = useState(false);
+  const [backupDownloaded, setBackupDownloaded] = useState(false);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const isConnecting = status === 'connecting';
   const buttonStyle = {
@@ -98,11 +104,16 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
   );
   useEffect(() => {
     setShualletSession(getExistingShualletSession());
+    setSessionIsNew(false);
+    setBackupDownloaded(false);
   }, []);
+
+  // Newly created wallets must download a backup before continuing.
+  const continueGated = sessionIsNew && !backupDownloaded;
 
   const handleProviderConnect = async (provider: string) => {
     if (status === 'connected' && providerType === provider) {
-      void onClick?.();
+      void onClick?.(provider === METANET_WALLET_PROVIDER ? 'metanet' : 'onesat');
       return;
     }
 
@@ -115,7 +126,7 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
     setShualletError(null);
     setShualletNotice(null);
     emitShualletConnected();
-    void onClick?.();
+    void onClick?.('shuallet');
   };
 
   const openShualletModal = () => {
@@ -137,6 +148,8 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
 
       const session = createShualletWallet();
       setShualletSession(session);
+      setSessionIsNew(true);
+      setBackupDownloaded(false);
       setShualletNotice('Wallet created. Download your backup before continuing.');
     } catch (error) {
       setShualletError(error instanceof Error ? error.message : 'SHUAllet connection failed');
@@ -155,6 +168,8 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
     try {
       const session = await restoreShualletBackup(file);
       setShualletSession(session);
+      setSessionIsNew(false);
+      setBackupDownloaded(false);
       setShualletNotice('Wallet restored.');
     } catch (error) {
       setShualletError(error instanceof Error ? error.message : 'SHUAllet restore failed');
@@ -171,7 +186,19 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
     setShualletSession(null);
     setShualletError(null);
     setShualletNotice(null);
+    setSessionIsNew(false);
+    setBackupDownloaded(false);
     emitShualletConnected();
+  };
+
+  const handleShualletDownloadBackup = () => {
+    try {
+      backupShualletWallet();
+      setBackupDownloaded(true);
+      setShualletError(null);
+    } catch (error) {
+      setShualletError(error instanceof Error ? error.message : 'SHUAllet backup failed');
+    }
   };
 
   const handleShualletChoose = () => {
@@ -224,12 +251,37 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
             <div style={{ color: '#36bffa' }}>Wallet Connected</div>
             <div style={{ wordBreak: 'break-all' }}>Ord: {shualletSession.ordinalAddress}</div>
             <div style={{ wordBreak: 'break-all', color: '#aaa' }}>Pay: {shualletSession.paymentAddress}</div>
-            <button type="button" className="FaucetButtonHover" onClick={handleShualletChoose} style={primaryActionButtonStyle}>
+            <button
+              type="button"
+              className="FaucetButtonHover"
+              onClick={handleShualletChoose}
+              disabled={continueGated}
+              style={continueGated
+                ? { ...buttonStyle, width: '100%', opacity: 0.45, cursor: 'not-allowed' }
+                : primaryActionButtonStyle}
+            >
               Continue to Choose Player
             </button>
-            <button type="button" className="FaucetButtonHover" onClick={() => backupShualletWallet()} style={{ ...buttonStyle, width: '100%' }}>
+            {continueGated && (
+              <div style={{ color: '#facc15', fontSize: '10px', lineHeight: 1.5 }}>
+                Download your backup to enable Continue.
+              </div>
+            )}
+            <button
+              type="button"
+              className="FaucetButtonHover"
+              onClick={handleShualletDownloadBackup}
+              style={continueGated
+                ? { ...primaryActionButtonStyle }
+                : { ...buttonStyle, width: '100%' }}
+            >
               Download Backup
             </button>
+            {backupDownloaded && (
+              <div style={{ color: '#4ade80', fontSize: '10px', lineHeight: 1.5 }}>
+                Backup downloaded ✓
+              </div>
+            )}
             <button type="button" className="FaucetButtonHover" onClick={handleShualletLogout} style={{ ...buttonStyle, width: '100%', borderColor: '#f87171', color: '#f87171' }}>
               Sign Out
             </button>
@@ -332,8 +384,8 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
           {shualletError
             ? shualletError
             : selectedProvider === METANET_WALLET_PROVIDER
-            ? 'Metanet could not be reached at localhost:3321. Open and unlock Metanet Client, then retry.'
-            : 'Yours Wallet could not be reached. Enable and unlock the Yours browser extension, then retry.'}
+            ? 'Metanet needs another step. Make sure Metanet Client is open and unlocked at localhost:3321, then click "Connect Metanet" again to finish granting permissions.'
+            : 'Almost there — make sure the Yours extension is enabled and unlocked, then click "Connect Yours" again to finish granting permissions.'}
         </div>
       )}
     </div>

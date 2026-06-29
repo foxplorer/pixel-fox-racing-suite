@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import pixelRacingLogo from '../assets/pixel_racing_logo.png';
 import { NewGameChoosePlayerModal } from "../components/NewGameChoosePlayerModal";
+import { WalletPermissionsModal } from "../components/WalletPermissionsModal";
 import { ExitButton } from "../components/ExitButton";
 import { RacingPlayerInfoPanel } from "../racing/components/RacingPlayerInfoPanel";
 import { useWallet } from "@1sat/react";
@@ -22,10 +23,6 @@ import {
   type ImportedCarTrackId
 } from "../racing/tracks/importedCarTrackCatalog";
 import { belgiumCarTrackDefinition } from "../racing/tracks/carTrackDefinitions";
-import {
-  derivePixelRacingAddresses,
-  verifyMetanetPixelFoxAccess
-} from "../wallet/oneSatWallet";
 import { METANET_WALLET_PROVIDER } from "../wallet/walletProviders";
 import {
   getExistingShualletSession,
@@ -90,6 +87,8 @@ export const FoxRacing = () => {
   
   // Modal State
   const [isChoosePlayerModalOpen, setIsChoosePlayerModalOpen] = useState<boolean>(false);
+  const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState<boolean>(false);
+  const [permissionsWalletKind, setPermissionsWalletKind] = useState<'onesat' | 'metanet'>('onesat');
 
   // Game Racing State - to hide outer fox info panel when game shows its own
   const [isGameRacing, setIsGameRacing] = useState<boolean>(false);
@@ -98,20 +97,33 @@ export const FoxRacing = () => {
     : myordaddress || shualletSession?.identityKey;
   const activeIdentityLabel = walletOrdinalSource === 'metanet' ? 'ID:' : 'Ord:';
 
+  // Clear the previously selected fox and its collectible counts so a fox picked
+  // under one wallet never lingers in the racing UI after switching wallets.
+  const resetSelectedFox = () => {
+    setFoxSelected(false);
+    setFoxName(undefined);
+    setFoxOutpoint(undefined);
+    setFoxImageSrc(undefined);
+    setFoxBackground(undefined);
+    setFoxesOwned(0);
+    setWalletSaladCount(0);
+    setWalletBlueberryCount(0);
+    setWalletRabbitCount(0);
+  };
+
   const applyShualletSession = (session: ShualletSession | null, openChoosePlayer = false) => {
     setShualletSession(session);
+    resetSelectedFox();
     if (!session) {
       setWalletOrdinalSource('onesat');
       setMyOrdAddress('');
       setBsvAddress(undefined);
-      setFoxSelected(false);
       return;
     }
 
     setWalletOrdinalSource('address');
     setMyOrdAddress(session.ordinalAddress);
     setBsvAddress(session.paymentAddress);
-    setFoxSelected(false);
     if (openChoosePlayer) {
       setIsChoosePlayerModalOpen(true);
     }
@@ -130,51 +142,66 @@ export const FoxRacing = () => {
     };
   }, []);
 
+  // Switch to a BRC-100 wallet (Yours/Metanet): drop any SHUAllet session, clear
+  // the prior wallet's address + selected fox, and open the permissions screen,
+  // which verifies the required actions and resolves the real ordinal address
+  // before Choose Player.
+  const startWalletPermissions = (kind: 'onesat' | 'metanet') => {
+    setShualletSession(null);
+    setBsvAddress(undefined);
+    resetSelectedFox();
+    if (kind === 'metanet') {
+      setWalletOrdinalSource('metanet');
+      setMyOrdAddress(walletIdentityKey || '');
+      setPermissionsWalletKind('metanet');
+    } else {
+      setWalletOrdinalSource('onesat');
+      // Clear any stale (e.g. SHUAllet) address; the permissions modal resolves
+      // the real Yours ordinal address via onAddressesResolved.
+      setMyOrdAddress('');
+      setPermissionsWalletKind('onesat');
+    }
+    setIsPermissionsModalOpen(true);
+  };
+
   useEffect(() => {
     if (status !== 'connected' || !wallet) return;
-
-    let cancelled = false;
-    const loadAddresses = async () => {
-      try {
-        if (providerType === METANET_WALLET_PROVIDER) {
-          await verifyMetanetPixelFoxAccess(wallet);
-          if (cancelled) return;
-          setShualletSession(null);
-          setWalletOrdinalSource('metanet');
-          setMyOrdAddress(walletIdentityKey || '');
-          setBsvAddress(undefined);
-          setIsChoosePlayerModalOpen(true);
-          return;
-        }
-
-        const addrs = await derivePixelRacingAddresses(wallet);
-        if (cancelled) return;
-        setShualletSession(null);
-        setWalletOrdinalSource('onesat');
-        setMyOrdAddress(addrs.ordAddress);
-        setBsvAddress(addrs.bsvAddress);
-        setIsChoosePlayerModalOpen(true);
-      } catch (error) {
-        console.error('Failed to initialize connected wallet:', error);
-      }
-    };
-
-    loadAddresses();
-    return () => {
-      cancelled = true;
-    };
+    startWalletPermissions(providerType === METANET_WALLET_PROVIDER ? 'metanet' : 'onesat');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, wallet, walletIdentityKey, providerType]);
 
-  const handleConnect = () => {
-    if (walletOrdinalSource === 'address' || getExistingShualletSession()) {
+  const handleConnect = (source?: 'onesat' | 'metanet' | 'shuallet') => {
+    // SHUAllet was chosen from its modal: load its session and Choose Player.
+    if (source === 'shuallet') {
       const session = getExistingShualletSession();
-      applyShualletSession(session, true);
+      if (session) {
+        applyShualletSession(session, true);
+      }
       return;
     }
 
-    if ((myordaddress || walletOrdinalSource === 'metanet') && !foxSelected) {
-      setIsChoosePlayerModalOpen(true);
+    // A Yours/Metanet button was clicked. Route to that wallet, never to a stale
+    // SHUAllet session. `source` reflects the clicked wallet; fall back to the
+    // connected provider if a caller omitted it.
+    const kind: 'onesat' | 'metanet' =
+      source === 'metanet' || source === 'onesat'
+        ? source
+        : providerType === METANET_WALLET_PROVIDER ? 'metanet' : 'onesat';
+
+    if (status !== 'connected' || !wallet) return;
+
+    // Already active on this wallet with a resolved address: go straight to
+    // Choose Player. Otherwise (e.g. switching back from SHUAllet) re-run the
+    // permissions/derive flow so the correct address and foxes load.
+    const hasResolvedAddress = kind === 'metanet' ? Boolean(walletIdentityKey) : Boolean(myordaddress);
+    if (!shualletSession && walletOrdinalSource === kind && hasResolvedAddress) {
+      if (!foxSelected) {
+        setIsChoosePlayerModalOpen(true);
+      }
+      return;
     }
+
+    startWalletPermissions(kind);
   };
 
   const handleFoxSelected = (foxData: any) => {
@@ -432,6 +459,23 @@ export const FoxRacing = () => {
         renderBeforeLeaderboard={currentPlayersSection}
       />
       <FooterHome />
+      <WalletPermissionsModal
+        isOpen={isPermissionsModalOpen}
+        walletKind={permissionsWalletKind}
+        wallet={wallet ?? null}
+        identityKey={walletIdentityKey}
+        onAddressesResolved={({ ordAddress, bsvAddress: resolvedBsv }) => {
+          setMyOrdAddress(ordAddress);
+          setBsvAddress(resolvedBsv);
+        }}
+        onProceed={() => {
+          setIsPermissionsModalOpen(false);
+          setIsChoosePlayerModalOpen(true);
+        }}
+        onClose={() => {
+          setIsPermissionsModalOpen(false);
+        }}
+      />
       <NewGameChoosePlayerModal
         isOpen={isChoosePlayerModalOpen}
         onClose={() => {
