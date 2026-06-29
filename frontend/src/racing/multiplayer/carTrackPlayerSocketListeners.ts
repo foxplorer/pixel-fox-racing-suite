@@ -15,7 +15,9 @@ import {
 } from './playerChat'
 import {
   applyPlayerCollisionUpdate,
+  shouldApplyPlayerCollisionSequence,
   type CollisionSyncedPlayer,
+  type PlayerCollisionSequenceState,
   type PlayerCollisionSocketPayload
 } from './playerCollision'
 import type { PlayerPositionSocketPayload } from './playerPosition'
@@ -28,6 +30,7 @@ interface CarTrackLivePlayerSocketLike {
   on(event: 'playerTrackNameUpdate', listener: (payload: PlayerTrackNameSocketPayload) => void): void
   on(event: 'playerChat', listener: (payload: PlayerChatSocketPayload) => void): void
   on(event: 'playerCollision', listener: (payload: PlayerCollisionSocketPayload) => void): void
+  on(event: 'playerCollisionResolved', listener: (payload: PlayerCollisionSocketPayload) => void): void
 }
 
 interface CarTrackGameStatePlayers {
@@ -63,6 +66,8 @@ export const registerCarTrackLivePlayerSocketListeners = <
   setOtherPlayers,
   setLocalChatMessage
 }: RegisterCarTrackLivePlayerSocketListenersOptions<TGameState, TRemotePlayer>): void => {
+  const collisionSequenceState: PlayerCollisionSequenceState = new Map()
+
   socket.on('playerPositionUpdate', data => {
     queueRemotePlayerPositionUpdate(data)
   })
@@ -108,8 +113,14 @@ export const registerCarTrackLivePlayerSocketListeners = <
     }
   })
 
-  socket.on('playerCollision', data => {
+  const applyCollisionUpdate = (data: PlayerCollisionSocketPayload) => {
+    if (!shouldApplyPlayerCollisionSequence(data, collisionSequenceState)) {
+      return
+    }
+
     setOtherPlayers(prev => applyPlayerCollisionUpdate(prev, data, getSocketId()))
-    console.log(`💥 Collision detected between ${data.playerId1} and ${data.playerId2}`)
-  })
+  }
+
+  socket.on('playerCollision', applyCollisionUpdate)
+  socket.on('playerCollisionResolved', applyCollisionUpdate)
 }

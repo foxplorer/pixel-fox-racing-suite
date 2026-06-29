@@ -45,6 +45,11 @@ The frontend includes these playable track environments:
 - `Germany` - custom imported GeoJSON layout with authored elevation and generic imported-track scenery.
 - `Volcanoes` - custom imported mountain circuit with authored hill-climb elevation and generic imported-track scenery.
 
+Car multiplayer collision handling is shared by the standard car vehicle path.
+That covers Australia, San Luis, Belgium, and the imported United Kingdom,
+Germany, and Volcanoes car tracks. Aspen is the snowmobile event and uses the
+snowmobile world/handling path, not the car collision frame.
+
 Track and asset provenance is documented in `ATTRIBUTIONS.md`. New tracks should include clear notes about whether the layout is original, public domain, MIT-compatible, or requires attribution. The current imported GeoJSON/elevation workflow is documented in `ADDING_IMPORTED_TRACKS.md`.
 
 ## Collaboration Plan

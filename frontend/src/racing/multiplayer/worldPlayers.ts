@@ -42,6 +42,8 @@ export interface RacingWorldJoinedPlayer {
 export interface RacingWorldPlayerCollisionTarget {
   id: string
   position: [number, number, number]
+  rotation?: [number, number, number]
+  speed?: number
 }
 
 export interface BuildRacingWorldPlayerInput {
@@ -78,7 +80,9 @@ export const getRacingWorldPlayerCollisionTargets = (
   players: RacingWorldPlayer[]
 ): RacingWorldPlayerCollisionTarget[] => players.map(player => ({
   id: player.id,
-  position: player.position
+  position: player.position,
+  rotation: player.rotation,
+  speed: player.speed
 }))
 
 export const buildRacingWorldPlayer = ({

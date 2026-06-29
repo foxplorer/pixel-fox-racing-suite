@@ -9,7 +9,7 @@ import {
   type RacingWorldPlayer
 } from './worldPlayers'
 
-test('getRacingWorldPlayerCollisionTargets keeps only ids and positions', () => {
+test('getRacingWorldPlayerCollisionTargets keeps collision physics fields only', () => {
   const players: RacingWorldPlayer[] = [
     {
       id: 'player-1',
@@ -19,6 +19,7 @@ test('getRacingWorldPlayerCollisionTargets keeps only ids and positions', () => 
       color: '#fff',
       carColor: '#f00',
       isWalking: true,
+      speed: 12,
       foxTextureUrl: 'fox.png',
       chatMessage: 'hi',
       chatTimestamp: 123
@@ -26,7 +27,7 @@ test('getRacingWorldPlayerCollisionTargets keeps only ids and positions', () => 
   ]
 
   assert.deepEqual(getRacingWorldPlayerCollisionTargets(players), [
-    { id: 'player-1', position: [1, 2, 3] }
+    { id: 'player-1', position: [1, 2, 3], rotation: [0, 1, 0], speed: 12 }
   ])
 })
 

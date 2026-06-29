@@ -1,6 +1,7 @@
 import React from 'react'
 import * as THREE from 'three'
 import type { RacingGameCollectibleItem as GameItem } from '../collectibles/collectibleTypes'
+import type { LocalPlayerCollisionReport } from '../multiplayer/playerCollision'
 import type { RacingWorldPlayer, RacingWorldPlayerCollisionTarget } from '../multiplayer/worldPlayers'
 import { getRacingWorldPlayerCollisionTargets } from '../multiplayer/worldPlayers'
 import type { RacingAdvertisingBoard } from '../vehicles/carBoardCollision'
@@ -66,6 +67,7 @@ interface CarTrackLocalVehicleProps {
   localChatMessage?: { text: string; timestamp: number } | null
   initialHeadlightsEnabled?: boolean
   onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
+  onPlayerCollision?: (report: LocalPlayerCollisionReport) => void
   socketPositionEmitMode?: SocketPositionEmitMode
 }
 
@@ -111,6 +113,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
   localChatMessage = null,
   initialHeadlightsEnabled = true,
   onPositionUpdateForSocket,
+  onPlayerCollision,
   socketPositionEmitMode = 'default-missing-values'
 }) => {
   const optionalCollisionProps = {
@@ -158,6 +161,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
       spawnPosition={spawnPosition}
       localChatMessage={localChatMessage}
       initialHeadlightsEnabled={initialHeadlightsEnabled}
+      onPlayerCollision={onPlayerCollision}
       onPositionUpdate={(position: THREE.Vector3, rotation?: number, speed?: number, headlightsEnabled?: boolean) => {
         manualCamera.updateCarPosition(position)
 

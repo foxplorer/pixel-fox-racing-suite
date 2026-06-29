@@ -17,7 +17,7 @@ test('resolveCarCollisionFrame applies obstacle speed loss before later collisio
     speed: 20,
     treeTargets: [tree],
     startingGatePoles: [{ x: 1.5, z: 0, radius: 1 }],
-    players: [{ position: [1.5, 0, 0] }],
+    players: [{ id: 'player', position: [1.5, 0, 0] }],
     onTreeCollision: target => {
       assert.equal(target, tree)
       treeCollisionCount++
@@ -55,12 +55,12 @@ test('resolveCarCollisionFrame checks players after obstacles and boards', () =>
     speed: 20,
     treeTargets: [],
     startingGatePoles: [],
-    players: [{ position: [0, 0, 0] }]
+    players: [{ id: 'player', position: [0, 0, 0] }]
   })
 
   assert.equal(result.collided, true)
   assert.equal(result.isSlidingAlongBoard, false)
-  assertNear(result.speed, 20 * SHARED_CAR_HANDLING.vehicleCollisionSpeedMultiplier)
+  assertNear(result.speed, 18)
   assertNear(position.x, 4.15)
 })
 
@@ -72,7 +72,7 @@ test('resolveCarCollisionFrame preserves speed when nothing collides', () => {
     speed: 20,
     treeTargets: [{ x: 0, z: 0, radius: 1 }],
     startingGatePoles: [{ x: 10, z: 10, radius: 1 }],
-    players: [{ position: [20, 0, 20] }],
+    players: [{ id: 'player', position: [20, 0, 20] }],
     treeMaxCheckDistance: 10
   })
 
@@ -81,4 +81,29 @@ test('resolveCarCollisionFrame preserves speed when nothing collides', () => {
   assert.equal(result.speed, 20)
   assert.equal(position.x, 100)
   assert.equal(position.z, 100)
+})
+
+test('resolveCarCollisionFrame keeps high-speed rear-end players moving', () => {
+  const position = { x: 0, z: -3.5 }
+
+  const result = resolveCarCollisionFrame({
+    position,
+    previousPosition: { x: 0, z: -3 },
+    speed: 40,
+    rotationY: 0,
+    gameStatus: 'racing',
+    treeTargets: [],
+    startingGatePoles: [],
+    players: [{
+      id: 'lead',
+      position: [0, 0, -5],
+      rotation: [0, 0, 0],
+      speed: 35
+    }]
+  })
+
+  assert.equal(result.collided, true)
+  assert.equal(result.isSlidingAlongBoard, false)
+  assertNear(result.speed, 38.25)
+  assert.ok(result.speed > 35)
 })

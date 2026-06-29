@@ -98,3 +98,53 @@ test('registerCarTrackLivePlayerSocketListeners applies shared remote player eve
   assert.deepEqual(otherPlayers[0].rotation, [0, 2, 0])
   assert.equal(otherPlayers[0].isWalking, true)
 })
+
+test('registerCarTrackLivePlayerSocketListeners ignores stale sequenced collision events', () => {
+  const listeners = new Map<string, (...args: any[]) => void>()
+  let otherPlayers: RemotePlayer[] = [
+    {
+      id: 'remote-1',
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      isWalking: false
+    }
+  ]
+
+  registerCarTrackLivePlayerSocketListeners<GameState, RemotePlayer>({
+    socket: {
+      on(event, listener) {
+        listeners.set(event, listener)
+      }
+    },
+    defaultTrackName: 'Australia',
+    getSocketId: () => 'local-1',
+    getCurrentTrackName: () => 'Australia',
+    getGameStatePlayers: () => [],
+    queueRemotePlayerPositionUpdate: () => {},
+    setGameState: () => {},
+    setOtherPlayers: updater => {
+      otherPlayers = typeof updater === 'function' ? updater(otherPlayers) : updater
+    },
+    setLocalChatMessage: () => {}
+  })
+
+  const collision = (sequence: number, x: number): PlayerCollisionSocketPayload => ({
+    playerId1: 'remote-1',
+    playerId2: 'local-1',
+    position1: { x, y: 0, z: 0 },
+    position2: { x: 0, y: 0, z: 0 },
+    rotation1: { x: 0, y: sequence, z: 0 },
+    rotation2: { x: 0, y: 0, z: 0 },
+    speed1: 1,
+    speed2: 0,
+    sequence
+  })
+
+  listeners.get('playerCollisionResolved')?.(collision(2, 20))
+  listeners.get('playerCollision')?.(collision(2, 99))
+  listeners.get('playerCollisionResolved')?.(collision(1, 10))
+  listeners.get('playerCollisionResolved')?.(collision(3, 30))
+
+  assert.deepEqual(otherPlayers[0].position, [30, 0, 0])
+  assert.deepEqual(otherPlayers[0].rotation, [0, 3, 0])
+})

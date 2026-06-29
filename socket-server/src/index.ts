@@ -72,6 +72,26 @@ interface PixelRacingPlayer {
   trackName?: string
 }
 
+interface PlayerCollisionReport {
+  collisionId?: string
+  sequence?: number
+  trackName?: string
+  playerId1: string
+  playerId2: string
+  position1: { x: number; y: number; z: number }
+  position2: { x: number; y: number; z: number }
+  rotation1: { x: number; y: number; z: number }
+  rotation2: { x: number; y: number; z: number }
+  speed1: number
+  speed2: number
+  resultSpeed1?: number
+  resultSpeed2?: number
+  collisionKind?: string
+  contactNormal?: { x: number; z: number }
+  overlapDepth?: number
+  occurredAt?: number
+}
+
 const pixelRacingState = {
   gameId: ROOM_ID,
   players: new Map<string, PixelRacingPlayer>(),
@@ -79,10 +99,71 @@ const pixelRacingState = {
   trackName: 'Australia',
 }
 
+const COLLIDABLE_PLAYER_STATUSES = new Set(['racing', 'crashed', 'finished'])
+const COLLISION_PAIR_COOLDOWN_MS = 250
+const COLLISION_MAX_REPORT_AGE_MS = 2000
+const COLLISION_MAX_DISTANCE = 12
+const COLLISION_MAX_ABS_SPEED = 140
+const collisionPairLastAcceptedAt = new Map<string, number>()
+
 function validateTrackName(trackName: string | undefined): string | null {
   if (!trackName?.trim()) return null
   const trimmed = trackName.trim()
   return VALID_TRACK_NAMES.includes(trimmed) ? trimmed : null
+}
+
+function playerPairKey(playerId1: string, playerId2: string): string {
+  return [playerId1, playerId2].sort().join(':')
+}
+
+function isFiniteVector3(vector: { x: number; y: number; z: number } | undefined): vector is { x: number; y: number; z: number } {
+  return vector !== undefined && Number.isFinite(vector.x) && Number.isFinite(vector.y) && Number.isFinite(vector.z)
+}
+
+function isAcceptableCollisionReport(
+  socketId: string,
+  report: PlayerCollisionReport,
+  now: number
+): { accepted: true; player1: PixelRacingPlayer; player2: PixelRacingPlayer } | { accepted: false } {
+  const player1 = pixelRacingState.players.get(report.playerId1)
+  const player2 = pixelRacingState.players.get(report.playerId2)
+  if (!player1 || !player2) return { accepted: false }
+  if (socketId !== player1.socketId && socketId !== player2.socketId) return { accepted: false }
+  if (!COLLIDABLE_PLAYER_STATUSES.has(player1.gameStatus) || !COLLIDABLE_PLAYER_STATUSES.has(player2.gameStatus)) {
+    return { accepted: false }
+  }
+  if (!player1.trackName || player1.trackName !== player2.trackName) return { accepted: false }
+  if (report.trackName && report.trackName !== player1.trackName) return { accepted: false }
+  if (!isFiniteVector3(report.position1) || !isFiniteVector3(report.position2)) return { accepted: false }
+  if (!isFiniteVector3(report.rotation1) || !isFiniteVector3(report.rotation2)) return { accepted: false }
+  if (!Number.isFinite(report.speed1) || !Number.isFinite(report.speed2)) return { accepted: false }
+  if (Math.abs(report.speed1) > COLLISION_MAX_ABS_SPEED || Math.abs(report.speed2) > COLLISION_MAX_ABS_SPEED) {
+    return { accepted: false }
+  }
+  if (report.resultSpeed1 !== undefined && (!Number.isFinite(report.resultSpeed1) || Math.abs(report.resultSpeed1) > COLLISION_MAX_ABS_SPEED)) {
+    return { accepted: false }
+  }
+  if (report.resultSpeed2 !== undefined && (!Number.isFinite(report.resultSpeed2) || Math.abs(report.resultSpeed2) > COLLISION_MAX_ABS_SPEED)) {
+    return { accepted: false }
+  }
+  if (report.occurredAt !== undefined && (!Number.isFinite(report.occurredAt) || Math.abs(now - report.occurredAt) > COLLISION_MAX_REPORT_AGE_MS)) {
+    return { accepted: false }
+  }
+
+  const reportDx = report.position1.x - report.position2.x
+  const reportDz = report.position1.z - report.position2.z
+  if (Math.hypot(reportDx, reportDz) > COLLISION_MAX_DISTANCE) return { accepted: false }
+
+  const serverDx = player1.position.x - player2.position.x
+  const serverDz = player1.position.z - player2.position.z
+  if (Math.hypot(serverDx, serverDz) > COLLISION_MAX_DISTANCE * 1.5) return { accepted: false }
+
+  const pairKey = playerPairKey(report.playerId1, report.playerId2)
+  const lastAcceptedAt = collisionPairLastAcceptedAt.get(pairKey) || 0
+  if (now - lastAcceptedAt < COLLISION_PAIR_COOLDOWN_MS) return { accepted: false }
+  collisionPairLastAcceptedAt.set(pairKey, now)
+
+  return { accepted: true, player1, player2 }
 }
 
 function serializablePlayers() {
@@ -275,6 +356,34 @@ pixelRacingIo.on('connection', socket => {
       playerId: socket.id,
       message: String(data.message || '').slice(0, 50),
     })
+  })
+
+  socket.on('reportPlayerCollision', (data: PlayerCollisionReport) => {
+    const now = Date.now()
+    const validation = isAcceptableCollisionReport(socket.id, data, now)
+    if (!validation.accepted) return
+
+    const payload = {
+      collisionId: data.collisionId || `${playerPairKey(data.playerId1, data.playerId2)}:${now}`,
+      sequence: Number.isFinite(data.sequence) ? data.sequence : now,
+      trackName: validation.player1.trackName,
+      playerId1: data.playerId1,
+      playerId2: data.playerId2,
+      position1: data.position1,
+      position2: data.position2,
+      rotation1: data.rotation1,
+      rotation2: data.rotation2,
+      speed1: data.resultSpeed1 ?? data.speed1,
+      speed2: data.resultSpeed2 ?? data.speed2,
+      collisionKind: data.collisionKind,
+      contactNormal: data.contactNormal,
+      overlapDepth: data.overlapDepth,
+      occurredAt: data.occurredAt || now,
+      acceptedAt: now,
+    }
+
+    pixelRacingIo.to(ROOM_ID).emit('playerCollisionResolved', payload)
+    pixelRacingIo.to(ROOM_ID).emit('playerCollision', payload)
   })
 
   socket.on('collectItem', (data: { itemId: string }) => {

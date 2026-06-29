@@ -51,6 +51,7 @@ On connect, the server immediately emits the current `gameState` snapshot to the
 | `updateCarColor` | `carColor` | Update and broadcast car color. |
 | `updateTrackName` | `trackName` | Update and broadcast selected track. Must be in `VALID_TRACK_NAMES`. |
 | `playerChat` | `message` | Send a chat message (truncated to 50 characters). |
+| `reportPlayerCollision` | player IDs, positions, rotations, speeds | Report a predicted player-to-player vehicle collision. The server validates same-track players, racing status, plausible distance/speed, and pair cooldown before relaying. |
 | `collectItem` | `itemId` | Claim a collectible item. Server removes it, updates player score, spawns a replacement. |
 | `shareTransaction` | item transaction data | Broadcast a collectible transaction to all clients. |
 | `shareGameTransaction` | lap transaction data | Broadcast a lap transaction to all clients. |
@@ -68,6 +69,8 @@ On connect, the server immediately emits the current `gameState` snapshot to the
 | `playerCarColorUpdate` | A player changed their car color. |
 | `playerTrackNameUpdate` | A player changed their selected track. |
 | `playerChat` | A chat message from another player. |
+| `playerCollisionResolved` | A validated collision report accepted by the server. |
+| `playerCollision` | Legacy collision relay alias for older clients. |
 | `itemCollected` | An item was collected, with updated score and item type. |
 | `itemSpawned` | A new item has spawned at a position. |
 | `newItemTransaction` | A collectible transaction was broadcast. |

@@ -6,10 +6,43 @@ The goal is to classify collision scenarios, resolve them with relative motion, 
 
 ## Current State
 
+Implementation update, 2026-06-29:
+
+- A pure first-pass player vehicle collision solver now lives in
+  `frontend/src/racing/vehicles/playerVehicleCollision.ts`.
+- `resolveCarCollisionFrame` uses that solver for player contacts instead of
+  applying the old flat `vehicleCollisionSpeedMultiplier` to every car contact.
+- Remote collision targets now carry rotation and speed when available, so
+  same-direction rear-end and side-swipe contact can preserve momentum.
+- Countdown/loading/showroom overlap is treated as non-collidable staging
+  overlap for car-vs-player contact.
+- The six car tracks covered by this path are Australia, San Luis, Belgium,
+  United Kingdom, Germany, and Volcanoes. The imported United Kingdom/Germany/
+  Volcanoes tracks render through the shared Australia car vehicle path.
+- Aspen is currently the snowmobile event and uses the snowmobile world/handling
+  path, not the car collision frame.
+- Snowmobile collision/handling is intentionally being left to the side for now.
+  Do not fold snowmobile into this car-collision plan unless a later task
+  explicitly asks for snowmobile multiplayer contact work.
+- The socket server has a validated, pair-rate-limited `reportPlayerCollision`
+  relay and emits `playerCollisionResolved` plus the legacy `playerCollision`
+  alias for accepted reports.
+- Car track frontends now emit `reportPlayerCollision` after a local player-car
+  collision is resolved, carrying local/remote positions, rotations, speeds,
+  resulting local speed, collision kind, contact normal, overlap depth, track
+  name, and a local sequence.
+- Car track frontends now track the latest accepted collision sequence per
+  player pair, so duplicate legacy/resolved socket events and stale pair updates
+  are ignored.
+- Car track frontends keep per-remote-player contact state so sustained overlap
+  within a short window gets a softened follow-up response instead of repeatedly
+  applying a full fresh-impact penalty every frame.
+
 Relevant frontend files:
 
 - `frontend/src/racing/vehicles/carCollisionFrame.ts`
 - `frontend/src/racing/vehicles/carCircleCollision.ts`
+- `frontend/src/racing/vehicles/playerVehicleCollision.ts`
 - `frontend/src/racing/vehicles/carHandling.ts`
 - `frontend/src/racing/multiplayer/worldPlayers.ts`
 - `frontend/src/racing/multiplayer/playerCollision.ts`
@@ -20,13 +53,25 @@ Relevant socket-server file:
 
 - `socket-server/src/index.ts`
 
-Current behavior:
+Original behavior:
 
 - Local car collision detection uses circular overlap against remote player positions.
 - A player collision applies `vehicleCollisionSpeedMultiplier`, currently `0.4`, regardless of collision type.
 - Remote player state includes position, rotation, and speed, but no explicit velocity vector, acceleration, contact normal, collision impulse, or collision sequence ID.
 - `PlayerCollisionSocketPayload` exists on the frontend, but the socket server does not currently orchestrate authoritative car-to-car collision events.
 - Repeated overlap frames can apply repeated speed loss, making one car stop abruptly.
+
+Current first-pass behavior:
+
+- Same-direction rear-end contact keeps the trailing car near the lead car's
+  speed instead of forcing a dead stop.
+- Same-direction side swipes retain most forward speed while still separating
+  the cars.
+- Angled and head-on contact remain more disruptive than rear-end contact.
+- Staging overlap is ignored for hard collision response until racing/crashed/
+  finished statuses.
+- The server can validate and relay reported collision resolutions, but the
+  frontend still treats local prediction as the primary immediate response.
 
 ## Design Goals
 
@@ -444,10 +489,15 @@ Add socket-server tests or lightweight handler tests for:
 
 ### Phase 1: Stop The Dead-Stop Rear-End
 
-- Add a pure player collision solver for same-direction rear-end and side-swipe cases.
-- Replace `vehicleCollisionSpeedMultiplier` for player collisions with relative-speed handling.
-- Add pair cooldown/contact state on the frontend.
-- Add tests for high-speed rear-end and repeated overlap.
+- [Done 2026-06-29] Add a pure player collision solver for same-direction
+  rear-end, side-swipe, angled, head-on, and staging-overlap cases.
+- [Done 2026-06-29] Replace `vehicleCollisionSpeedMultiplier` for player
+  collisions with relative-speed handling in `resolveCarCollisionFrame`.
+- [Done 2026-06-29] Server pair cooldown exists for reported collision events,
+  and frontend car tracks keep per-remote-player contact state to soften
+  repeated overlap.
+- [Done 2026-06-29] Add tests for high-speed rear-end, side swipe, head-on,
+  staging overlap, and shared collision-frame integration.
 
 ### Phase 2: Expand Scenario Classification
 
@@ -457,10 +507,18 @@ Add socket-server tests or lightweight handler tests for:
 
 ### Phase 3: Socket Collision Events
 
-- Add `reportPlayerCollision` to the client.
-- Add validation and rate-limited relay in `socket-server/src/index.ts`.
-- Add `playerCollisionResolved` frontend listener.
-- Include sequence IDs and pair cooldown handling.
+- [Done 2026-06-29] Add `reportPlayerCollision` emission from the car-track
+  client once collision metadata is carried from the vehicle frame to each
+  track's socket layer.
+- [Done 2026-06-29] Add validation and rate-limited relay in
+  `socket-server/src/index.ts`.
+- [Done 2026-06-29] Add `playerCollisionResolved` frontend listener while
+  retaining the legacy `playerCollision` event.
+- [Done 2026-06-29] Client reports and server events include collision
+  IDs/sequences and server pair cooldown handling.
+- [Done 2026-06-29] Add client-side stale/duplicate sequence rejection per
+  player pair so the resolved event and legacy alias cannot apply the same
+  collision twice.
 
 ### Phase 4: Grid And Staging Safety
 

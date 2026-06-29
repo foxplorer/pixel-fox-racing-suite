@@ -13,6 +13,7 @@ import { RemotePlayerCars } from '../foxracing/RemotePlayerCars'
 import { StadiumSeating } from './StadiumSeating'
 import type { VoxelBackgroundRemovalStrategy } from '../voxelization/voxelBackgroundStrategy'
 import type { RacingGameCollectibleItem as GameItem } from '../../racing/collectibles/collectibleTypes'
+import type { LocalPlayerCollisionReport } from '../../racing/multiplayer/playerCollision'
 import type { RacingWorldPlayer } from '../../racing/multiplayer/worldPlayers'
 import { CarTrackShowroomShell } from '../../racing/components/CarTrackShowroomShell'
 import { CarTrackWorldShell } from '../../racing/components/CarTrackWorldShell'
@@ -53,6 +54,7 @@ interface FoxRacingWorldProps {
   onCollectItem?: (itemId: string) => void
   otherPlayers?: RacingWorldPlayer[]
   onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
+  onPlayerCollision?: (report: LocalPlayerCollisionReport) => void
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
   cameraMode?: CameraMode
@@ -195,6 +197,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   onCollectItem,
   otherPlayers = [],
   onPositionUpdateForSocket,
+  onPlayerCollision,
   spawnPosition = null,
   localChatMessage = null,
   cameraMode = 'smooth',
@@ -330,6 +333,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
           cameraMode={cameraMode}
           localChatMessage={localChatMessage}
           onPositionUpdateForSocket={onPositionUpdateForSocket}
+          onPlayerCollision={onPlayerCollision}
         />
       )}
       remotePlayers={<RemotePlayerCars players={otherPlayers} qualityPresetId={qualityPresetId} />}

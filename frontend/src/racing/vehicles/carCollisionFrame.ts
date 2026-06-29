@@ -3,9 +3,9 @@ import type { RacingWorldPlayerCollisionTarget } from '../multiplayer/worldPlaye
 import type { RacingAdvertisingBoard, CarBoardCollisionScratch } from './carBoardCollision'
 import { resolveCarAdvertisingBoardCollision } from './carBoardCollision'
 import { resolveCarObstacleCollision, type CarCircleCollisionTarget } from './carCircleCollision'
-import { resolveCarPlayerCollision } from './carCircleCollision'
 import type { CarHandlingConfig } from './carHandling'
 import { SHARED_CAR_HANDLING } from './carHandling'
+import { resolvePlayerVehicleCollision, type PlayerVehicleContactStateStore } from './playerVehicleCollision'
 
 export interface CarFrameBoardCollisionOptions {
   boards?: RacingAdvertisingBoard[]
@@ -22,7 +22,12 @@ export interface ResolveCarCollisionFrameOptions<
   TPole extends CarCircleCollisionTarget
 > {
   position: MutableXZPosition
+  previousPosition?: MutableXZPosition
   speed: number
+  rotationY?: number
+  gameStatus?: string
+  playerContactState?: PlayerVehicleContactStateStore
+  nowMs?: number
   treeTargets: TObstacle[]
   startingGatePoles: TPole[]
   players: RacingWorldPlayerCollisionTarget[]
@@ -36,6 +41,12 @@ export interface CarCollisionFrameResult {
   collided: boolean
   speed: number
   isSlidingAlongBoard: boolean
+  playerCollision?: {
+    playerId?: string
+    kind?: string
+    overlapDepth: number
+    contactNormal: { x: number; z: number }
+  }
 }
 
 export const resolveCarCollisionFrame = <
@@ -43,7 +54,12 @@ export const resolveCarCollisionFrame = <
   TPole extends CarCircleCollisionTarget
 >({
   position,
+  previousPosition,
   speed,
+  rotationY,
+  gameStatus,
+  playerContactState,
+  nowMs,
   treeTargets,
   startingGatePoles,
   players,
@@ -107,18 +123,33 @@ export const resolveCarCollisionFrame = <
   }
 
   if (players.length > 0) {
-    const playerCollision = resolveCarPlayerCollision({
-      position,
-      carRadius,
-      players,
-      handling
-    })
+    for (const player of players) {
+      const playerVehicleCollision = resolvePlayerVehicleCollision({
+        position,
+        previousPosition,
+        speed,
+        rotationY,
+        carRadius,
+        target: player,
+        margin: handling.vehicleCollisionMargin,
+        minDistanceSq: handling.vehicleCollisionMinDistanceSq,
+        gameStatus,
+        contactState: playerContactState,
+        nowMs
+      })
 
-    if (playerCollision.collided) {
-      return {
-        collided: true,
-        speed: speed * handling.vehicleCollisionSpeedMultiplier,
-        isSlidingAlongBoard: false
+      if (playerVehicleCollision.collided) {
+        return {
+          collided: true,
+          speed: playerVehicleCollision.speed,
+          isSlidingAlongBoard: false,
+          playerCollision: {
+            playerId: player.id,
+            kind: playerVehicleCollision.kind,
+            overlapDepth: playerVehicleCollision.overlapDepth,
+            contactNormal: playerVehicleCollision.contactNormal
+          }
+        }
       }
     }
   }

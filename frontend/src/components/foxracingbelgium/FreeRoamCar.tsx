@@ -21,6 +21,7 @@ import { getCarSurfaceVisualY } from '../../racing/vehicles/carBounce'
 import { capCameraDelta, clampCameraDistance, getCarCameraSmoothingRate, getExponentialSmoothingFactor, shouldResetTargetSmoothCamera, SHARED_CAR_CAMERA } from '../../racing/vehicles/carCamera'
 import type { RacingAdvertisingBoard } from '../../racing/vehicles/carBoardCollision'
 import { resolveCarCollisionFrame } from '../../racing/vehicles/carCollisionFrame'
+import type { PlayerVehicleContactStateStore } from '../../racing/vehicles/playerVehicleCollision'
 import { updateCarGasAudio } from '../../racing/vehicles/carGasAudio'
 import { advanceCarControlFrame, advanceCarMovementFrame, canAdvanceCarFrame, getInactiveCarSpeed, getStableCarRotation, isAnyCarControlActive, SHARED_CAR_HANDLING } from '../../racing/vehicles/carHandling'
 import { useCarKeyboardControls } from '../../racing/vehicles/useCarKeyboardControls'
@@ -31,6 +32,7 @@ import { CarTrackVehicleModel } from '../../racing/components/CarTrackVehicleMod
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import type { RacingGameCollectibleItem as GameItem } from '../../racing/collectibles/collectibleTypes'
 import type { RacingWorldPlayerCollisionTarget } from '../../racing/multiplayer/worldPlayers'
+import type { LocalPlayerCollisionReport } from '../../racing/multiplayer/playerCollision'
 
 const trackRuntimeConfig = getTrackRuntimeConfig('belgium')
 const getHeightAtPosition = getFlatVehicleHeightAtPosition
@@ -64,6 +66,7 @@ interface FreeRoamCarProps {
   items?: GameItem[]
   onCollectItem?: (itemId: string) => void
   otherPlayers?: RacingWorldPlayerCollisionTarget[]
+  onPlayerCollision?: (report: LocalPlayerCollisionReport) => void
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
 }
@@ -95,6 +98,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   items = [],
   onCollectItem,
   otherPlayers = [],
+  onPlayerCollision,
   spawnPosition = null,
   localChatMessage = null
 }) => {
@@ -167,6 +171,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   // Update position when spawnPosition changes (e.g., when joining game)
   // Only update ONCE when spawnPosition is first set - don't reset if car has moved
   const hasAppliedSpawnPosition = useRef(false)
+  const playerContactStateRef = useRef<PlayerVehicleContactStateStore>(new Map())
   useEffect(() => {
     applyVehicleSpawnPositionOnce({
       spawnPosition,
@@ -482,9 +487,16 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       deltaSeconds: delta
     })
     
+    const speedBeforeCollision = speed.current
+    const collisionNowMs = Date.now()
     const collisionFrame = resolveCarCollisionFrame({
       position: newPositionRef.current,
+      previousPosition: position.current,
       speed: speed.current,
+      rotationY: rotation.current,
+      gameStatus,
+      playerContactState: playerContactStateRef.current,
+      nowMs: collisionNowMs,
       treeTargets: treePositions,
       startingGatePoles,
       players: otherPlayers,
@@ -513,6 +525,34 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     })
     speed.current = collisionFrame.speed
     slidingAlongBoardRef.current = collisionFrame.isSlidingAlongBoard
+
+    if (collisionFrame.playerCollision?.playerId && onPlayerCollision) {
+      const remotePlayer = otherPlayers.find(player => player.id === collisionFrame.playerCollision?.playerId)
+      if (remotePlayer) {
+        onPlayerCollision({
+          remotePlayerId: remotePlayer.id,
+          localPosition: {
+            x: newPositionRef.current.x,
+            y: newPositionRef.current.y,
+            z: newPositionRef.current.z
+          },
+          remotePosition: {
+            x: remotePlayer.position[0],
+            y: remotePlayer.position[1],
+            z: remotePlayer.position[2]
+          },
+          localRotationY: rotation.current,
+          remoteRotationY: remotePlayer.rotation?.[1] ?? 0,
+          localSpeed: speedBeforeCollision,
+          remoteSpeed: remotePlayer.speed ?? 0,
+          resultLocalSpeed: speed.current,
+          collisionKind: collisionFrame.playerCollision.kind,
+          contactNormal: collisionFrame.playerCollision.contactNormal,
+          overlapDepth: collisionFrame.playerCollision.overlapDepth,
+          occurredAt: collisionNowMs
+        })
+      }
+    }
     
     // SAFETY: Validate new position before applying
     if (!isFinite(newPositionRef.current.x) || !isFinite(newPositionRef.current.y) || !isFinite(newPositionRef.current.z)) {

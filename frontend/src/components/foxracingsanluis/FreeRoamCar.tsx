@@ -24,11 +24,13 @@ import { getCarSurfaceVisualY } from '../../racing/vehicles/carBounce'
 import { capCameraDelta, clampCameraDistance, getCarCameraSmoothingRate, getExponentialSmoothingFactor, SHARED_CAR_CAMERA } from '../../racing/vehicles/carCamera'
 import { updateCarGasAudio } from '../../racing/vehicles/carGasAudio'
 import { resolveCarCollisionFrame } from '../../racing/vehicles/carCollisionFrame'
+import type { PlayerVehicleContactStateStore } from '../../racing/vehicles/playerVehicleCollision'
 import { advanceCarControlFrame, advanceCarMovementFrame, canAdvanceCarFrame, getInactiveCarSpeed, getStableCarRotation, isAnyCarControlActive, SHARED_CAR_HANDLING } from '../../racing/vehicles/carHandling'
 import { useCarKeyboardControls } from '../../racing/vehicles/useCarKeyboardControls'
 import { collectFirstNearbyItem } from '../../racing/collectibles/collectiblePickup'
 import type { RacingGameCollectibleItem as GameItem } from '../../racing/collectibles/collectibleTypes'
 import type { RacingWorldPlayerCollisionTarget } from '../../racing/multiplayer/worldPlayers'
+import type { LocalPlayerCollisionReport } from '../../racing/multiplayer/playerCollision'
 
 const trackRuntimeConfig = getTrackRuntimeConfig('san-luis')
 
@@ -60,6 +62,7 @@ interface FreeRoamCarProps {
   items?: GameItem[]
   onCollectItem?: (itemId: string) => void
   otherPlayers?: RacingWorldPlayerCollisionTarget[]
+  onPlayerCollision?: (report: LocalPlayerCollisionReport) => void
   spawnPosition?: { x: number; y: number; z: number } | null
   localChatMessage?: { text: string; timestamp: number } | null
   initialHeadlightsEnabled?: boolean
@@ -91,6 +94,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   items = [],
   onCollectItem,
   otherPlayers = [],
+  onPlayerCollision,
   spawnPosition = null,
   localChatMessage = null,
   initialHeadlightsEnabled = true
@@ -125,6 +129,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   const speed = useRef(0)
   const velocity = useRef(new THREE.Vector3(0, 0, 0))
   const lastCameraTarget = useRef(new THREE.Vector3(0, 8, 15)) // For targetsmooth camera mode
+  const playerContactStateRef = useRef<PlayerVehicleContactStateStore>(new Map())
   
   // PERFORMANCE: Reusable Vector3 objects to prevent memory allocations every frame
   const forwardRef = useRef(new THREE.Vector3(0, 0, -1))
@@ -311,14 +316,49 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       nextPosition: newPositionRef.current
     })
     
+    const speedBeforeCollision = speed.current
+    const collisionNowMs = Date.now()
     const collisionFrame = resolveCarCollisionFrame({
       position: newPositionRef.current,
+      previousPosition: position.current,
       speed: speed.current,
+      rotationY: rotation.current,
+      gameStatus,
+      playerContactState: playerContactStateRef.current,
+      nowMs: collisionNowMs,
       treeTargets: treePositions,
       startingGatePoles,
       players: otherPlayers
     })
     speed.current = collisionFrame.speed
+
+    if (collisionFrame.playerCollision?.playerId && onPlayerCollision) {
+      const remotePlayer = otherPlayers.find(player => player.id === collisionFrame.playerCollision?.playerId)
+      if (remotePlayer) {
+        onPlayerCollision({
+          remotePlayerId: remotePlayer.id,
+          localPosition: {
+            x: newPositionRef.current.x,
+            y: newPositionRef.current.y,
+            z: newPositionRef.current.z
+          },
+          remotePosition: {
+            x: remotePlayer.position[0],
+            y: remotePlayer.position[1],
+            z: remotePlayer.position[2]
+          },
+          localRotationY: rotation.current,
+          remoteRotationY: remotePlayer.rotation?.[1] ?? 0,
+          localSpeed: speedBeforeCollision,
+          remoteSpeed: remotePlayer.speed ?? 0,
+          resultLocalSpeed: speed.current,
+          collisionKind: collisionFrame.playerCollision.kind,
+          contactNormal: collisionFrame.playerCollision.contactNormal,
+          overlapDepth: collisionFrame.playerCollision.overlapDepth,
+          occurredAt: collisionNowMs
+        })
+      }
+    }
     
     // Only update position if no collision, or use corrected position
     position.current.copy(newPositionRef.current)

@@ -58,6 +58,10 @@ import {
 import { useBatchedPlayerPositionUpdates } from '../../racing/multiplayer/useBatchedPlayerPositionUpdates'
 import { registerCarTrackLivePlayerSocketListeners } from '../../racing/multiplayer/carTrackPlayerSocketListeners'
 import {
+  buildReportPlayerCollisionPayload,
+  type LocalPlayerCollisionReport
+} from '../../racing/multiplayer/playerCollision'
+import {
   generateFakeRemotePlayers,
   parseFakeRemotePlayerCount,
   parseFakeRemotePlayerSpeedScale
@@ -248,6 +252,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   
   // Socket connection state
   const socketRef = useRef<Socket | null>(null)
+  const collisionSequenceRef = useRef(0)
   const [isConnected, setIsConnected] = useState(false)
   const [socketId, setSocketId] = useState<string | null>(null)
   const [gameState, setGameState] = useState<{
@@ -309,6 +314,19 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       })
     }
   }, [])
+
+  const handlePlayerCollision = useCallback((report: LocalPlayerCollisionReport) => {
+    const socket = socketRef.current
+    if (!socket || !hasJoinedRef.current || !socket.id) return
+
+    collisionSequenceRef.current += 1
+    socket.emit('reportPlayerCollision', buildReportPlayerCollisionPayload({
+      localPlayerId: socket.id,
+      report,
+      trackName: trackNameRef.current || resolvedLocalTrackName,
+      sequence: collisionSequenceRef.current
+    }))
+  }, [resolvedLocalTrackName])
   
   // Collectibles state
   const [items, setItems] = useState<GameItem[]>([])
@@ -844,6 +862,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           items={items}
           onCollectItem={handleLocalCollectItem}
           onPositionUpdateForSocket={handlePositionUpdateForSocket}
+          onPlayerCollision={handlePlayerCollision}
           localChatMessage={localChatMessage}
           cameraMode={cameraMode}
           onShowroomLoaded={() => setShowroomLoading(false)}
