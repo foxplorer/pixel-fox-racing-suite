@@ -722,7 +722,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     }
   }, [])
 
-  // Join game when entering showroom with a fox (or when starting race immediately)
+  // Join the socket room only for an actual race entry. Showroom track browsing
+  // should not advertise the fox as present on a track.
   useEffect(() => {
     const socket = socketRef.current
     if (shouldEmitJoinGame({
@@ -934,6 +935,21 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     }
 
     hasPlayedRaceStartBeepsRef.current = false
+    if (!hasJoinedRef.current) {
+      socketRef.current?.emit('joinGame', buildJoinGamePayload({
+        identityKey,
+        foxName,
+        ordinalAddress,
+        foxOriginOutpoint,
+        playerColor,
+        startFinishPosition: {
+          x: startFinishPosition.x,
+          y: startFinishPosition.y,
+          z: startFinishPosition.z
+        },
+        trackName
+      }))
+    }
 
     // Aspen snowmobile event - start race directly
     applyRaceStartState({
@@ -950,7 +966,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     if (spawnPosition && !vehiclePosition) {
       setVehiclePosition(spawnPosition)
     }
-  }, [spawnPosition, vehiclePosition, trackName, onTrackChange, playerColor])
+  }, [foxName, foxOriginOutpoint, identityKey, ordinalAddress, playerColor, spawnPosition, vehiclePosition, trackName, onTrackChange])
 
   const playRaceStartBeeps = useCallback(() => {
     if (hasPlayedRaceStartBeepsRef.current) {

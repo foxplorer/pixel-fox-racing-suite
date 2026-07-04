@@ -5,6 +5,8 @@ import * as THREE from 'three'
 import type { RacingGameCollectibleItem as GameItem } from '../collectibles/collectibleTypes'
 import type { RacingCanvasQualitySettings } from '../performance/qualitySettings'
 import { CarTrackStartGate, type CarTrackStartGateLayoutOptions } from './CarTrackStartGate'
+import type { StartGateMarqueeModel } from './startGateMarquee'
+import type { RacingQualityPresetId } from '../performance/qualitySettings'
 import { RacingCollectibles } from './RacingCollectibles'
 import { RaceCameraLookAtInitializer, getInitialRaceCameraPosition } from './raceCameraSetup'
 import type { TerrainHeightSampler } from '../core/roadCorridor'
@@ -30,6 +32,8 @@ interface CarTrackWorldShellProps {
   localVehicle: React.ReactNode
   remotePlayers?: React.ReactNode
   startGateLayout?: CarTrackStartGateLayoutOptions
+  startGateMarqueeModel?: StartGateMarqueeModel | null
+  qualityPresetId?: RacingQualityPresetId
   getHeightAtPosition?: TerrainHeightSampler
   frameloop?: 'always' | 'demand' | 'never'
 }
@@ -47,6 +51,8 @@ export const CarTrackWorldShell: React.FC<CarTrackWorldShellProps> = ({
   localVehicle,
   remotePlayers,
   startGateLayout,
+  startGateMarqueeModel,
+  qualityPresetId,
   getHeightAtPosition,
   frameloop = 'always'
 }) => {
@@ -73,6 +79,8 @@ export const CarTrackWorldShell: React.FC<CarTrackWorldShellProps> = ({
         startFinishPosition={startFinishPosition}
         startFinishDirection={startFinishDirection}
         startingGatePoles={startingGatePoles}
+        marqueeModel={startGateMarqueeModel}
+        qualityPresetId={qualityPresetId}
         {...startGateLayout}
       />
       <RacingCollectibles items={items} getHeightAtPosition={getHeightAtPosition} />

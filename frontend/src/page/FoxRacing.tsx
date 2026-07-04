@@ -30,8 +30,10 @@ import {
   type ShualletSession
 } from "../wallet/shuallet";
 import { normalizeOrdinalOutpoint } from "../racing/transactions/ordinalOutpoint";
+import type { ScheduledRace, ScheduledRaceSignup } from "../racing/scheduled/scheduledRaceTypes";
 
 const DEFAULT_TRACK_EVENT_ID: TrackEventId = 'australia-car';
+const TRANSACTION_SERVER_URL = import.meta.env.VITE_PIXELRACING_TRANSACTION_URL || 'http://localhost:9000';
 
 const FoxRacingGame = lazy(() => import("../components/foxracing/FoxRacingGame").then(module => ({ default: module.FoxRacingGame })));
 const FoxRacingGameSanLuis = lazy(() => import("../components/foxracingsanluis/FoxRacingGame").then(module => ({ default: module.FoxRacingGame })));
@@ -84,6 +86,7 @@ export const FoxRacing = () => {
   const [pendingStartEventId, setPendingStartEventId] = useState<TrackEventId | null>(null);
   const [selectedImportedCarTrackId, setSelectedImportedCarTrackId] = useState<ImportedCarTrackId | null>(null);
   const [selectedCarColor, setSelectedCarColor] = useState<string>('#FF6B6B');
+  const [pendingScheduledRaceEntry, setPendingScheduledRaceEntry] = useState<{ race: ScheduledRace; signup: ScheduledRaceSignup } | null>(null);
   
   // Modal State
   const [isChoosePlayerModalOpen, setIsChoosePlayerModalOpen] = useState<boolean>(false);
@@ -247,18 +250,21 @@ export const FoxRacing = () => {
     window.location.href = "/pixelfoxracing";
   };
 
-  const handleTrackEventChange = (trackName: string, color?: string) => {
+  const handleTrackEventChange = (trackName: string, color?: string, scheduledEntry?: { race: ScheduledRace; signup: ScheduledRaceSignup }) => {
     // Only start race if color is passed (indicates START RACE was clicked)
     const shouldStartRace = !!color;
     if (color) {
       setSelectedCarColor(color);
+    }
+    if (scheduledEntry) {
+      setPendingScheduledRaceEntry(scheduledEntry);
     }
 
     const importedCarTrack = findImportedCarTrackCatalogEntryByDisplayName(trackName);
     if (importedCarTrack) {
       setSelectedImportedCarTrackId(importedCarTrack.id);
       setSelectedEventId(DEFAULT_TRACK_EVENT_ID);
-      setPendingStartEventId(shouldStartRace ? DEFAULT_TRACK_EVENT_ID : null);
+      setPendingStartEventId(scheduledEntry ? null : (shouldStartRace ? DEFAULT_TRACK_EVENT_ID : null));
       return;
     }
 
@@ -270,7 +276,7 @@ export const FoxRacing = () => {
 
     setSelectedImportedCarTrackId(null);
     setSelectedEventId(selection.event.id);
-    setPendingStartEventId(shouldStartRace ? selection.event.id : null);
+    setPendingStartEventId(scheduledEntry ? null : (shouldStartRace ? selection.event.id : null));
   };
 
   const renderSelectedTrackEvent = () => {
@@ -297,6 +303,8 @@ export const FoxRacing = () => {
             trackDefinitionId={selectedImportedCarTrackId ?? undefined}
             startRaceImmediately={pendingStartEventId === 'australia-car'}
             selectedColor={selectedCarColor}
+            pendingScheduledRaceEntry={pendingScheduledRaceEntry}
+            onPendingScheduledRaceEntryConsumed={() => setPendingScheduledRaceEntry(null)}
           />
         );
       case 'san-luis-car':
@@ -319,6 +327,8 @@ export const FoxRacing = () => {
             startRaceImmediately={pendingStartEventId === 'san-luis-car'}
             selectedColor={selectedCarColor}
             onTrackChange={handleTrackEventChange}
+            pendingScheduledRaceEntry={pendingScheduledRaceEntry}
+            onPendingScheduledRaceEntryConsumed={() => setPendingScheduledRaceEntry(null)}
           />
         );
       case 'belgium-car':
@@ -346,6 +356,8 @@ export const FoxRacing = () => {
             localTrackName="Belgium"
             trackLocationLabel="Belgium"
             sceneryMode="imported-basic"
+            pendingScheduledRaceEntry={pendingScheduledRaceEntry}
+            onPendingScheduledRaceEntryConsumed={() => setPendingScheduledRaceEntry(null)}
           />
         );
       case 'aspen-snowmobile':
@@ -457,6 +469,7 @@ export const FoxRacing = () => {
         latestactivity={latestActivity}
         userOrdinalAddress={myordaddress || undefined}
         renderBeforeLeaderboard={currentPlayersSection}
+        transactionServerUrl={TRANSACTION_SERVER_URL}
       />
       <FooterHome />
       <WalletPermissionsModal

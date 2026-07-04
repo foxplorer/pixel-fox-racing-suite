@@ -108,6 +108,7 @@ export const applyVehicleSpawnPositionOnce = <TPosition>({
   createPosition,
   findTrackPosition,
   spawnTangent,
+  initialRotationY,
   cameraRotation,
   lastCameraUpdateRotation
 }: {
@@ -127,6 +128,7 @@ export const applyVehicleSpawnPositionOnce = <TPosition>({
   createPosition: (x: number, y: number, z: number) => TPosition
   findTrackPosition: (position: TPosition, trackCurve: NonNullable<typeof trackCurve>) => number
   spawnTangent: { current: { x: number; z: number; negate(): unknown; normalize(): unknown } }
+  initialRotationY?: number | null
   cameraRotation?: { current: number }
   lastCameraUpdateRotation?: { current: number }
 }): { applied: boolean; resetAppliedFlag: boolean } => {
@@ -143,11 +145,14 @@ export const applyVehicleSpawnPositionOnce = <TPosition>({
   const spawnPositionVector = createPosition(spawnPosition.x, trackY, spawnPosition.z)
   const trackT = findTrackPosition(spawnPositionVector, trackCurve)
 
-  trackCurve.getTangentAt(trackT, spawnTangent.current)
-  spawnTangent.current.negate()
-  spawnTangent.current.normalize()
-
-  const spawnRotation = Math.atan2(spawnTangent.current.x, spawnTangent.current.z)
+  const spawnRotation = Number.isFinite(initialRotationY)
+    ? initialRotationY as number
+    : (() => {
+        trackCurve.getTangentAt(trackT, spawnTangent.current)
+        spawnTangent.current.negate()
+        spawnTangent.current.normalize()
+        return Math.atan2(spawnTangent.current.x, spawnTangent.current.z)
+      })()
 
   resetVehiclePoseRefs({
     position,

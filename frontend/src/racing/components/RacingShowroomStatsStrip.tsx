@@ -5,12 +5,21 @@ import { getOrdinalContentUrl, getOrdinalInscriptionUrl, getWhatsOnChainTransact
 import { normalizeOrdinalOutpoint } from '../transactions/ordinalOutpoint'
 import { fetchPixelRacingResults } from '../stats/pixelRacingResults'
 import { getPixelRacingStatsTrackName } from '../stats/pixelRacingStatsTracks'
+import { ScheduledRacePanel } from './ScheduledRacePanel'
+import type { ScheduledRace, ScheduledRaceSignup } from '../scheduled/scheduledRaceTypes'
 
 const MAX_SHOWROOM_RESULTS = 5
 
 interface RacingShowroomStatsStripProps {
   foxName?: string | null
+  foxOutpoint?: string | null
   foxOriginOutpoint?: string | null
+  identityKey?: string | null
+  ordinalAddress?: string | null
+  playerColor?: string | null
+  trackName?: string
+  transactionServerUrl?: string
+  onEnterScheduledRace?: (race: ScheduledRace, signup: ScheduledRaceSignup) => void
 }
 
 const formatLapTime = (seconds: number): string => {
@@ -29,7 +38,14 @@ const sortLatestResults = (results: PixelRacingGameResult[]): PixelRacingGameRes
 
 export const RacingShowroomStatsStrip = memo(function RacingShowroomStatsStrip({
   foxName,
-  foxOriginOutpoint
+  foxOutpoint,
+  foxOriginOutpoint,
+  identityKey,
+  ordinalAddress,
+  playerColor,
+  trackName = 'Australia',
+  transactionServerUrl,
+  onEnterScheduledRace
 }: RacingShowroomStatsStripProps) {
   const [results, setResults] = useState<PixelRacingGameResult[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -134,6 +150,20 @@ export const RacingShowroomStatsStrip = memo(function RacingShowroomStatsStrip({
 
   return (
     <div style={containerStyle}>
+      {transactionServerUrl && (
+        <ScheduledRacePanel
+          transactionServerUrl={transactionServerUrl}
+          trackName={trackName}
+          identityKey={identityKey}
+          ownerAddress={ordinalAddress}
+          foxOutpoint={foxOutpoint}
+          foxOriginOutpoint={foxOriginOutpoint}
+          foxName={foxName}
+          carColor={playerColor}
+          onEnterRace={onEnterScheduledRace}
+        />
+      )}
+
       <div style={{
         display: 'flex',
         alignItems: 'center',

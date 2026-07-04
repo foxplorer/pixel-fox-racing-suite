@@ -96,6 +96,7 @@ test('buildRacingWorldPlayersForTrack excludes current and different-track playe
         id: 'remote-1',
         identityKey: 'remote-1',
         name: 'Same Track',
+        gameStatus: 'racing',
         trackName: 'Australia',
         position: { x: 1, y: 2, z: 3 },
         rotation: { x: 0, y: 1, z: 0 },
@@ -106,8 +107,17 @@ test('buildRacingWorldPlayersForTrack excludes current and different-track playe
         id: 'remote-2',
         identityKey: 'remote-2',
         name: 'Other Track',
+        gameStatus: 'racing',
         trackName: 'Belgium',
         carColor: '#other'
+      },
+      {
+        id: 'remote-3',
+        identityKey: 'remote-3',
+        name: 'Showroom',
+        gameStatus: 'showroom',
+        trackName: 'Australia',
+        carColor: '#showroom'
       }
     ],
     existingPlayers: [],

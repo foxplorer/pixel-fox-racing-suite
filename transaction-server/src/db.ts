@@ -18,6 +18,8 @@ const pool = new Pool({
   keepAliveInitialDelayMillis: 10000,
 })
 
+export { pool }
+
 export interface PaymentUtxo {
   txid: string
   vout: number

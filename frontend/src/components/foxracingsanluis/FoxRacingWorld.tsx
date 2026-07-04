@@ -16,6 +16,7 @@ import type { LocalPlayerCollisionReport } from '../../racing/multiplayer/player
 import type { RacingWorldPlayer } from '../../racing/multiplayer/worldPlayers'
 import { CarTrackShowroomShell } from '../../racing/components/CarTrackShowroomShell'
 import { CarTrackWorldShell } from '../../racing/components/CarTrackWorldShell'
+import type { StartGateMarqueeModel } from '../../racing/components/startGateMarquee'
 import { CarTrackLocalVehicle } from '../../racing/components/CarTrackLocalVehicle'
 import { useCarTrackWorldRuntime } from '../../racing/components/useCarTrackWorldRuntime'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
@@ -50,9 +51,11 @@ interface FoxRacingWorldProps {
   onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
   onPlayerCollision?: (report: LocalPlayerCollisionReport) => void
   spawnPosition?: { x: number; y: number; z: number } | null
+  initialRotationY?: number | null
   localChatMessage?: { text: string; timestamp: number } | null
   cameraMode?: CameraMode
   qualityPresetId?: RacingQualityPresetId
+  startGateMarqueeModel?: StartGateMarqueeModel | null
   isFullscreen?: boolean
   onToggleFullscreen?: () => void
 }
@@ -82,9 +85,11 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   onPositionUpdateForSocket,
   onPlayerCollision,
   spawnPosition = null,
+  initialRotationY = null,
   localChatMessage = null,
   cameraMode = 'smooth',
   qualityPresetId = 'medium',
+  startGateMarqueeModel = null,
   isFullscreen = false,
   onToggleFullscreen
 }) => {
@@ -290,6 +295,8 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       items={items}
       manualCamera={worldRuntime.manualCamera}
       startGateLayout={worldRuntime.startGateLayout}
+      startGateMarqueeModel={startGateMarqueeModel}
+      qualityPresetId={qualityPresetId}
       staticScenery={(
         <>
           <color attach="background" args={['#87CEEB']} />
@@ -368,6 +375,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
           onCollectItem={onCollectItem}
           otherPlayers={otherPlayers}
           spawnPosition={spawnPosition}
+          initialRotationY={initialRotationY}
           localChatMessage={localChatMessage}
           onPositionUpdateForSocket={onPositionUpdateForSocket}
           onPlayerCollision={onPlayerCollision}

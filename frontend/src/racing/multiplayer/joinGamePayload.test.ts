@@ -56,13 +56,13 @@ test('buildJoinGamePayload canonicalizes dot-form origin outpoints', () => {
   assert.equal(payload.originOutpoint, `${txid}_2`)
 })
 
-test('shouldEmitJoinGame supports showroom-only joins', () => {
+test('shouldEmitJoinGame does not treat showroom browsing as a game join', () => {
   assert.equal(shouldEmitJoinGame({
     gameStatus: 'showroom',
     hasFoxOriginOutpoint: true,
     hasSocket: true,
     hasJoined: false
-  }), true)
+  }), false)
 
   assert.equal(shouldEmitJoinGame({
     gameStatus: 'racing',
@@ -103,5 +103,26 @@ test('shouldEmitJoinGame supports connected active-race joins for immediate star
     isConnected: false,
     requireConnection: true,
     allowActiveRaceJoin: true
+  }), false)
+})
+
+test('shouldEmitJoinGame suppresses casual joins during scheduled races', () => {
+  assert.equal(shouldEmitJoinGame({
+    gameStatus: 'countdown',
+    hasFoxOriginOutpoint: true,
+    hasSocket: true,
+    hasJoined: false,
+    isConnected: true,
+    requireConnection: true,
+    allowActiveRaceJoin: true,
+    hasActiveScheduledRace: true
+  }), false)
+
+  assert.equal(shouldEmitJoinGame({
+    gameStatus: 'showroom',
+    hasFoxOriginOutpoint: true,
+    hasSocket: true,
+    hasJoined: false,
+    hasActiveScheduledRace: true
   }), false)
 })

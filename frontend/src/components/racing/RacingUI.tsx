@@ -17,7 +17,10 @@ import { RacingConnectOverlay } from '../../racing/components/RacingConnectOverl
 import { RacingQualitySelector } from '../../racing/components/RacingQualitySelector'
 import { RacingFpsCounter } from '../../racing/components/RacingFpsCounter'
 import { RacingShowroomStatsStrip } from '../../racing/components/RacingShowroomStatsStrip'
+import { ScheduledRaceFinishStatusBanner, ScheduledRaceStandingsPanel, type ScheduledRaceFinishOrderByEntrant, type ScheduledRaceLapProgressByEntrant } from '../../racing/components/ScheduledRaceStandingsPanel'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
+import type { ScheduledRaceRoomSnapshot } from '../../racing/scheduled/scheduledRaceSocket'
+import type { ScheduledRace, ScheduledRaceSignup } from '../../racing/scheduled/scheduledRaceTypes'
 
 // ========== MEMOIZED SUB-COMPONENTS ==========
 
@@ -29,17 +32,37 @@ const HUDDisplay = memo<{
   gameStatus: GameStatus
   lapTimes: number[]
   lapTxids: { [index: number]: string }
-}>(({ distanceTraveled, speed, lapTime, gameStatus, lapTimes, lapTxids }) => (
+  scheduledRaceStandings?: RacingUiScheduledRaceStandings | null
+}>(({ distanceTraveled, speed, lapTime, gameStatus, lapTimes, lapTxids, scheduledRaceStandings }) => (
   <RacingHudMetrics
     distanceTraveled={distanceTraveled}
     speed={speed}
     showLapTime={gameStatus === 'racing'}
     lapTime={lapTime}
-    lapTimes={lapTimes}
+    lapTimes={scheduledRaceStandings ? undefined : lapTimes}
     lapTxids={lapTxids}
     lapListMarginTop="70px"
+    lapListReplacement={scheduledRaceStandings ? (
+      <ScheduledRaceStandingsPanel
+        snapshot={scheduledRaceStandings.snapshot}
+        activeRaceId={scheduledRaceStandings.activeRaceId}
+        localEntrantId={scheduledRaceStandings.localEntrantId}
+        lapProgressByEntrant={scheduledRaceStandings.lapProgressByEntrant}
+        finishOrderByEntrant={scheduledRaceStandings.finishOrderByEntrant}
+        lapsRequired={scheduledRaceStandings.lapsRequired}
+      />
+    ) : undefined}
   />
 ))
+
+export interface RacingUiScheduledRaceStandings {
+  snapshot: ScheduledRaceRoomSnapshot | null
+  activeRaceId?: string | null
+  localEntrantId?: string | null
+  lapProgressByEntrant: ScheduledRaceLapProgressByEntrant
+  finishOrderByEntrant?: ScheduledRaceFinishOrderByEntrant
+  lapsRequired?: number
+}
 
 // ========== MAIN COMPONENT ==========
 
@@ -57,7 +80,9 @@ interface RacingUIProps {
   onEnterShowroom?: () => void
   onRestart: () => void
   foxName?: string | null
+  foxOutpoint?: string | null
   foxOriginOutpoint?: string | null
+  identityKey?: string | null
   playerColor: string
   onColorChange: (color: string) => void
   ordinalAddress?: string | null
@@ -72,6 +97,10 @@ interface RacingUIProps {
   importedCarTracks?: CarTrackDefinition[]
   qualityPresetId?: RacingQualityPresetId
   onQualityPresetChange?: (presetId: RacingQualityPresetId) => void
+  transactionServerUrl?: string
+  onEnterScheduledRace?: (race: ScheduledRace, signup: ScheduledRaceSignup) => void
+  scheduledRaceStandings?: RacingUiScheduledRaceStandings | null
+  scheduledRaceStartBlocked?: boolean
   devRemotePlayerLoad?: {
     configuredCount: number
     visibleCount: number
@@ -93,7 +122,9 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
   onEnterShowroom,
   onRestart,
   foxName,
+  foxOutpoint,
   foxOriginOutpoint,
+  identityKey,
   playerColor,
   onColorChange,
   ordinalAddress,
@@ -108,18 +139,33 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
   importedCarTracks = IMPORTED_CAR_TRACK_DEFINITIONS,
   qualityPresetId = 'medium',
   onQualityPresetChange,
+  transactionServerUrl,
+  onEnterScheduledRace,
+  scheduledRaceStandings,
+  scheduledRaceStartBlocked = false,
   devRemotePlayerLoad
 }) => {
-  // Track window size for responsive minimaps (must be before any conditional returns)
-  const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight })
+	// Track window size for responsive minimaps (must be before any conditional returns)
+	const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight })
+	const hasMultiplayerShowroom = Boolean(transactionServerUrl && onEnterScheduledRace)
+	const [showroomMode, setShowroomMode] = useState<'multiplayer' | 'itt'>(() => hasMultiplayerShowroom ? 'multiplayer' : 'itt')
+  const isScheduledRaceActive = Boolean(scheduledRaceStandings?.activeRaceId)
+  const canLeaveScheduledRace = isScheduledRaceActive && (gameStatus === 'loading' || gameStatus === 'countdown')
+  const showScheduledRaceStartBlockedModal = scheduledRaceStartBlocked && isScheduledRaceActive
 
-  useEffect(() => {
-    const handleResize = () => {
-      setWindowSize({ width: window.innerWidth, height: window.innerHeight })
+	useEffect(() => {
+	  const handleResize = () => {
+	    setWindowSize({ width: window.innerWidth, height: window.innerHeight })
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+	  }, [])
+
+	useEffect(() => {
+	  if (!hasMultiplayerShowroom && showroomMode !== 'itt') {
+	    setShowroomMode('itt')
+	  }
+	}, [hasMultiplayerShowroom, showroomMode])
 
   const showroomTrackData = useMemo(() => {
     const eventVehicleModes = showroomVehicleModes ?? [vehicleMode]
@@ -194,85 +240,261 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
           ))}
         </div>
 
-        {/* Main controls panel - Left side */}
-        <div style={{ position: 'absolute', top: 220, left: 10, zIndex: 100, textAlign: 'left' }}>
-          <div style={{
-            background: 'rgba(0,0,0,0.7)',
-            padding: '20px 40px',
+	        {/* Main controls panel - Left side */}
+	        <div style={{ position: 'absolute', top: 220, left: 10, zIndex: 100, textAlign: 'left' }}>
+	          <div style={{
+	            background: 'rgba(0,0,0,0.7)',
+	            padding: '20px 40px',
             borderRadius: '12px',
             border: '1px solid rgba(255,255,255,0.1)',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <h3 style={{ margin: '0 0 15px 0', color: '#fff', fontSize: '24px' }}>Ready to Race?</h3>
+	            backdropFilter: 'blur(10px)'
+	          }}>
+	            <h3 style={{ margin: '0 0 15px 0', color: '#fff', fontSize: '24px' }}>Ready to Race?</h3>
+	            {hasMultiplayerShowroom && (
+	              <div style={{
+	                color: '#d8d8d8',
+	                fontFamily: 'monospace',
+	                fontSize: '11px',
+	                lineHeight: 1.45,
+	                margin: '-6px 0 14px 0',
+	                maxWidth: 250
+	              }}>
+	                Join a scheduled multiplayer race, or select Time Trial to race now.
+	              </div>
+	            )}
 
-            {/* Track Selection Dropdown */}
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', color: '#fff', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold' }}>
-                Track
-              </label>
-              <select
-                value={trackName}
-                onChange={(e) => onTrackChange && onTrackChange(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 15px',
-                  borderRadius: '8px',
-                  border: '2px solid rgba(255,255,255,0.2)',
-                  background: 'rgba(0,0,0,0.5)',
-                  color: '#fff',
-                  fontSize: '16px',
-                  fontFamily: 'monospace',
-                  cursor: 'pointer',
-                  outline: 'none'
-                }}
-              >
-                {showroomTrackData.map(track => (
-                  <option key={`${track.vehicleMode}-${track.trackName}`} value={track.trackName} style={{ background: '#000', color: '#fff' }}>
-                    {track.trackName}
-                  </option>
-                ))}
-              </select>
-            </div>
+	            {hasMultiplayerShowroom && (
+	              <div style={{
+	                display: 'grid',
+	                gridTemplateColumns: '1fr 1fr',
+	                gap: '6px',
+	                marginBottom: '14px',
+	                border: '1px solid rgba(255,255,255,0.14)',
+	                borderRadius: '8px',
+	                padding: '4px',
+	                background: 'rgba(255,255,255,0.06)'
+	              }}>
+	                {([
+	                  ['multiplayer', 'Multiplayer'],
+	                  ['itt', 'Time Trial']
+	                ] as const).map(([mode, label]) => {
+	                  const selected = showroomMode === mode
+	                  return (
+	                    <button
+	                      key={mode}
+	                      type="button"
+	                      onClick={() => setShowroomMode(mode)}
+	                      style={{
+	                        height: 34,
+	                        borderRadius: '6px',
+	                        border: selected ? '1px solid rgba(155,231,224,0.55)' : '1px solid transparent',
+	                        background: selected ? 'rgba(155,231,224,0.18)' : 'transparent',
+	                        color: selected ? '#9BE7E0' : '#d9d9d9',
+	                        fontFamily: 'monospace',
+	                        fontWeight: 700,
+	                        fontSize: '12px',
+	                        cursor: 'pointer'
+	                      }}
+	                    >
+	                      {label}
+	                    </button>
+	                  )
+	                })}
+	              </div>
+	            )}
 
-            <RacingColorPicker selectedColor={playerColor} onColorChange={onColorChange} />
-            {onQualityPresetChange && (
-              <RacingQualitySelector
-                selectedPresetId={qualityPresetId}
-                onPresetChange={onQualityPresetChange}
-              />
-            )}
-            <button
-              onClick={onJoin}
-              className="join-button neon"
-              style={{
-                fontSize: '20px',
-                padding: '15px 40px',
-                opacity: showroomLoading ? 0.4 : 1,
-                cursor: showroomLoading ? 'not-allowed' : 'pointer',
-                filter: showroomLoading ? 'grayscale(100%)' : 'none'
-              }}
-              disabled={showroomLoading}
-            >
-              START RACE
-            </button>
-          </div>
-        </div>
+	            <RacingColorPicker selectedColor={playerColor} onColorChange={onColorChange} />
+	            {onQualityPresetChange && (
+	              <RacingQualitySelector
+	                selectedPresetId={qualityPresetId}
+	                onPresetChange={onQualityPresetChange}
+	              />
+	            )}
 
-        <RacingShowroomStatsStrip foxName={foxName} foxOriginOutpoint={foxOriginOutpoint} />
-      </>
-    )
-  }
+	            {showroomMode === 'itt' && (
+	              <>
+	                {/* Track Selection Dropdown */}
+	                <div style={{ marginBottom: '15px' }}>
+	                  <label style={{ display: 'block', color: '#fff', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold' }}>
+	                    Track
+	                  </label>
+	                  <select
+	                    value={trackName}
+	                    onChange={(e) => onTrackChange && onTrackChange(e.target.value)}
+	                    style={{
+	                      width: '100%',
+	                      padding: '10px 15px',
+	                      borderRadius: '8px',
+	                      border: '2px solid rgba(255,255,255,0.2)',
+	                      background: 'rgba(0,0,0,0.5)',
+	                      color: '#fff',
+	                      fontSize: '16px',
+	                      fontFamily: 'monospace',
+	                      cursor: 'pointer',
+	                      outline: 'none'
+	                    }}
+	                  >
+	                    {showroomTrackData.map(track => (
+	                      <option key={`${track.vehicleMode}-${track.trackName}`} value={track.trackName} style={{ background: '#000', color: '#fff' }}>
+	                        {track.trackName}
+	                      </option>
+	                    ))}
+	                  </select>
+	                </div>
+
+	                <button
+	                  onClick={onJoin}
+	                  className="join-button neon"
+	                  style={{
+	                    fontSize: '20px',
+	                    padding: '15px 40px',
+	                    opacity: showroomLoading ? 0.4 : 1,
+	                    cursor: showroomLoading ? 'not-allowed' : 'pointer',
+	                    filter: showroomLoading ? 'grayscale(100%)' : 'none'
+	                  }}
+	                  disabled={showroomLoading}
+	                >
+	                  START RACE
+	                </button>
+	              </>
+	            )}
+	          </div>
+	        </div>
+
+	        {showroomMode === 'multiplayer' && (
+	          <RacingShowroomStatsStrip
+	            foxName={foxName}
+	            foxOutpoint={foxOutpoint}
+	            foxOriginOutpoint={foxOriginOutpoint}
+	            identityKey={identityKey}
+	            ordinalAddress={ordinalAddress}
+	            playerColor={playerColor}
+	            trackName={trackName}
+	            transactionServerUrl={transactionServerUrl}
+	            onEnterScheduledRace={onEnterScheduledRace}
+	          />
+	        )}
+
+	        {showroomMode === 'itt' && (
+	          <RacingShowroomStatsStrip
+	            foxName={foxName}
+	            foxOutpoint={foxOutpoint}
+	            foxOriginOutpoint={foxOriginOutpoint}
+	            identityKey={identityKey}
+	            ordinalAddress={ordinalAddress}
+	            playerColor={playerColor}
+	            trackName={trackName}
+	          />
+	        )}
+	      </>
+	    )
+	  }
 
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 50 }}>
+      {onEnterShowroom && gameStatus !== 'idle' && gameStatus !== 'showroom' && (!scheduledRaceStandings || canLeaveScheduledRace) && (
+        <button
+          type="button"
+          onClick={onEnterShowroom}
+          aria-label="Switch track"
+          title={canLeaveScheduledRace ? 'Leave this scheduled race and switch track' : 'Switch track'}
+          style={{
+            position: 'absolute',
+            top: 18,
+            right: 18,
+            zIndex: 90,
+            pointerEvents: 'auto',
+            height: 34,
+            padding: '0 12px',
+            borderRadius: '6px',
+            border: '1px solid rgba(255,255,255,0.22)',
+            background: 'rgba(0,0,0,0.62)',
+            color: '#fff',
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            fontWeight: 700,
+            letterSpacing: '0.02em',
+            cursor: 'pointer',
+            backdropFilter: 'blur(8px)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
+            userSelect: 'none'
+          }}
+        >
+          Switch Track
+        </button>
+      )}
+
+      {showScheduledRaceStartBlockedModal && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 130,
+          pointerEvents: 'auto',
+          display: 'grid',
+          placeItems: 'center',
+          background: 'rgba(0,0,0,0.42)',
+          backdropFilter: 'blur(2px)'
+        }}>
+          <div style={{
+            width: 'min(90vw, 430px)',
+            borderRadius: 8,
+            border: '1px solid rgba(255, 209, 102, 0.42)',
+            background: 'rgba(8, 8, 8, 0.9)',
+            boxShadow: '0 18px 44px rgba(0,0,0,0.45)',
+            padding: '18px',
+            color: '#fff',
+            fontFamily: 'monospace',
+            textAlign: 'left'
+          }}>
+            <div style={{ color: '#FFD166', fontSize: 16, fontWeight: 900, marginBottom: 8 }}>
+              Race cancelled
+            </div>
+            <div style={{ color: '#d8d8d8', fontSize: 12, lineHeight: 1.45, marginBottom: 14 }}>
+              Multiplayer races need at least 2 racers at the start. This race will not be inscribed. Return to the showroom to choose Time Trial.
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <button
+                type="button"
+                onClick={onEnterShowroom}
+                style={{
+                  height: 36,
+                  borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.24)',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                Back to Showroom
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scheduledRaceStandings && (
+        <ScheduledRaceFinishStatusBanner
+          snapshot={scheduledRaceStandings.snapshot}
+          activeRaceId={scheduledRaceStandings.activeRaceId}
+          localEntrantId={scheduledRaceStandings.localEntrantId}
+          lapProgressByEntrant={scheduledRaceStandings.lapProgressByEntrant}
+          finishOrderByEntrant={scheduledRaceStandings.finishOrderByEntrant}
+          lapsRequired={scheduledRaceStandings.lapsRequired}
+        />
+      )}
+
       <HUDDisplay
         distanceTraveled={distanceTraveled}
         speed={speed}
         lapTime={lapTime}
         gameStatus={gameStatus}
-        lapTimes={lapTimes}
-        lapTxids={lapTxids}
-      />
+          lapTimes={lapTimes}
+          lapTxids={lapTxids}
+          scheduledRaceStandings={scheduledRaceStandings}
+        />
 
       {(gameStatus === 'racing' || gameStatus === 'countdown') && onQualityPresetChange && (
         <div style={{
@@ -321,7 +543,7 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 
       <RacingControlsHelper />
 
-      {gameStatus === 'countdown' && countdown > 0 && (
+      {gameStatus === 'countdown' && countdown > 0 && countdown <= 3 && (
         <RacingCountdownDisplay countdown={countdown} />
       )}
 

@@ -112,6 +112,7 @@ interface FreeRoamCarProps {
   otherPlayers?: RacingWorldPlayerCollisionTarget[]
   onPlayerCollision?: (report: LocalPlayerCollisionReport) => void
   spawnPosition?: { x: number; y: number; z: number } | null
+  initialRotationY?: number | null
   localChatMessage?: { text: string; timestamp: number } | null
   initialHeadlightsEnabled?: boolean
 }
@@ -157,6 +158,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   otherPlayers = [],
   onPlayerCollision,
   spawnPosition = null,
+  initialRotationY = null,
   localChatMessage = null,
   initialHeadlightsEnabled = true
 }) => {
@@ -194,7 +196,8 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   const position = useRef(initialPosition.clone()) // Car position follows track height
   const isInitialized = useRef(false) // Track if car has been initialized on track
   // Initialize rotation to face track direction at start/finish line
-  const initialRotation = Math.atan2(providedStartFinishDirection.x, providedStartFinishDirection.z)
+  const trackStartRotation = Math.atan2(providedStartFinishDirection.x, providedStartFinishDirection.z)
+  const initialRotation = Number.isFinite(initialRotationY) ? initialRotationY as number : trackStartRotation
   const rotation = useRef(initialRotation) // Y rotation in radians
   const smoothedRotation = useRef(initialRotation) // Smoothed rotation for camera stability
   const trackPositionUpdateFrame = useRef(0) // Frame counter for track position updates (performance optimization)
@@ -254,9 +257,10 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       getHeightAtPosition,
       createPosition: (x, y, z) => new THREE.Vector3(x, y, z),
       findTrackPosition,
-      spawnTangent: spawnTangentRef
+      spawnTangent: spawnTangentRef,
+      initialRotationY
     })
-  }, [spawnPosition, trackCurve])
+  }, [initialRotationY, spawnPosition, trackCurve])
   const speed = useRef(0)
   const velocity = useRef(new THREE.Vector3(0, 0, 0))
   
@@ -356,13 +360,14 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       if (carVisualRef.current) carVisualRef.current.visible = true
     }
     if (gameStatus === 'racing') {
-      // Reset car to start/finish line
-      const trackY = getHeightAtPosition(providedStartFinishPosition.x, providedStartFinishPosition.z)
+      const resetX = spawnPosition?.x ?? providedStartFinishPosition.x
+      const resetZ = spawnPosition?.z ?? providedStartFinishPosition.z
+      const trackY = getHeightAtPosition(resetX, resetZ)
       resetVehiclePoseRefs({
         position,
-        x: providedStartFinishPosition.x,
+        x: resetX,
         y: trackY,
-        z: providedStartFinishPosition.z,
+        z: resetZ,
         rotation,
         rotationRadians: initialRotation,
         smoothedRotation,
@@ -373,13 +378,14 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       visualRoll.current = 0
       carVisualRef.current?.rotation.set(0, 0, 0)
     } else if (gameStatus === 'countdown') {
-      // Reset car to start/finish line during countdown
-      const trackY = getHeightAtPosition(providedStartFinishPosition.x, providedStartFinishPosition.z)
+      const resetX = spawnPosition?.x ?? providedStartFinishPosition.x
+      const resetZ = spawnPosition?.z ?? providedStartFinishPosition.z
+      const trackY = getHeightAtPosition(resetX, resetZ)
       resetVehiclePoseRefs({
         position,
-        x: providedStartFinishPosition.x,
+        x: resetX,
         y: trackY,
-        z: providedStartFinishPosition.z,
+        z: resetZ,
         rotation,
         rotationRadians: initialRotation,
         smoothedRotation,

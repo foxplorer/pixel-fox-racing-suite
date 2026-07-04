@@ -28,7 +28,7 @@ export const Showroom: React.FC<ShowroomProps> = ({
   })
 
   return (
-    <group position={[0, 0, 0]}>
+    <group position={[0, 0.65, 0]}>
       <ambientLight intensity={0.4} />
       <spotLight position={[8, 1.5, 0]} angle={0.6} penumbra={0.4} intensity={8} castShadow target-position={[0, 0, 0]} />
       <spotLight position={[-8, 1.5, 0]} angle={0.6} penumbra={0.4} intensity={8} castShadow target-position={[0, 0, 0]} />

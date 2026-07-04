@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { io, Socket } from 'socket.io-client'
 import * as THREE from 'three'
 import { FoxRacingWorld } from './FoxRacingWorld'
-import { RacingUI } from '../racing/RacingUI'
+import { RacingUI, type RacingUiScheduledRaceStandings } from '../racing/RacingUI'
 import { runPixelRacingLapCompletionWorkflow } from '../../racing/transactions/lapSubmission'
 import { registerRacingTransactionSocketListeners } from '../../racing/transactions/socketActivity'
 import { getOrdinalContentUrl } from '../../racing/transactions/ordinalLinks'
@@ -20,6 +20,7 @@ import {
   isCurrentMultiplayerPlayer,
 } from '../../racing/multiplayer/playerIdentity'
 import {
+  applyScheduledRaceStartState,
   shouldAutoEnterRaceShowroom,
   startImmediateRaceIfNeeded,
   startRaceForSelectedTrack
@@ -62,6 +63,14 @@ import { useRemotePlayerLodRendering } from '../../racing/multiplayer/useRemoteP
 import { getRacingMinimapQualitySettings, getRacingQualityPreset } from '../../racing/performance/qualitySettings'
 import { useRacingQualitySetting } from '../../racing/performance/useRacingQualitySetting'
 import { useFullscreenToggle } from '../../racing/components/useFullscreenToggle'
+import { buildScheduledRaceGridSlots, getScheduledRaceGridLayout } from '../../racing/scheduled/gridSlots'
+import type { ScheduledRace, ScheduledRaceSignup } from '../../racing/scheduled/scheduledRaceTypes'
+import { withdrawScheduledRaceSignup } from '../../racing/scheduled/scheduledRaceApi'
+import { buildScheduledRaceRoomPlayers } from '../../racing/scheduled/scheduledRaceRoomPlayers'
+import { registerScheduledRaceSocketListeners, type ScheduledRaceRoomSnapshot } from '../../racing/scheduled/scheduledRaceSocket'
+import { buildStartGateMarqueeModel } from '../../racing/components/startGateMarquee'
+import { buildScheduledRaceLapProgress, secondsToMilliseconds, type ActiveScheduledRaceEntry } from '../../racing/scheduled/scheduledRaceFinish'
+import { startFinishDirection as sanLuisStartFinishDirection, startFinishPosition as sanLuisStartFinishPosition } from './TrackData'
 
 const collectibleImageUrls = {
   blueberry: blueberryUrl,
@@ -90,9 +99,11 @@ interface FoxRacingGameProps {
   walletBlueberryCount?: number
   walletRabbitCount?: number
   onCollectibleCollected?: (itemType: CollectibleType) => void
-  onTrackChange?: (trackName: string, selectedColor?: string) => void
+  onTrackChange?: (trackName: string, selectedColor?: string, scheduledEntry?: { race: ScheduledRace; signup: ScheduledRaceSignup }) => void
   startRaceImmediately?: boolean
   selectedColor?: string
+  pendingScheduledRaceEntry?: { race: ScheduledRace; signup: ScheduledRaceSignup } | null
+  onPendingScheduledRaceEntryConsumed?: () => void
 }
 
 export type GameStatus = 'idle' | 'showroom' | 'loading' | 'countdown' | 'racing' | 'crashed' | 'finished'
@@ -114,7 +125,9 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   onCollectibleCollected,
   onTrackChange,
   startRaceImmediately = false,
-  selectedColor
+  selectedColor,
+  pendingScheduledRaceEntry = null,
+  onPendingScheduledRaceEntryConsumed
 }) => {
   const { containerRef, isFullscreen, toggleFullscreen } = useFullscreenToggle<HTMLDivElement>()
   const [gameStatus, setGameStatus] = useState<GameStatus>('idle')
@@ -178,6 +191,15 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   const [countdown, setCountdown] = useState(3)
   
   const [spawnPosition, setSpawnPosition] = useState<{ x: number; y: number; z: number } | null>(null)
+  const [initialRotationY, setInitialRotationY] = useState<number | null>(null)
+  const [activeScheduledRaceId, setActiveScheduledRaceId] = useState<string | null>(null)
+  const [activeScheduledRaceSnapshot, setActiveScheduledRaceSnapshot] = useState<ScheduledRaceRoomSnapshot | null>(null)
+  const [activeScheduledRaceEntry, setActiveScheduledRaceEntry] = useState<ActiveScheduledRaceEntry | null>(null)
+  const [scheduledRaceLapProgressByEntrant, setScheduledRaceLapProgressByEntrant] = useState<Record<string, number[]>>({})
+  const [scheduledRaceFinishOrderByEntrant, setScheduledRaceFinishOrderByEntrant] = useState<Record<string, number>>({})
+  const [scheduledRaceStartBlocked, setScheduledRaceStartBlocked] = useState(false)
+  const activeScheduledRaceIdRef = useRef<string | null>(null)
+  const activeScheduledRaceEntryRef = useRef<ActiveScheduledRaceEntry | null>(null)
   
   // Socket connection state
   const socketRef = useRef<Socket | null>(null)
@@ -236,6 +258,22 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   useEffect(() => {
     trackNameRef.current = trackName
   }, [trackName])
+
+  useEffect(() => {
+    activeScheduledRaceIdRef.current = activeScheduledRaceId
+  }, [activeScheduledRaceId])
+
+  useEffect(() => {
+    activeScheduledRaceEntryRef.current = activeScheduledRaceEntry
+  }, [activeScheduledRaceEntry])
+
+  const recordScheduledRaceFinishOrder = useCallback((entrantId: string) => {
+    setScheduledRaceFinishOrderByEntrant(prev => (
+      prev[entrantId]
+        ? prev
+        : { ...prev, [entrantId]: Object.keys(prev).length + 1 }
+    ))
+  }, [])
   
   useEffect(() => {
     foxNameRef.current = foxName
@@ -405,6 +443,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     })
 
     const emitSanLuisActiveRaceJoin = (reason: 'connection' | 'reconnection') => {
+      if (activeScheduledRaceIdRef.current) return
+
       if (foxOriginOutpointRef.current && (gameStatusRef.current === 'loading' || gameStatusRef.current === 'countdown' || gameStatusRef.current === 'racing') && !hasJoinedRef.current) {
         const playerName = foxNameRef.current || 'Fox'
         console.log(`🎮 Auto-joining San Luis game after ${reason}:`, { playerName, identityKey: identityKeyRef.current, ordinalAddress: ordinalAddressRef.current, trackName: trackNameRef.current })
@@ -474,8 +514,10 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           mergeExistingPlayer: false
         })
 
-        setSpawnPosition(joinedGame.spawnPosition)
-        setCarPosition(joinedGame.spawnPosition) // Set carPosition for minimap
+        if (!activeScheduledRaceIdRef.current) {
+          setSpawnPosition(joinedGame.spawnPosition)
+          setCarPosition(joinedGame.spawnPosition) // Set carPosition for minimap
+        }
         setGameState(joinedGame.gameState)
         setHasJoined(true)
         hasJoinedRef.current = true
@@ -583,6 +625,34 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       setLocalChatMessage
     })
 
+    registerScheduledRaceSocketListeners({
+      socket,
+      getActiveRaceId: () => activeScheduledRaceIdRef.current,
+      onCountdownState: (state, snapshot) => {
+        if (state.gameStatus === 'racing' && (snapshot.entrants ?? []).length < 2) {
+          setScheduledRaceStartBlocked(true)
+          setCountdown(0)
+          setGameStatus('countdown')
+          return
+        }
+        setScheduledRaceStartBlocked(false)
+        setCountdown(state.countdown)
+        setGameStatus(state.gameStatus)
+      },
+      onFinalCountdownStart: playRaceStartBeeps,
+      onRoomSnapshot: setActiveScheduledRaceSnapshot,
+      onLapProgress: payload => {
+        setScheduledRaceLapProgressByEntrant(prev => ({
+          ...prev,
+          [payload.entrantId]: payload.lapTimesMs,
+        }))
+        const lapsRequired = activeScheduledRaceEntryRef.current?.lapsRequired ?? 3
+        if (payload.lapTimesMs.length >= lapsRequired) {
+          recordScheduledRaceFinishOrder(payload.entrantId)
+        }
+      }
+    })
+
     registerCollectibleSocketListeners({
       socket,
       socketId: socket.id,
@@ -611,7 +681,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     }
   }, [])
 
-  // Join game when entering showroom with a fox, or when starting race immediately
+  // Join the socket room only for an actual race entry. Showroom track browsing
+  // should not advertise the fox as present on a track.
   // Socket connection happens in background - join when connected
   useEffect(() => {
     const socket = socketRef.current
@@ -623,7 +694,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       isConnected,
       requireConnection: true,
       startRaceImmediately,
-      allowActiveRaceJoin: true
+      allowActiveRaceJoin: true,
+      hasActiveScheduledRace: Boolean(activeScheduledRaceIdRef.current)
     })) {
       const playerName = foxName || 'Fox'
       console.log('🎮 Joining San Luis game with:', { playerName, identityKey, ordinalAddress, trackName })
@@ -636,7 +708,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
         trackName
       }))
     }
-  }, [gameStatus, foxOriginOutpoint, foxName, ordinalAddress, identityKey, startRaceImmediately, playerColor, isConnected, trackName])
+  }, [gameStatus, foxOriginOutpoint, foxName, ordinalAddress, identityKey, startRaceImmediately, playerColor, isConnected, trackName, activeScheduledRaceId])
 
   // Auto-enter showroom if we have a fox (unless starting race immediately)
   useEffect(() => {
@@ -653,6 +725,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   // Game starts immediately - socket connection happens in background
   const hasStartedRaceRef = useRef(false)
   useEffect(() => {
+    if (activeScheduledRaceIdRef.current) return
+
     startImmediateRaceIfNeeded({
       startRaceImmediately,
       hasFoxOriginOutpoint: !!foxOriginOutpoint,
@@ -673,7 +747,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       setLapTxids,
       setCountdown
     })
-  }, [startRaceImmediately, foxOriginOutpoint, gameStatus, spawnPosition, carPosition])
+  }, [activeScheduledRaceId, startRaceImmediately, foxOriginOutpoint, gameStatus, spawnPosition, carPosition])
 
   // Auto-play idle sound when countdown starts (if not already playing AND user hasn't muted it)
   // Since sound starts enabled by default, this will play automatically when countdown begins
@@ -690,11 +764,60 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     resumeIdleAudioAfterGas(gameStatus)
   }, [resumeIdleAudioAfterGas, gameStatus])
 
-  const handleEnterShowroom = useCallback(() => {
+  const handleEnterShowroom = useCallback(async () => {
+    const raceToWithdraw = activeScheduledRaceEntry
+    if (raceToWithdraw && (gameStatus === 'loading' || gameStatus === 'countdown')) {
+      await withdrawScheduledRaceSignup({
+        transactionServerUrl: TRANSACTION_SERVER_URL,
+        raceId: raceToWithdraw.raceId,
+        entrantId: raceToWithdraw.entrantId
+      }).catch(() => null)
+    }
+    socketRef.current?.emit('leaveScheduledRaceRoom')
+    socketRef.current?.emit('leaveGame')
+    setHasJoined(false)
+    hasJoinedRef.current = false
+    setActiveScheduledRaceId(null)
+    activeScheduledRaceIdRef.current = null
+    setActiveScheduledRaceSnapshot(null)
+    setActiveScheduledRaceEntry(null)
+    setScheduledRaceLapProgressByEntrant({})
+    setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceStartBlocked(false)
     setGameStatus('showroom')
-  }, [])
+  }, [activeScheduledRaceEntry, gameStatus])
 
   const handleLapComplete = useCallback(async (lapTimeSeconds: number) => {
+    if (activeScheduledRaceEntry && lapTimes.length >= Math.max(1, Math.floor(activeScheduledRaceEntry.lapsRequired))) {
+      return
+    }
+
+    const scheduledProgress = buildScheduledRaceLapProgress({
+      activeRace: activeScheduledRaceEntry,
+      previousLapTimes: lapTimes,
+      completedLapTimeSeconds: lapTimeSeconds,
+    })
+    if (scheduledProgress) {
+      setLapSubmissionError(null)
+      setLapTimes(scheduledProgress.lapTimes)
+      setLapTime(0)
+      const lapTimesMs = scheduledProgress.lapTimes.map(secondsToMilliseconds)
+      setScheduledRaceLapProgressByEntrant(prev => ({
+        ...prev,
+        [activeScheduledRaceEntry.entrantId]: lapTimesMs,
+      }))
+      socketRef.current?.emit('reportScheduledRaceLapProgress', {
+        raceId: activeScheduledRaceEntry.raceId,
+        entrantId: activeScheduledRaceEntry.entrantId,
+        lapTimesMs,
+      })
+      if (scheduledProgress.finished && scheduledProgress.finishReport) {
+        recordScheduledRaceFinishOrder(activeScheduledRaceEntry.entrantId)
+        socketRef.current?.emit('reportScheduledRaceFinish', scheduledProgress.finishReport)
+      }
+      return
+    }
+
     await runPixelRacingLapCompletionWorkflow({
       lapTimeSeconds,
       gameStatus,
@@ -728,9 +851,28 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
         socketRef.current?.emit('shareGameTransaction', payload)
       }
     })
-  }, [ordinalAddress, foxOutpoint, foxOriginOutpoint, foxName, onLatestActivityChange, gameStatus, trackName, playerColor, distanceTraveled, lapTimes.length])
+  }, [activeScheduledRaceEntry, ordinalAddress, foxOutpoint, foxOriginOutpoint, foxName, onLatestActivityChange, gameStatus, trackName, playerColor, distanceTraveled, lapTimes, recordScheduledRaceFinishOrder])
 
   const handleStartRace = useCallback(() => {
+    socketRef.current?.emit('leaveScheduledRaceRoom')
+    setActiveScheduledRaceId(null)
+    activeScheduledRaceIdRef.current = null
+    setActiveScheduledRaceSnapshot(null)
+    setActiveScheduledRaceEntry(null)
+    setScheduledRaceLapProgressByEntrant({})
+    setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceStartBlocked(false)
+    setInitialRotationY(null)
+    if (trackName === 'San Luis' && !hasJoinedRef.current) {
+      socketRef.current?.emit('joinGame', buildJoinGamePayload({
+        identityKey,
+        foxName,
+        ordinalAddress,
+        foxOriginOutpoint,
+        playerColor,
+        trackName
+      }))
+    }
     startRaceForSelectedTrack({
       selectedTrackName: trackName,
       localTrackName: 'San Luis',
@@ -748,13 +890,159 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       setLapTxids,
       setCountdown
     })
-  }, [spawnPosition, carPosition, trackName, onTrackChange, playerColor])
+  }, [foxName, foxOriginOutpoint, identityKey, ordinalAddress, playerColor, spawnPosition, carPosition, trackName, onTrackChange])
+
+  const handleEnterScheduledRace = useCallback((race: ScheduledRace, signup: ScheduledRaceSignup) => {
+    if (race.trackName !== 'San Luis' && onTrackChange) {
+      onTrackChange(race.trackName, undefined, { race, signup })
+      return
+    }
+
+    const gridLayout = getScheduledRaceGridLayout(race.trackName)
+    const gridSlot = buildScheduledRaceGridSlots({
+      startPosition: sanLuisStartFinishPosition,
+      startDirection: sanLuisStartFinishDirection,
+      slotCount: race.maxEntrants,
+      yOffset: 0.1,
+      ...gridLayout,
+    }).find(slot => slot.slot === (signup.stagedGridSlot ?? signup.gridSlot))
+
+    if (!gridSlot) return
+
+    const nextSpawnPosition = {
+      x: gridSlot.position.x,
+      y: gridSlot.position.y,
+      z: gridSlot.position.z,
+    }
+
+    setTrackName(race.trackName)
+    setSpawnPosition(nextSpawnPosition)
+    setCarPosition(nextSpawnPosition)
+    setInitialRotationY(gridSlot.rotationY)
+    setActiveScheduledRaceId(race.id)
+    setActiveScheduledRaceEntry({
+      raceId: race.id,
+      entrantId: signup.entrantId,
+      lapsRequired: race.lapsRequired,
+    })
+    setScheduledRaceLapProgressByEntrant({ [signup.entrantId]: [] })
+    setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceStartBlocked(false)
+    activeScheduledRaceIdRef.current = race.id
+    if (!hasJoinedRef.current) {
+      socketRef.current?.emit('joinGame', buildJoinGamePayload({
+        identityKey,
+        foxName,
+        ordinalAddress,
+        foxOriginOutpoint,
+        playerColor,
+        trackName: race.trackName,
+        startFinishPosition: nextSpawnPosition
+      }))
+    }
+    socketRef.current?.emit('updatePosition', {
+      position: nextSpawnPosition,
+      rotation: { x: 0, y: gridSlot.rotationY, z: 0 },
+      speed: 0,
+      headlightsEnabled: true
+    })
+    socketRef.current?.emit('joinScheduledRaceRoom', {
+      raceId: race.id,
+      trackName: race.trackName,
+      entrantId: signup.entrantId,
+      gridSlot: signup.stagedGridSlot ?? signup.gridSlot,
+      startsAt: race.startsAt
+    })
+
+    applyScheduledRaceStartState({
+      setGameStatus,
+      setScore,
+      setDistanceTraveled,
+      setLapTime,
+      setLapTimes,
+      setLapTxids,
+      setCountdown
+    })
+  }, [foxName, foxOriginOutpoint, identityKey, onTrackChange, ordinalAddress, playerColor])
+
+  useEffect(() => {
+    if (!pendingScheduledRaceEntry || pendingScheduledRaceEntry.race.trackName !== 'San Luis') return
+    onPendingScheduledRaceEntryConsumed?.()
+    handleEnterScheduledRace(pendingScheduledRaceEntry.race, pendingScheduledRaceEntry.signup)
+  }, [handleEnterScheduledRace, onPendingScheduledRaceEntryConsumed, pendingScheduledRaceEntry])
+
+  useEffect(() => {
+    if (
+      !activeScheduledRaceId ||
+      !spawnPosition ||
+      !Number.isFinite(initialRotationY) ||
+      (gameStatus !== 'loading' && gameStatus !== 'countdown')
+    ) {
+      return
+    }
+
+    setCarPosition(spawnPosition)
+    socketRef.current?.emit('updatePosition', {
+      position: spawnPosition,
+      rotation: { x: 0, y: initialRotationY as number, z: 0 },
+      speed: 0,
+      headlightsEnabled: true
+    })
+  }, [activeScheduledRaceId, gameStatus, initialRotationY, spawnPosition])
 
   const playRaceStartBeeps = useCallback(() => {
     if (!hasUserMutedRef.current) {
       playAudioElement(raceStartBeepsAudio, { errorMessage: 'Failed to play race start beeps:' })
     }
   }, [hasUserMutedRef, raceStartBeepsAudio])
+
+  const handleRunScheduledRaceAsTimeTrial = useCallback(() => {
+    socketRef.current?.emit('leaveScheduledRaceRoom')
+    socketRef.current?.emit('leaveGame')
+    setHasJoined(false)
+    hasJoinedRef.current = false
+    setActiveScheduledRaceId(null)
+    activeScheduledRaceIdRef.current = null
+    setActiveScheduledRaceSnapshot(null)
+    setActiveScheduledRaceEntry(null)
+    setScheduledRaceLapProgressByEntrant({})
+    setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceStartBlocked(false)
+    setInitialRotationY(null)
+    const startPosition = {
+      x: sanLuisStartFinishPosition.x,
+      y: sanLuisStartFinishPosition.y,
+      z: sanLuisStartFinishPosition.z
+    }
+    socketRef.current?.emit('joinGame', buildJoinGamePayload({
+      identityKey,
+      foxName,
+      ordinalAddress,
+      foxOriginOutpoint,
+      playerColor,
+      startFinishPosition: startPosition,
+      trackName
+    }))
+    setSpawnPosition(startPosition)
+    setCarPosition(startPosition)
+    startRaceForSelectedTrack({
+      selectedTrackName: trackName,
+      localTrackName: 'San Luis',
+      selectedColor: playerColor,
+      onTrackChange,
+      spawnPosition: startPosition,
+      carPosition: startPosition,
+      setCarPosition,
+      setHasJoined,
+      setGameStatus,
+      setScore,
+      setDistanceTraveled,
+      setLapTime,
+      setLapTimes,
+      setLapTxids,
+      setCountdown
+    })
+  }, [foxName, foxOriginOutpoint, identityKey, onTrackChange, ordinalAddress, playerColor, trackName])
 
   const {
     isWorldLoaded,
@@ -766,14 +1054,15 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     gameStatus,
     setGameStatus,
     setCountdown,
-    playStartBeeps: playRaceStartBeeps
+    playStartBeeps: playRaceStartBeeps,
+    localCountdownEnabled: !activeScheduledRaceId
   })
 
   const handleCrash = useCallback(() => {
     setGameStatus('crashed')
   }, [])
 
-  const handleRestart = useRaceRestartHandler({
+  const resetRaceToShowroom = useRaceRestartHandler({
     setGameStatus,
     setHasJoined,
     setScore,
@@ -786,6 +1075,17 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     setOtherPlayers,
     setLocalChatMessage
   })
+  const handleRestart = useCallback(() => {
+    socketRef.current?.emit('leaveScheduledRaceRoom')
+    setActiveScheduledRaceId(null)
+    activeScheduledRaceIdRef.current = null
+    setActiveScheduledRaceSnapshot(null)
+    setActiveScheduledRaceEntry(null)
+    setScheduledRaceLapProgressByEntrant({})
+    setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceStartBlocked(false)
+    resetRaceToShowroom()
+  }, [resetRaceToShowroom])
   
   const handleSendChat = useRacingChatSender({
     chatInput,
@@ -814,12 +1114,89 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   })
 
   const getRemotePlayerContentUrl = useCallback((outpoint?: string | null) => getOrdinalContentUrl(outpoint) || undefined, [])
+  const scheduledRaceGridSlots = useMemo(() => buildScheduledRaceGridSlots({
+    startPosition: sanLuisStartFinishPosition,
+    startDirection: sanLuisStartFinishDirection,
+    slotCount: 6,
+    yOffset: 0.1,
+    ...getScheduledRaceGridLayout(trackName),
+  }), [trackName])
+  const scheduledRoomPlayers = useMemo(() => buildScheduledRaceRoomPlayers({
+    snapshot: activeScheduledRaceSnapshot,
+    activeRaceId: activeScheduledRaceId,
+    socketId,
+    existingPlayers: otherPlayers,
+    gridSlots: scheduledRaceGridSlots,
+    getFallbackColor: getPlayerColorByIndex,
+  }), [activeScheduledRaceId, activeScheduledRaceSnapshot, otherPlayers, scheduledRaceGridSlots, socketId])
+  const scheduledRaceStandings = useMemo<RacingUiScheduledRaceStandings | null>(() => (
+    activeScheduledRaceId
+      ? {
+          snapshot: activeScheduledRaceSnapshot,
+          activeRaceId: activeScheduledRaceId,
+          localEntrantId: activeScheduledRaceEntry?.entrantId,
+          lapProgressByEntrant: scheduledRaceLapProgressByEntrant,
+          finishOrderByEntrant: scheduledRaceFinishOrderByEntrant,
+          lapsRequired: activeScheduledRaceEntry?.lapsRequired,
+        }
+      : null
+  ), [
+    activeScheduledRaceEntry?.entrantId,
+    activeScheduledRaceEntry?.lapsRequired,
+    activeScheduledRaceId,
+    activeScheduledRaceSnapshot,
+    scheduledRaceFinishOrderByEntrant,
+    scheduledRaceLapProgressByEntrant,
+  ])
   const visibleRemotePlayers = useRemotePlayerLodRendering({
-    players: otherPlayers,
+    players: activeScheduledRaceId
+        ? scheduledRoomPlayers
+        : otherPlayers,
     localPosition: carPosition,
     qualityPreset: getRacingQualityPreset(qualityPresetId),
     getContentUrl: getRemotePlayerContentUrl
   })
+  // Whole-second lap clock keeps the marquee model identity stable between ticks
+  const marqueeLapClockSeconds = Math.floor(lapTime)
+  const startGateMarqueeModel = useMemo(() => {
+    if (activeScheduledRaceId) {
+      return buildStartGateMarqueeModel({
+        mode: 'multiplayer',
+        gameStatus,
+        countdown,
+        lapsRequired: Math.max(1, Math.floor(activeScheduledRaceEntry?.lapsRequired ?? 3)),
+        entrants: (activeScheduledRaceSnapshot?.entrants ?? []).map(entrant => ({
+          entrantId: entrant.entrantId,
+          name: entrant.name,
+          gridSlot: entrant.gridSlot,
+          lapTimesMs: scheduledRaceLapProgressByEntrant[entrant.entrantId] ?? [],
+          finishOrder: scheduledRaceFinishOrderByEntrant[entrant.entrantId],
+          disconnected: entrant.gameStatus === 'disconnected'
+        }))
+      })
+    }
+    return buildStartGateMarqueeModel({
+      mode: 'solo',
+      gameStatus,
+      countdown,
+      lapTimesSeconds: lapTimes,
+      currentLapTimeSeconds: marqueeLapClockSeconds,
+      playersOnTrack: otherPlayers.length + 1,
+      trackName
+    })
+  }, [
+    activeScheduledRaceEntry?.lapsRequired,
+    activeScheduledRaceId,
+    activeScheduledRaceSnapshot,
+    countdown,
+    gameStatus,
+    lapTimes,
+    marqueeLapClockSeconds,
+    otherPlayers.length,
+    scheduledRaceFinishOrderByEntrant,
+    scheduledRaceLapProgressByEntrant,
+    trackName
+  ])
 
   return (
     <>
@@ -847,6 +1224,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           onSceneReady={handleSceneReady}
           onGasPressed={handleGasPressed}
           spawnPosition={spawnPosition}
+          initialRotationY={initialRotationY}
           onGasReleased={handleGasReleased}
           isSoundEnabled={isSoundEnabled}
           onWorldLoaded={handleWorldLoaded}
@@ -858,6 +1236,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           localChatMessage={localChatMessage}
           cameraMode={cameraMode}
           qualityPresetId={qualityPresetId}
+          startGateMarqueeModel={startGateMarqueeModel}
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
         />
@@ -908,7 +1287,9 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           onEnterShowroom={handleEnterShowroom}
           onRestart={handleRestart}
           foxName={foxName}
+          foxOutpoint={foxOutpoint}
           foxOriginOutpoint={foxOriginOutpoint}
+          identityKey={identityKey}
           playerColor={playerColor}
           onColorChange={setPlayerColor}
           ordinalAddress={ordinalAddress}
@@ -925,6 +1306,10 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           showroomLoading={false}
           qualityPresetId={qualityPresetId}
           onQualityPresetChange={setQualityPresetId}
+          transactionServerUrl={TRANSACTION_SERVER_URL}
+          onEnterScheduledRace={handleEnterScheduledRace}
+          scheduledRaceStandings={scheduledRaceStandings}
+          scheduledRaceStartBlocked={scheduledRaceStartBlocked}
           showroomVehicleModes={['car', 'snowmobile']}
         />
       </div>

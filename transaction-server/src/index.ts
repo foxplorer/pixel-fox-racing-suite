@@ -10,6 +10,9 @@ import { registerCollectibleRoutes } from './collectibles.js'
 import { getAndReservePaymentUtxo, markPaymentUtxoAsUsed, releasePaymentUtxo } from './db.js'
 import { createIdentityCollectibleDelivery } from './identityCollectibleDelivery.js'
 import { getInvalidRequestOutpointFields } from './outpoints.js'
+import { registerScheduledRaceRoutes } from './scheduledRaceRoutes.js'
+import { MemoryScheduledRaceStore, PostgresScheduledRaceStore } from './scheduledRaceStore.js'
+import type { ScheduledRaceStore } from './scheduledRaceTypes.js'
 
 config()
 
@@ -57,6 +60,7 @@ app.get('/', (_req, res) => {
     ok: true,
     service: 'pixel-fox-racing-transaction-server',
     mode: TRANSACTION_MODE,
+    scheduledRaceStore: scheduledRaceStoreMode,
     collectibleIdentityDeliveryEnabled: !!identityDelivery,
     collectibleSenderIdentityKey: senderIdentityKey,
   })
@@ -150,14 +154,35 @@ const identityDelivery = USE_REAL_TRANSACTIONS && identityWallet && senderIdenti
       getPublicKey: args => identityWallet.getPublicKey(args),
       senderIdentityKey,
       inscriptionApp: INSCRIPTION_APP,
-    })
+  })
   : undefined
+const scheduledRaceIntervalMinutes = Number(process.env.SCHEDULED_RACE_INTERVAL_MINUTES)
+const scheduledRaceIntervalMs = Number.isFinite(scheduledRaceIntervalMinutes) && scheduledRaceIntervalMinutes > 0
+  ? scheduledRaceIntervalMinutes * 60 * 1000
+  : undefined
+const scheduledRaceStoreMode = (process.env.SCHEDULED_RACE_STORE || 'memory').trim().toLowerCase()
+const scheduledRaceStore: ScheduledRaceStore = scheduledRaceStoreMode === 'postgres'
+  ? new PostgresScheduledRaceStore(scheduledRaceIntervalMs)
+  : new MemoryScheduledRaceStore(scheduledRaceIntervalMs)
+const scheduledRaceSettlementIntervalMs = Number(process.env.SCHEDULED_RACE_SETTLEMENT_INTERVAL_MS || 15_000)
+
+setInterval(() => {
+  scheduledRaceStore.settleDueRaces?.().catch(error => {
+    console.error('Scheduled race settlement sweep failed:', error)
+  })
+}, Number.isFinite(scheduledRaceSettlementIntervalMs) && scheduledRaceSettlementIntervalMs > 0
+  ? scheduledRaceSettlementIntervalMs
+  : 15_000)
 
 registerCollectibleRoutes(app, {
   mode: USE_REAL_TRANSACTIONS ? 'real' : 'dummy',
   inscriptionApp: INSCRIPTION_APP,
   makeDummyTxid,
   identityDelivery,
+})
+
+registerScheduledRaceRoutes(app, {
+  store: scheduledRaceStore,
 })
 
 app.post('/createpixelracing', async (req, res) => {

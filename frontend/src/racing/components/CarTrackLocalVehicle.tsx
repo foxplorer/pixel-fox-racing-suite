@@ -64,6 +64,7 @@ interface CarTrackLocalVehicleProps {
   onCollectItem?: (itemId: string) => void
   otherPlayers: RacingWorldPlayer[]
   spawnPosition?: { x: number; y: number; z: number } | null
+  initialRotationY?: number | null
   localChatMessage?: { text: string; timestamp: number } | null
   initialHeadlightsEnabled?: boolean
   onPositionUpdateForSocket?: (position: THREE.Vector3, rotation: number, speed: number, headlightsEnabled?: boolean) => void
@@ -110,6 +111,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
   onCollectItem,
   otherPlayers,
   spawnPosition = null,
+  initialRotationY = null,
   localChatMessage = null,
   initialHeadlightsEnabled = true,
   onPositionUpdateForSocket,
@@ -159,6 +161,7 @@ export const CarTrackLocalVehicle: React.FC<CarTrackLocalVehicleProps> = ({
       onCollectItem={onCollectItem}
       otherPlayers={getRacingWorldPlayerCollisionTargets(otherPlayers) as RacingWorldPlayerCollisionTarget[]}
       spawnPosition={spawnPosition}
+      initialRotationY={initialRotationY}
       localChatMessage={localChatMessage}
       initialHeadlightsEnabled={initialHeadlightsEnabled}
       onPlayerCollision={onPlayerCollision}

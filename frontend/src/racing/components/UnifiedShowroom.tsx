@@ -165,7 +165,7 @@ export const UnifiedShowroom: React.FC<UnifiedShowroomProps> = ({
   const snowmobileFoxScale = 0.8 * 1.2
 
   return (
-    <group position={[0, 0, 0]}>
+    <group position={[0, 0.65, 0]}>
       {/* Lighting - same for both vehicles */}
       <ambientLight intensity={0.4} />
       <spotLight position={[8, 1.5, 0]} angle={0.6} penumbra={0.4} intensity={8} castShadow target-position={[0, 0, 0]} />

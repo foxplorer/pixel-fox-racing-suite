@@ -184,7 +184,7 @@ export const CarTrackVehicleModelDetailed: React.FC<CarTrackVehicleModelDetailed
         </>
       )}
 
-      {/* Taillights */}
+      {/* Rear brake/tail lights */}
       {[-0.54, 0.54].map(x => (
         <mesh key={x} position={[x, 0.64, -1.92]}>
           <boxGeometry args={[0.44, 0.13, 0.06]} />

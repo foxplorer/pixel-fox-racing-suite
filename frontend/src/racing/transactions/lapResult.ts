@@ -19,6 +19,16 @@ export interface PixelRacingGameResult {
   itemImage?: string
   signer?: string
   dummy?: boolean
+  groupRaceId?: string
+  groupRaceLapNumber?: number
+  groupRaceFinishPosition?: number | null
+  groupRaceTotalTimeMs?: number | null
+  groupRaceStatus?: 'finished' | 'dnf'
+  groupRaceFinal?: boolean
+  groupRaceEntrantCount?: number
+  groupRaceFinisherCount?: number
+  inscriptionName?: string
+  outputIndex?: number | null
 }
 
 export interface LapPlayerIdentity {
@@ -53,6 +63,12 @@ export interface LapResultInput {
   carColor?: string
   trackName?: string
   dummy?: boolean
+  groupRaceId?: string
+  groupRaceFinal?: boolean
+  groupRaceEntrantCount?: number
+  groupRaceFinisherCount?: number
+  inscriptionName?: string
+  outputIndex?: number | null
 }
 
 export interface PixelRacingLapInscriptionPayload {
@@ -258,7 +274,13 @@ export const buildPixelRacingActivityFromTransaction = (
   foxinfolink: getOrdinalContentUrl(data.originOutpoint),
   foximagelink: getOrdinalInscriptionUrl(data.foxOutpoint),
   trackname: data.trackName || defaultTrackName,
-  itemType: data.itemType,
-  itemImage: data.itemImage,
-  dummy: data.dummy === true
+  ...(data.itemType !== undefined ? { itemType: data.itemType } : {}),
+  ...(data.itemImage !== undefined ? { itemImage: data.itemImage } : {}),
+  dummy: data.dummy === true,
+  ...(data.groupRaceId !== undefined ? { groupRaceId: data.groupRaceId } : {}),
+  ...(data.groupRaceFinal !== undefined ? { groupRaceFinal: data.groupRaceFinal } : {}),
+  ...(data.groupRaceEntrantCount !== undefined ? { groupRaceEntrantCount: data.groupRaceEntrantCount } : {}),
+  ...(data.groupRaceFinisherCount !== undefined ? { groupRaceFinisherCount: data.groupRaceFinisherCount } : {}),
+  ...(data.inscriptionName !== undefined ? { inscriptionName: data.inscriptionName } : {}),
+  ...(data.outputIndex !== undefined ? { outputIndex: data.outputIndex } : {}),
 })

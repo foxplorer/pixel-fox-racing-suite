@@ -36,6 +36,7 @@ Dummy mode needs no secrets or database:
 
 ```dotenv
 TRANSACTION_MODE=dummy
+SCHEDULED_RACE_STORE=memory
 ```
 
 `PORT`, `CORS_ORIGINS`, `INSCRIPTION_APP`, and
@@ -46,6 +47,7 @@ To exercise every route in real mode, configure:
 ```dotenv
 TRANSACTION_MODE=real
 DATABASE_URL=postgres://...
+SCHEDULED_RACE_STORE=postgres
 GROUP_SIGNING_WIF=...
 PAYMENT_WIF=...
 CHANGE_ADDRESS=...
@@ -67,6 +69,55 @@ Route-specific requirements:
 - Each collectible route requires only its corresponding collection ID.
 - Every real transaction requires PostgreSQL funding, `PAYMENT_WIF`,
   `CHANGE_ADDRESS`, and `GROUP_SIGNING_WIF`.
+
+## Scheduled Race Routes
+
+Scheduled race development routes are available in dummy/local mode:
+
+- `GET /scheduled-races`
+- `POST /scheduled-races/:raceId/signup`
+- `DELETE /scheduled-races/:raceId/signup`
+- `POST /scheduled-races/:raceId/stage`
+- `POST /scheduled-races/:raceId/results`
+- `POST /scheduled-races/:raceId/finalize`
+- `POST /scheduled-races/:raceId/final-inscription`
+- `POST /scheduled-races/:raceId/settle`
+
+Scheduled race state defaults to `SCHEDULED_RACE_STORE=memory` so the open
+source suite runs locally without PostgreSQL. After applying
+`transaction-server/schema.sql`, set `SCHEDULED_RACE_STORE=postgres` and
+`DATABASE_URL=postgres://...` to persist scheduled races, signups, staged grid
+slots, lap progress, results, and final multiplayer race inscription records.
+The frontend API contract is unchanged; deployments only need the usual
+frontend transaction-server URL config.
+
+`GET /scheduled-races?status=completed` returns finalized, settled, and
+no-contest races with roster/results/podium data for local stats integration.
+
+`POST /scheduled-races/:raceId/results` accepts `entrantId`, `totalTimeMs`, and
+`lapTimesMs`. The in-memory store validates that the entrant was staged, the lap
+count matches the race's `lapsRequired`, and the total time matches the summed
+lap times. Duplicate identical results are idempotent; conflicting duplicates
+are rejected. Accepted results mark entrants finished, rank finish positions by
+total time, and expose a `podium` array with the top three finishers.
+
+`POST /scheduled-races/:raceId/finalize` marks any unfinished staged entrants as
+`dnf`, keeps DNF result rows with nullable `totalTimeMs`, and moves the race to
+`no_contest` when no entrant finished.
+
+`POST /scheduled-races/:raceId/final-inscription` creates/fetches the final
+race inscription record for an already-finalized race.
+
+`POST /scheduled-races/:raceId/settle` finalizes unfinished staged entrants and
+creates/fetches the final race inscription record in one idempotent call. In the
+current open-source suite that final inscription still uses a deterministic
+dummy txid with `outputIndex: 0`; the Postgres store persists that record so the
+same endpoint can be promoted to real broadcast status updates in production.
+The persisted table is `scheduled_race_final_inscriptions`.
+The inscription payload contains the roster, finishers, DNFs, lap arrays, race
+ID, track, start time, and finalization time. Separate trophy outputs are
+intentionally not part of the current model; trophy/no-trophy UI is inferred
+from finish position.
 
 ## Metanet Protocol-Key Delivery Test
 

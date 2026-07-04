@@ -8,6 +8,7 @@ interface UseRaceCountdownFlowOptions {
   vehicleLabel?: string
   enableLoadingTimeout?: boolean
   preventDuplicateSceneReady?: boolean
+  localCountdownEnabled?: boolean
 }
 
 interface UseRaceCountdownFlowResult {
@@ -25,7 +26,8 @@ export const useRaceCountdownFlow = ({
   playStartBeeps,
   vehicleLabel = 'Car',
   enableLoadingTimeout = true,
-  preventDuplicateSceneReady = false
+  preventDuplicateSceneReady = false,
+  localCountdownEnabled = true
 }: UseRaceCountdownFlowOptions): UseRaceCountdownFlowResult => {
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const hasProcessedSceneReadyRef = useRef(false)
@@ -33,6 +35,8 @@ export const useRaceCountdownFlow = ({
   const [isVehicleLoaded, setIsVehicleLoaded] = useState(false)
 
   useEffect(() => {
+    if (!localCountdownEnabled) return
+
     if (gameStatus === 'loading' && isWorldLoaded && isVehicleLoaded) {
       const timer = setTimeout(() => {
         setCountdown(0)
@@ -40,7 +44,7 @@ export const useRaceCountdownFlow = ({
       }, 200)
       return () => clearTimeout(timer)
     }
-  }, [gameStatus, isWorldLoaded, isVehicleLoaded, setCountdown, setGameStatus])
+  }, [gameStatus, isWorldLoaded, isVehicleLoaded, localCountdownEnabled, setCountdown, setGameStatus])
 
   useEffect(() => {
     if (!enableLoadingTimeout) return
@@ -73,6 +77,10 @@ export const useRaceCountdownFlow = ({
   }, [gameStatus])
 
   const handleSceneReady = useCallback(() => {
+    if (!localCountdownEnabled) {
+      return
+    }
+
     if (preventDuplicateSceneReady && hasProcessedSceneReadyRef.current) {
       return
     }
@@ -99,7 +107,7 @@ export const useRaceCountdownFlow = ({
         }
       }, 1000)
     }, 5000)
-  }, [playStartBeeps, preventDuplicateSceneReady, setCountdown, setGameStatus])
+  }, [localCountdownEnabled, playStartBeeps, preventDuplicateSceneReady, setCountdown, setGameStatus])
 
   const handleWorldLoaded = useCallback(() => {
     setIsWorldLoaded(true)

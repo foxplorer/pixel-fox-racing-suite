@@ -36,6 +36,7 @@ export interface ShouldEmitJoinGameInput {
   requireConnection?: boolean
   startRaceImmediately?: boolean
   allowActiveRaceJoin?: boolean
+  hasActiveScheduledRace?: boolean
 }
 
 export const createGuestIdentityKey = (): string => {
@@ -71,18 +72,19 @@ export const shouldEmitJoinGame = ({
   isConnected = true,
   requireConnection = false,
   startRaceImmediately = false,
-  allowActiveRaceJoin = false
+  allowActiveRaceJoin = false,
+  hasActiveScheduledRace = false
 }: ShouldEmitJoinGameInput): boolean => {
   if (!hasFoxOriginOutpoint || !hasSocket || hasJoined) {
     return false
   }
 
-  if (requireConnection && !isConnected) {
+  if (hasActiveScheduledRace) {
     return false
   }
 
-  if (gameStatus === 'showroom') {
-    return true
+  if (requireConnection && !isConnected) {
+    return false
   }
 
   if (!allowActiveRaceJoin) {

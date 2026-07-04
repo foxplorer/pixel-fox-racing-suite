@@ -68,7 +68,9 @@ interface FreeRoamCarProps {
   otherPlayers?: RacingWorldPlayerCollisionTarget[]
   onPlayerCollision?: (report: LocalPlayerCollisionReport) => void
   spawnPosition?: { x: number; y: number; z: number } | null
+  initialRotationY?: number | null
   localChatMessage?: { text: string; timestamp: number } | null
+  initialHeadlightsEnabled?: boolean
 }
 
 export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
@@ -100,12 +102,14 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   otherPlayers = [],
   onPlayerCollision,
   spawnPosition = null,
-  localChatMessage = null
+  initialRotationY = null,
+  localChatMessage = null,
+  initialHeadlightsEnabled = true
 }) => {
   const { camera } = useThree()
   const carRef = useRef<THREE.Group>(null)
-  const [headlightsEnabled, setHeadlightsEnabled] = useState(false)
-  const headlightsEnabledRef = useRef(false)
+  const [headlightsEnabled, setHeadlightsEnabled] = useState(initialHeadlightsEnabled)
+  const headlightsEnabledRef = useRef(initialHeadlightsEnabled)
   
   // Initialize position from spawnPosition if provided, otherwise default to start line
   // Y coordinate is set to track height (ignoring terrain for now)
@@ -125,8 +129,14 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   const position = useRef(initialPosition.clone()) // Car position follows track height
   const isInitialized = useRef(false) // Track if car has been initialized on track
   // Initialize rotation to face track direction at start/finish line
-  const initialRotation = Math.atan2(startFinishDirection.x, startFinishDirection.z)
+  const trackStartRotation = Math.atan2(startFinishDirection.x, startFinishDirection.z)
+  const initialRotation = Number.isFinite(initialRotationY) ? initialRotationY as number : trackStartRotation
   const rotation = useRef(initialRotation) // Y rotation in radians
+
+  useEffect(() => {
+    setHeadlightsEnabled(initialHeadlightsEnabled)
+    headlightsEnabledRef.current = initialHeadlightsEnabled
+  }, [initialHeadlightsEnabled])
   const smoothedRotation = useRef(initialRotation) // Smoothed rotation for camera stability
   // CAMERA FIX: Track continuous camera rotation that doesn't wrap at ±π
   // This prevents camera from jumping when rotation crosses the 180°/-180° boundary
@@ -185,10 +195,11 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       createPosition: (x, y, z) => new THREE.Vector3(x, y, z),
       findTrackPosition,
       spawnTangent: spawnTangentRef,
+      initialRotationY,
       cameraRotation,
       lastCameraUpdateRotation
     })
-  }, [spawnPosition, trackCurve])
+  }, [initialRotationY, spawnPosition, trackCurve])
   const speed = useRef(0)
   const velocity = useRef(new THREE.Vector3(0, 0, 0))
   
@@ -267,13 +278,14 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   // NOTE: isManualCamera is NOT in dependencies - we don't want to reset car when camera mode changes
   useEffect(() => {
     if (gameStatus === 'racing') {
-      // Reset car to start/finish line
-      const trackY = getHeightAtPosition(startFinishPosition.x, startFinishPosition.z)
+      const resetX = spawnPosition?.x ?? startFinishPosition.x
+      const resetZ = spawnPosition?.z ?? startFinishPosition.z
+      const trackY = getHeightAtPosition(resetX, resetZ)
       resetVehiclePoseRefs({
         position,
-        x: startFinishPosition.x,
+        x: resetX,
         y: trackY,
-        z: startFinishPosition.z,
+        z: resetZ,
         rotation,
         rotationRadians: initialRotation,
         smoothedRotation,
@@ -283,13 +295,14 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
         vehicle: carRef.current
       })
     } else if (gameStatus === 'countdown') {
-      // Reset car to start/finish line during countdown
-      const trackY = getHeightAtPosition(startFinishPosition.x, startFinishPosition.z)
+      const resetX = spawnPosition?.x ?? startFinishPosition.x
+      const resetZ = spawnPosition?.z ?? startFinishPosition.z
+      const trackY = getHeightAtPosition(resetX, resetZ)
       resetVehiclePoseRefs({
         position,
-        x: startFinishPosition.x,
+        x: resetX,
         y: trackY,
-        z: startFinishPosition.z,
+        z: resetZ,
         rotation,
         rotationRadians: initialRotation,
         smoothedRotation,

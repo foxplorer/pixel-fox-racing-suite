@@ -27,6 +27,7 @@ export interface RacingWorldGameStatePlayer {
   rotation?: { x: number; y: number; z: number }
   speed?: number
   headlightsEnabled?: boolean
+  gameStatus?: 'idle' | 'showroom' | 'loading' | 'countdown' | 'racing' | 'crashed' | 'finished' | string
   carColor?: string | null
   originOutpoint?: string | null
   trackName?: string | null
@@ -134,6 +135,10 @@ export const buildRacingWorldPlayersForTrack = <Player extends RacingWorldGameSt
 
   return players
     .filter(player => {
+      if (player.gameStatus === 'idle' || player.gameStatus === 'showroom') {
+        return false
+      }
+
       const currentPlayer = isCurrentPlayer
         ? isCurrentPlayer(player)
         : isCurrentMultiplayerPlayer({ player, socketId, identityKey, ordinalAddress })

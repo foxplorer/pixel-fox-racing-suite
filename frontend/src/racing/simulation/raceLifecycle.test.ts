@@ -4,6 +4,7 @@ import {
   applyRaceLoadingStartState,
   applyRaceShowroomResetState,
   applyRaceStartState,
+  applyScheduledRaceStartState,
   shouldAutoEnterRaceShowroom,
   startImmediateRaceIfNeeded,
   startRaceForSelectedTrack
@@ -50,6 +51,52 @@ test('applyRaceStartState resets shared race start state', () => {
 
   assert.deepEqual(state, {
     hasJoined: true,
+    gameStatus: 'loading',
+    score: 0,
+    distanceTraveled: 0,
+    lapTime: 0,
+    lapTimes: [],
+    lapTxids: {},
+    countdown: 3
+  })
+})
+
+test('applyScheduledRaceStartState resets race state without changing casual join state', () => {
+  const state = {
+    gameStatus: 'showroom',
+    score: 12,
+    distanceTraveled: 34,
+    lapTime: 56,
+    lapTimes: [56],
+    lapTxids: { 0: 'txid' } as Record<number, string>,
+    countdown: 0
+  }
+
+  applyScheduledRaceStartState({
+    setGameStatus: value => {
+      state.gameStatus = value
+    },
+    setScore: value => {
+      state.score = value
+    },
+    setDistanceTraveled: value => {
+      state.distanceTraveled = value
+    },
+    setLapTime: value => {
+      state.lapTime = value
+    },
+    setLapTimes: value => {
+      state.lapTimes = value
+    },
+    setLapTxids: value => {
+      state.lapTxids = value
+    },
+    setCountdown: value => {
+      state.countdown = value
+    }
+  })
+
+  assert.deepEqual(state, {
     gameStatus: 'loading',
     score: 0,
     distanceTraveled: 0,

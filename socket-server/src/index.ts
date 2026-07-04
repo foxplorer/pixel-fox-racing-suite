@@ -4,12 +4,24 @@ import helmet from 'helmet'
 import { config } from 'dotenv'
 import { createServer } from 'node:http'
 import { Server } from 'socket.io'
+import {
+  ScheduledRaceRoomRegistry,
+  SCHEDULED_RACE_TIMEOUT_MS,
+  getScheduledRaceRoomId,
+  isValidScheduledRaceFinishReport,
+  isValidScheduledRaceLapProgressReport,
+  isValidScheduledRaceRoomJoinInput,
+  type ScheduledRaceFinishReport,
+  type ScheduledRaceLapProgressReport,
+  type ScheduledRaceRoomJoinInput,
+} from './scheduledRaceRooms.js'
 
 config()
 
 const app = express()
 const server = createServer(app)
 const PORT = Number(process.env.PORT || 5000)
+const TRANSACTION_SERVER_URL = (process.env.TRANSACTION_SERVER_URL || 'http://localhost:9000').replace(/\/+$/, '')
 const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .split(',')
   .map(origin => origin.trim())
@@ -70,6 +82,9 @@ interface PixelRacingPlayer {
   carColor: string
   gameStatus: 'idle' | 'showroom' | 'loading' | 'countdown' | 'racing' | 'crashed' | 'finished'
   trackName?: string
+  scheduledRaceId?: string | null
+  scheduledRaceEntrantId?: string | null
+  scheduledRaceGridSlot?: number | null
 }
 
 interface PlayerCollisionReport {
@@ -105,6 +120,8 @@ const COLLISION_MAX_REPORT_AGE_MS = 2000
 const COLLISION_MAX_DISTANCE = 12
 const COLLISION_MAX_ABS_SPEED = 140
 const collisionPairLastAcceptedAt = new Map<string, number>()
+const scheduledRaceRooms = new ScheduledRaceRoomRegistry()
+const announcedScheduledRaceSettlements = new Set<string>()
 
 function validateTrackName(trackName: string | undefined): string | null {
   if (!trackName?.trim()) return null
@@ -183,6 +200,9 @@ function serializablePlayers() {
       carColor: player.carColor,
       gameStatus: player.gameStatus,
       trackName: player.trackName,
+      scheduledRaceId: player.scheduledRaceId,
+      scheduledRaceEntrantId: player.scheduledRaceEntrantId,
+      scheduledRaceGridSlot: player.scheduledRaceGridSlot,
     }))
 }
 
@@ -193,6 +213,22 @@ function emitGameState() {
     items: pixelRacingState.items,
     trackName: pixelRacingState.trackName,
   })
+}
+
+function removeSocketPlayer(socketId: string): void {
+  const player = pixelRacingState.players.get(socketId)
+  if (!player) return
+  const scheduledRaceId = scheduledRaceRooms.leavePlayer(socketId)
+  pixelRacingState.players.delete(socketId)
+  pixelRacingIo.to(ROOM_ID).emit('playerLeft', {
+    playerId: socketId,
+    totalPlayers: pixelRacingState.players.size,
+  })
+  if (scheduledRaceId && scheduledRaceRooms.getActiveRaceIds().includes(scheduledRaceId)) {
+    const snapshot = scheduledRaceRooms.getSnapshot(scheduledRaceId, Date.now())
+    pixelRacingIo.to(snapshot.roomId).emit('scheduledRaceRoomSnapshot', snapshot)
+  }
+  emitGameState()
 }
 
 function spawnRandomRacingItem(): GameItem | null {
@@ -238,7 +274,118 @@ function maintainRacingItemCount() {
   }
 }
 
+async function submitScheduledRaceResult(report: ScheduledRaceFinishReport): Promise<unknown> {
+  const response = await fetch(`${TRANSACTION_SERVER_URL}/scheduled-races/${encodeURIComponent(report.raceId)}/results`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      entrantId: report.entrantId,
+      totalTimeMs: report.totalTimeMs,
+      lapTimesMs: report.lapTimesMs,
+    }),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = payload && typeof payload === 'object' && 'message' in payload
+      ? String((payload as { message?: unknown }).message)
+      : `Scheduled race result failed with ${response.status}`
+    throw new Error(message)
+  }
+  return payload
+}
+
+async function submitScheduledRaceLapProgress(report: ScheduledRaceLapProgressReport): Promise<unknown> {
+  const response = await fetch(`${TRANSACTION_SERVER_URL}/scheduled-races/${encodeURIComponent(report.raceId)}/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      entrantId: report.entrantId,
+      lapTimesMs: report.lapTimesMs,
+    }),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = payload && typeof payload === 'object' && 'message' in payload
+      ? String((payload as { message?: unknown }).message)
+      : `Scheduled race progress failed with ${response.status}`
+    throw new Error(message)
+  }
+  return payload
+}
+
+async function settleScheduledRace(raceId: string): Promise<any> {
+  const response = await fetch(`${TRANSACTION_SERVER_URL}/scheduled-races/${encodeURIComponent(raceId)}/settle`, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = payload && typeof payload === 'object' && 'message' in payload
+      ? String((payload as { message?: unknown }).message)
+      : `Scheduled race settlement failed with ${response.status}`
+    throw new Error(message)
+  }
+  return payload
+}
+
+function buildScheduledRaceSettlementActivity(race: any): Record<string, unknown> | null {
+  const finalInscription = race?.finalInscription
+  if (!finalInscription?.txid) return null
+  const firstFinisher = Array.isArray(race.results)
+    ? race.results.find((result: any) => result?.status === 'finished')
+    : null
+  const firstEntrant = Array.isArray(race.roster) && firstFinisher
+    ? race.roster.find((entrant: any) => entrant?.entrantId === firstFinisher.entrantId)
+    : Array.isArray(race.roster) ? race.roster[0] : null
+
+  return {
+    txid: finalInscription.txid,
+    score: firstFinisher?.totalTimeMs ? Number(firstFinisher.totalTimeMs) / 1000 : 0,
+    time: Date.parse(finalInscription.updatedAt || finalInscription.createdAt || race.serverTime || '') || Date.now(),
+    foxOutpoint: firstEntrant?.foxOutpoint || '',
+    foxName: firstEntrant?.foxName || 'Multiplayer Race',
+    originOutpoint: firstEntrant?.foxOriginOutpoint || '',
+    ownerAddress: null,
+    trackName: race.trackName,
+    dummy: finalInscription.dummy === true,
+    groupRaceId: race.id,
+    groupRaceFinal: true,
+    groupRaceEntrantCount: Array.isArray(race.roster) ? race.roster.length : 0,
+    groupRaceFinisherCount: Array.isArray(race.results)
+      ? race.results.filter((result: any) => result?.status === 'finished').length
+      : 0,
+    inscriptionName: finalInscription.inscriptionName,
+    outputIndex: finalInscription.outputIndex,
+  }
+}
+
+async function settleAndAnnounceScheduledRace(raceId: string): Promise<void> {
+  if (announcedScheduledRaceSettlements.has(raceId)) return
+  const payload = await settleScheduledRace(raceId)
+  const race = payload?.race
+  const activity = buildScheduledRaceSettlementActivity(race)
+  if (!activity) return
+  announcedScheduledRaceSettlements.add(raceId)
+  const roomId = getScheduledRaceRoomId(raceId)
+  pixelRacingIo.to(roomId).emit('scheduledRaceSettlement', { race })
+  pixelRacingIo.to(roomId).emit('newGameTransaction', activity)
+}
+
 maintainRacingItemCount()
+
+setInterval(() => {
+  const nowMs = Date.now()
+  for (const raceId of scheduledRaceRooms.getActiveRaceIds()) {
+    const snapshot = scheduledRaceRooms.getSnapshot(raceId, nowMs)
+    pixelRacingIo.to(snapshot.roomId).emit('scheduledRaceCountdown', snapshot)
+    const startsAtMs = Date.parse(snapshot.startsAt)
+    if (Number.isFinite(startsAtMs) && nowMs >= startsAtMs + SCHEDULED_RACE_TIMEOUT_MS) {
+      void settleAndAnnounceScheduledRace(raceId).catch(error => {
+        console.warn('Scheduled race settlement announcement failed:', error instanceof Error ? error.message : error)
+      })
+    }
+  }
+}, 1000)
 
 pixelRacingIo.on('connection', socket => {
   socket.join(ROOM_ID)
@@ -282,10 +429,13 @@ pixelRacingIo.on('connection', socket => {
       position: { x: startPos.x, y: startPos.y || 0.1, z: startPos.z },
       rotation: { x: 0, y: 0, z: 0 },
       speed: 0,
-      headlightsEnabled: false,
+      headlightsEnabled: true,
       carColor: data.carColor || '#FF6B6B',
       gameStatus: 'showroom',
       trackName: validateTrackName(data.trackName) || 'Australia',
+      scheduledRaceId: null,
+      scheduledRaceEntrantId: null,
+      scheduledRaceGridSlot: null,
     }
 
     pixelRacingState.players.set(socket.id, player)
@@ -308,7 +458,81 @@ pixelRacingIo.on('connection', socket => {
     const player = pixelRacingState.players.get(socket.id)
     if (!player) return
     player.gameStatus = data.gameStatus
+    scheduledRaceRooms.updateEntrant(socket.id, { gameStatus: player.gameStatus })
     emitGameState()
+  })
+
+  socket.on('joinScheduledRaceRoom', (data: Partial<ScheduledRaceRoomJoinInput>) => {
+    const player = pixelRacingState.players.get(socket.id)
+    if (!player) {
+      socket.emit('scheduledRaceRoomError', { message: 'Join the game before entering a scheduled race room' })
+      return
+    }
+    if (!isValidScheduledRaceRoomJoinInput(data)) {
+      socket.emit('scheduledRaceRoomError', { message: 'Invalid scheduled race room payload' })
+      return
+    }
+
+    const trackName = validateTrackName(data.trackName)
+    if (!trackName) {
+      socket.emit('scheduledRaceRoomError', { message: 'Invalid scheduled race track' })
+      return
+    }
+
+    const previousRaceId = scheduledRaceRooms.getRaceIdForPlayer(socket.id)
+    if (previousRaceId && previousRaceId !== data.raceId) {
+      socket.leave(getScheduledRaceRoomId(previousRaceId))
+    }
+
+    player.headlightsEnabled = player.headlightsEnabled ?? true
+    player.trackName = trackName
+    player.scheduledRaceId = data.raceId
+    player.scheduledRaceEntrantId = data.entrantId
+    player.scheduledRaceGridSlot = data.gridSlot
+
+    const snapshot = scheduledRaceRooms.joinRace({
+      ...data,
+      trackName,
+    }, {
+      playerId: socket.id,
+      identityKey: player.identityKey,
+      name: player.name,
+      carColor: player.carColor,
+      originOutpoint: player.originOutpoint || data.entrantId,
+      position: player.position,
+      rotation: player.rotation,
+      speed: player.speed,
+      headlightsEnabled: player.headlightsEnabled,
+      gameStatus: player.gameStatus,
+    }, Date.now())
+
+    socket.join(snapshot.roomId)
+    socket.emit('scheduledRaceRoomJoined', snapshot)
+    pixelRacingIo.to(snapshot.roomId).emit('scheduledRaceRoomSnapshot', snapshot)
+    emitGameState()
+  })
+
+  socket.on('leaveScheduledRaceRoom', () => {
+    const player = pixelRacingState.players.get(socket.id)
+    const raceId = scheduledRaceRooms.leavePlayer(socket.id)
+    if (!raceId) return
+
+    socket.leave(getScheduledRaceRoomId(raceId))
+    if (player) {
+      player.scheduledRaceId = null
+      player.scheduledRaceEntrantId = null
+      player.scheduledRaceGridSlot = null
+    }
+
+    if (scheduledRaceRooms.getActiveRaceIds().includes(raceId)) {
+      const snapshot = scheduledRaceRooms.getSnapshot(raceId, Date.now())
+      pixelRacingIo.to(snapshot.roomId).emit('scheduledRaceRoomSnapshot', snapshot)
+    }
+    emitGameState()
+  })
+
+  socket.on('leaveGame', () => {
+    removeSocketPlayer(socket.id)
   })
 
   socket.on('updatePosition', (data: {
@@ -322,10 +546,27 @@ pixelRacingIo.on('connection', socket => {
     player.position = { ...data.position }
     player.rotation = { ...data.rotation }
     player.speed = data.speed
-    player.headlightsEnabled = Boolean(data.headlightsEnabled)
+    const previousHeadlightsEnabled = player.headlightsEnabled
+    const previousEntrantHeadlightsEnabled = scheduledRaceRooms.getEntrantForPlayer(socket.id)?.headlightsEnabled
+    player.headlightsEnabled = data.headlightsEnabled !== undefined ? Boolean(data.headlightsEnabled) : (player.headlightsEnabled ?? true)
+    const scheduledSnapshot = scheduledRaceRooms.updateEntrant(socket.id, {
+      position: player.position,
+      rotation: player.rotation,
+      speed: player.speed,
+      headlightsEnabled: player.headlightsEnabled,
+    })
+    if (scheduledSnapshot && (
+      previousHeadlightsEnabled !== player.headlightsEnabled
+      || previousEntrantHeadlightsEnabled !== player.headlightsEnabled
+    )) {
+      pixelRacingIo.to(scheduledSnapshot.roomId).emit('scheduledRaceRoomSnapshot', scheduledSnapshot)
+    }
 
     if (['loading', 'countdown', 'racing', 'crashed', 'finished'].includes(player.gameStatus)) {
-      socket.broadcast.to(ROOM_ID).emit('playerPositionUpdate', {
+      const targetRoomId = player.scheduledRaceId
+        ? getScheduledRaceRoomId(player.scheduledRaceId)
+        : ROOM_ID
+      socket.broadcast.to(targetRoomId).emit('playerPositionUpdate', {
         playerId: socket.id,
         position: player.position,
         rotation: player.rotation,
@@ -382,8 +623,11 @@ pixelRacingIo.on('connection', socket => {
       acceptedAt: now,
     }
 
-    pixelRacingIo.to(ROOM_ID).emit('playerCollisionResolved', payload)
-    pixelRacingIo.to(ROOM_ID).emit('playerCollision', payload)
+    const targetRoomId = validation.player1.scheduledRaceId && validation.player1.scheduledRaceId === validation.player2.scheduledRaceId
+      ? getScheduledRaceRoomId(validation.player1.scheduledRaceId)
+      : ROOM_ID
+    pixelRacingIo.to(targetRoomId).emit('playerCollisionResolved', payload)
+    pixelRacingIo.to(targetRoomId).emit('playerCollision', payload)
   })
 
   socket.on('collectItem', (data: { itemId: string }) => {
@@ -447,14 +691,72 @@ pixelRacingIo.on('connection', socket => {
     })
   })
 
-  socket.on('disconnect', () => {
+  socket.on('reportScheduledRaceLapProgress', (data: Partial<ScheduledRaceLapProgressReport>) => {
     const player = pixelRacingState.players.get(socket.id)
-    if (!player) return
-    pixelRacingState.players.delete(socket.id)
-    pixelRacingIo.to(ROOM_ID).emit('playerLeft', {
-      playerId: socket.id,
-      totalPlayers: pixelRacingState.players.size,
+    const entrant = scheduledRaceRooms.getEntrantForPlayer(socket.id)
+    if (!player || !entrant || !isValidScheduledRaceLapProgressReport(data)) return
+    if (data.raceId !== player.scheduledRaceId || data.raceId !== scheduledRaceRooms.getRaceIdForPlayer(socket.id)) return
+    if (data.entrantId !== entrant.entrantId) return
+
+    void submitScheduledRaceLapProgress(data).catch(error => {
+      console.warn('Scheduled race progress storage failed:', error instanceof Error ? error.message : error)
     })
+
+    pixelRacingIo.to(getScheduledRaceRoomId(data.raceId)).emit('scheduledRaceLapProgress', {
+      raceId: data.raceId,
+      entrantId: data.entrantId,
+      playerId: socket.id,
+      identityKey: player.identityKey,
+      name: player.name,
+      trackName: player.trackName,
+      lapTimesMs: data.lapTimesMs,
+      totalTimeMs: data.lapTimesMs.reduce((total, lapTimeMs) => total + lapTimeMs, 0),
+    })
+  })
+
+  socket.on('reportScheduledRaceFinish', async (data: Partial<ScheduledRaceFinishReport>) => {
+    const player = pixelRacingState.players.get(socket.id)
+    const entrant = scheduledRaceRooms.getEntrantForPlayer(socket.id)
+    if (!player || !entrant || !isValidScheduledRaceFinishReport(data)) {
+      socket.emit('scheduledRaceFinishRejected', { message: 'Invalid scheduled race finish report' })
+      return
+    }
+    if (data.raceId !== player.scheduledRaceId || data.raceId !== scheduledRaceRooms.getRaceIdForPlayer(socket.id)) {
+      socket.emit('scheduledRaceFinishRejected', { message: 'Scheduled race mismatch' })
+      return
+    }
+    if (data.entrantId !== entrant.entrantId) {
+      socket.emit('scheduledRaceFinishRejected', { message: 'Scheduled race entrant mismatch' })
+      return
+    }
+
+    let transactionResult: unknown = null
+    try {
+      transactionResult = await submitScheduledRaceResult(data)
+    } catch (error) {
+      socket.emit('scheduledRaceFinishRejected', {
+        message: error instanceof Error ? error.message : 'Scheduled race result storage failed',
+      })
+      return
+    }
+
+    const payload = {
+      raceId: data.raceId,
+      entrantId: data.entrantId,
+      playerId: socket.id,
+      identityKey: player.identityKey,
+      name: player.name,
+      trackName: player.trackName,
+      totalTimeMs: data.totalTimeMs,
+      lapTimesMs: data.lapTimesMs,
+      finishedAt: new Date().toISOString(),
+      transactionResult,
+    }
+    pixelRacingIo.to(getScheduledRaceRoomId(data.raceId)).emit('scheduledRaceFinishAccepted', payload)
+  })
+
+  socket.on('disconnect', () => {
+    removeSocketPlayer(socket.id)
   })
 })
 

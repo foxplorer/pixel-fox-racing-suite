@@ -64,6 +64,7 @@ interface FreeRoamCarProps {
   otherPlayers?: RacingWorldPlayerCollisionTarget[]
   onPlayerCollision?: (report: LocalPlayerCollisionReport) => void
   spawnPosition?: { x: number; y: number; z: number } | null
+  initialRotationY?: number | null
   localChatMessage?: { text: string; timestamp: number } | null
   initialHeadlightsEnabled?: boolean
 }
@@ -96,6 +97,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
   otherPlayers = [],
   onPlayerCollision,
   spawnPosition = null,
+  initialRotationY = null,
   localChatMessage = null,
   initialHeadlightsEnabled = true
 }) => {
@@ -109,18 +111,21 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     ? new THREE.Vector3(spawnPosition.x, spawnPosition.y, spawnPosition.z)
     : new THREE.Vector3(0, 0.1, 0)
   const position = useRef(initialPosition.clone()) // Car position: wheels at y=0.3 locally, so car at y=0.1 makes wheel centers at y=0.4 (radius 0.4, bottom at y=0)
-  const initialRotation = Math.atan2(startFinishDirection.x, startFinishDirection.z)
+  const trackStartRotation = Math.atan2(startFinishDirection.x, startFinishDirection.z)
+  const initialRotation = Number.isFinite(initialRotationY) ? initialRotationY as number : trackStartRotation
   const rotation = useRef(initialRotation) // Y rotation in radians
   
   // Update position when spawnPosition changes (e.g., when joining game)
   useEffect(() => {
     if (spawnPosition) {
       position.current.set(spawnPosition.x, spawnPosition.y, spawnPosition.z)
+      rotation.current = initialRotation
       if (carRef.current) {
         carRef.current.position.copy(position.current)
+        carRef.current.rotation.y = rotation.current
       }
     }
-  }, [spawnPosition])
+  }, [initialRotation, spawnPosition])
 
   useEffect(() => {
     setHeadlightsEnabled(initialHeadlightsEnabled)

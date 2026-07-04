@@ -75,6 +75,10 @@ export const applyRaceStartState = (handlers: JoinedRaceStartStateHandlers): voi
   applyRaceLoadingStartState(handlers)
 }
 
+export const applyScheduledRaceStartState = (handlers: RaceStartStateHandlers): void => {
+  applyRaceLoadingStartState(handlers)
+}
+
 export const startImmediateRaceIfNeeded = ({
   startRaceImmediately,
   hasFoxOriginOutpoint,

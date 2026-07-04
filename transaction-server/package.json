@@ -7,7 +7,7 @@
     "dev": "tsx src/index.ts",
     "start": "tsx src/index.ts",
     "check": "tsc --noEmit",
-    "test": "node --import tsx --test --test-concurrency=1 src/collectibles.test.ts src/identityCollectibleDelivery.test.ts src/outpoints.test.ts src/sdkCollectibleTransaction.test.ts"
+    "test": "node --import tsx --test --test-concurrency=1 src/sdkCollectibleTransaction.test.ts && node --import tsx --test --test-concurrency=1 src/collectibles.test.ts src/identityCollectibleDelivery.test.ts src/outpoints.test.ts src/multiplayerRaceInscription.test.ts src/scheduledRaceStore.test.ts"
   },
   "dependencies": {
     "@1sat/actions": "0.0.162",

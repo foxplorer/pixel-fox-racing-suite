@@ -261,3 +261,52 @@ test('applyVehicleSpawnPositionOnce applies spawn pose once and resets the flag 
   assert.deepEqual(cleared, { applied: false, resetAppliedFlag: true })
   assert.equal(hasAppliedSpawnPosition.current, false)
 })
+
+test('applyVehicleSpawnPositionOnce uses explicit initial rotation when provided', () => {
+  const position = {
+    current: {
+      x: 0,
+      y: 0,
+      z: 0,
+      set(x: number, y: number, z: number) {
+        this.x = x
+        this.y = y
+        this.z = z
+      }
+    }
+  }
+  const rotation = { current: 0 }
+  const hasAppliedSpawnPosition = { current: false }
+  const spawnTangent = {
+    current: {
+      x: 0,
+      z: 0,
+      negate() {
+        this.x *= -1
+        this.z *= -1
+      },
+      normalize() {}
+    }
+  }
+  const trackCurve = {
+    getTangentAt: (_t: number, target: typeof spawnTangent.current) => {
+      target.x = -1
+      target.z = 0
+    }
+  }
+
+  applyVehicleSpawnPositionOnce({
+    spawnPosition: { x: 10, z: 20 },
+    hasAppliedSpawnPosition,
+    trackCurve,
+    position,
+    rotation,
+    getHeightAtPosition: () => 3,
+    createPosition: (x, y, z) => ({ x, y, z }),
+    findTrackPosition: () => 0.25,
+    spawnTangent,
+    initialRotationY: -0.75
+  })
+
+  assert.equal(rotation.current, -0.75)
+})

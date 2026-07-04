@@ -1,4 +1,4 @@
-import React, { memo } from 'react'
+import React, { memo, type ReactNode } from 'react'
 import { formatLapTime } from './hudFormat'
 import { RacingLapTimesList } from './RacingLapTimesList'
 
@@ -10,6 +10,7 @@ interface RacingHudMetricsProps {
   lapTimes?: number[]
   lapTxids?: { [index: number]: string }
   lapListMarginTop?: string
+  lapListReplacement?: ReactNode
 }
 
 const metricTextShadow = '2px 2px 4px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.5)'
@@ -21,9 +22,10 @@ export const RacingHudMetrics = memo<RacingHudMetricsProps>(function RacingHudMe
   lapTime = 0,
   lapTimes,
   lapTxids = {},
-  lapListMarginTop
+  lapListMarginTop,
+  lapListReplacement
 }) {
-  const hasLapList = Boolean(lapTimes)
+  const hasLapList = Boolean(lapTimes) || Boolean(lapListReplacement)
 
   return (
     <div style={{ position: 'absolute', top: 20, right: 20, textAlign: 'right', userSelect: 'none' }}>
@@ -59,9 +61,9 @@ export const RacingHudMetrics = memo<RacingHudMetricsProps>(function RacingHudMe
       }}>
         {Math.round(speed * 3.6)} km/h
       </div>
-      {lapTimes && (
+      {lapListReplacement ?? (lapTimes && (
         <RacingLapTimesList lapTimes={lapTimes} lapTxids={lapTxids} marginTop={lapListMarginTop} />
-      )}
+      ))}
     </div>
   )
 })

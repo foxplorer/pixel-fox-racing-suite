@@ -21,12 +21,15 @@ import {
   fetchPixelRacingResults,
   LEGACY_PIXELRACING_RESULT_QUERIES,
 } from "../racing/stats/pixelRacingResults";
+import { fetchCompletedScheduledRaces } from "../racing/scheduled/scheduledRaceApi";
+import { buildScheduledRaceFinalStatsRow, buildScheduledRaceLapStatsRows } from "../racing/scheduled/scheduledRaceStats";
 
 type PixelRacingStatsProps = {
   latestactivity: PixelRacingGameResult | null;
   userOrdinalAddress?: string | null;
   customTitle?: string;
   renderBeforeLeaderboard?: React.ReactNode;
+  transactionServerUrl?: string;
 }
 
 // Driver Championship Types
@@ -227,8 +230,9 @@ const processFetchedGames = (games: PixelRacingGameResult[]) => {
 const ACTIVITY_PAGE_SIZE = 5;
 const LEGACY_ERA_DISPLAY_COUNT = 1410;
 
-const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOrdinalAddress, customTitle, renderBeforeLeaderboard }: PixelRacingStatsProps) {
+const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOrdinalAddress, customTitle, renderBeforeLeaderboard, transactionServerUrl }: PixelRacingStatsProps) {
   const [liveActivity, setLiveActivity] = useState<PixelRacingGameResult[]>([]); // ONLY live items/games
+  const [multiplayerRaceActivity, setMultiplayerRaceActivity] = useState<PixelRacingGameResult[]>([]);
   const [gameHistory, setGameHistory] = useState<PixelRacingGameResult[]>([]); // Fetched global games
   const [legacyGameHistory, setLegacyGameHistory] = useState<PixelRacingGameResult[]>([]);
   const [leadersdisplay, setLeadersDisplay] = useState<PixelRacingGameResult[]>([]); // Legacy - keeping for compatibility
@@ -374,11 +378,27 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
 
     try {
       const uniqueHistoryGames = await fetchPixelRacingResults(CURRENT_PIXELRACING_RESULT_QUERIES);
-      const processed = processFetchedGames(uniqueHistoryGames);
+      const completedScheduledRaces = transactionServerUrl
+        ? await fetchCompletedScheduledRaces({
+          transactionServerUrl,
+          limit: 12,
+        })
+          .catch(error => {
+            console.warn('Scheduled race stats unavailable:', error);
+            return [];
+          })
+        : [];
+      const scheduledRaceLapRows = completedScheduledRaces.flatMap(buildScheduledRaceLapStatsRows);
+      const scheduledRaceFinalRows = completedScheduledRaces
+        .map(buildScheduledRaceFinalStatsRow)
+        .filter((row): row is PixelRacingGameResult => Boolean(row));
+      const currentSeasonGames = [...uniqueHistoryGames, ...scheduledRaceLapRows];
+      const processed = processFetchedGames(currentSeasonGames);
 
-      console.log(`Fetched ${uniqueHistoryGames.length} current-season history games by metadata search`);
+      console.log(`Fetched ${uniqueHistoryGames.length} current-season history games by metadata search, ${scheduledRaceLapRows.length} scheduled race lap rows, and ${scheduledRaceFinalRows.length} multiplayer race final transactions`);
 
       setGameHistory(processed.sortedHistory);
+      setMultiplayerRaceActivity(_.sortBy(scheduledRaceFinalRows, item => Number(item.time) || 0).reverse());
       setHistoryResults(ACTIVITY_PAGE_SIZE);
       setDisplayShowMoreHistory(processed.sortedHistory.length > ACTIVITY_PAGE_SIZE);
       setLeadersDisplay(processed.leaders);
@@ -776,8 +796,15 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
   };
 
   // Derived displays
-  const liveDisplay = liveActivity.slice(0, activityresults);
-  const showMoreLiveVisible = liveActivity.length > activityresults;
+  const activityFeed = _.sortBy(
+    [
+      ...liveActivity,
+      ...multiplayerRaceActivity.filter(activity => !liveActivity.some(live => live.txid === activity.txid)),
+    ],
+    item => Number(item.time) || 0
+  ).reverse();
+  const liveDisplay = activityFeed.slice(0, activityresults);
+  const showMoreLiveVisible = activityFeed.length > activityresults;
   const hasDummyActivity = liveDisplay.some(activity => activity.dummy);
   const renderTrackLeaderboard = (trackName: string, leaders: PixelRacingGameResult[]) => (
     <div style={{...styles.section, borderRadius: '0 0 8px 8px', marginTop: '0'}}>
@@ -945,7 +972,33 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                 
                 return (
                   <li key={`${data.txid}-${data.time}-${index}`} style={styles.listItem}>
-                    {data.itemImage ? (
+                    {data.groupRaceFinal ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                        {data.foxinfolink && (
+                          <a target="blank" href={data.foximagelink} style={styles.imageLink}>
+                            <img
+                              style={styles.image}
+                              src={data.foxinfolink}
+                              alt={data.foxname}
+                              data-outpoint={data.originoutpoint}
+                              onError={handleImageError}
+                            />
+                          </a>
+                        )}
+                        <div style={styles.foxName}>Multiplayer Race Final</div>
+                        <div style={{ color: '#4CAF50', fontSize: '0.9em', marginBottom: '4px', textAlign: 'center' }}>
+                          {data.groupRaceFinisherCount ?? 0}/{data.groupRaceEntrantCount ?? 0} finishers
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500', marginTop: '2px' }}>
+                          Track: {getPixelRacingStatsTrackName(data)}
+                        </div>
+                        {data.inscriptionName && (
+                          <div style={{ color: '#ffd166', fontSize: '0.8em', marginTop: '4px' }}>
+                            {data.inscriptionName}
+                          </div>
+                        )}
+                      </div>
+                    ) : data.itemImage ? (
                       // Item Collection Layout
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
