@@ -11,7 +11,8 @@ import {
   getPixelRacingStatsTrackNames,
   getPixelRacingStatsTrackTabId,
   groupPixelRacingResultsByStatsTrack,
-  PIXEL_RACING_CHAMPIONSHIP_TAB_ID
+  PIXEL_RACING_CHAMPIONSHIP_TAB_ID,
+  PIXEL_RACING_MULTIPLAYER_TAB_ID
 } from "../racing/stats/pixelRacingStatsTracks";
 import {
   getPixelRacingStandingKey,
@@ -529,6 +530,19 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
         return _.sortBy(updated, item => Number(item.time) || 0).reverse();
     });
     
+    // Completed multiplayer race inscriptions feed the Multiplayer Races section,
+    // NOT the lap history/leaderboards: their `laptime` is the winner's total race
+    // time, which would rank as a (terrible) single lap. The row shape matches what
+    // a prod fetch (database, or gorillapool metadata search for
+    // name = "multiplayer race") will produce, so this wiring survives the source swap.
+    if (latestactivity.groupRaceFinal) {
+      setMultiplayerRaceActivity(prev => {
+        if (prev.find(a => a.txid === latestactivity.txid)) return prev;
+        return _.sortBy([latestactivity, ...prev], item => Number(item.time) || 0).reverse();
+      });
+      return;
+    }
+
     // If it's a GAME (lap completion, no itemType), also add to History/Leaderboard instantly
     if (!latestactivity.itemType) {
         setGameHistory(prev => {
@@ -748,6 +762,14 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
       count: activeTrackLeaderboards[trackName]?.length ?? 0,
       trackName
     })),
+    // Multiplayer races only exist in the current era.
+    ...(statsEra === 'current' ? [{
+      id: PIXEL_RACING_MULTIPLAYER_TAB_ID,
+      label: 'Multiplayer',
+      icon: '🏎️',
+      count: multiplayerRaceActivity.length,
+      trackName: null
+    }] : []),
     {
       id: PIXEL_RACING_CHAMPIONSHIP_TAB_ID,
       label: 'Championship',
@@ -806,6 +828,84 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
   const liveDisplay = activityFeed.slice(0, activityresults);
   const showMoreLiveVisible = activityFeed.length > activityresults;
   const hasDummyActivity = liveDisplay.some(activity => activity.dummy);
+  // Completed multiplayer race finals. Rows come from the transaction server's
+  // completed-race list today; in prod the same PixelRacingGameResult shape will
+  // come from the database or a gorillapool metadata search
+  // (name = "multiplayer race"), so keep this rendering source-agnostic.
+  const renderMultiplayerRaces = () => (
+    <div style={{...styles.section, borderRadius: '0 0 8px 8px', marginTop: '0'}}>
+      <h3 style={styles.sectionTitle}>🏎️ Multiplayer Races</h3>
+      {multiplayerRaceActivity.some(race => race.dummy) && (
+        <p style={{ textAlign: 'center', color: '#888', fontSize: '0.85em', marginTop: '0' }}>
+          Dummy Mode: race records shown here are local test data, not on-chain records.
+        </p>
+      )}
+      {multiplayerRaceActivity.length > 0 ? (
+        <ol style={styles.list}>
+          {multiplayerRaceActivity.slice(0, 15).map((data, index) => {
+            const txidlink = getWhatsOnChainTransactionUrl(data.txid);
+            const inscriptionlink = getOrdinalInscriptionUrl(`${data.txid}_${data.outputIndex ?? 0}`);
+            const date = new Date(Number(data.time) || 0).toLocaleString();
+
+            return (
+              <li key={`multiplayer-${data.txid}-${data.time}-${index}`} style={styles.listItem}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                  {data.foxinfolink && (
+                    <a target="blank" href={data.foximagelink} style={styles.imageLink}>
+                      <img
+                        style={styles.image}
+                        src={data.foxinfolink}
+                        alt={data.foxname}
+                        data-outpoint={data.originoutpoint}
+                        onError={handleImageError}
+                      />
+                    </a>
+                  )}
+                  <div style={{ color: '#FFD700', fontSize: '0.85em', fontWeight: 'bold', marginBottom: '2px' }}>
+                    🏆 Winner
+                  </div>
+                  <div style={styles.foxName}>{data.foxname}</div>
+                  {Number(data.laptime) > 0 && (
+                    <div style={styles.laptime}>Race Time: {formatLapTime(Number(data.laptime))}</div>
+                  )}
+                  <div style={{ color: '#4CAF50', fontSize: '0.9em', marginTop: '2px' }}>
+                    {data.groupRaceFinisherCount ?? 0}/{data.groupRaceEntrantCount ?? 0} finishers
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500', marginTop: '2px' }}>
+                    Track: {getPixelRacingStatsTrackName(data)}
+                  </div>
+                  {data.inscriptionName && (
+                    <div style={{ color: '#ffd166', fontSize: '0.8em', marginTop: '4px' }}>
+                      {data.inscriptionName}
+                    </div>
+                  )}
+                  <div style={styles.date}>{date}</div>
+                  <div style={styles.links}>
+                    <a style={styles.link} target="blank" href={txidlink}>
+                      <u>Transaction</u>
+                    </a>
+                    <a style={styles.link} target="blank" href={inscriptionlink}>
+                      <u>Inscription</u>
+                    </a>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      ) : !isLoading ? (
+        <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
+          <p>No multiplayer races completed yet.</p>
+          <p style={{ fontSize: '0.9em', marginTop: '10px' }}>Sign up for a scheduled race to see finals here!</p>
+        </div>
+      ) : (
+        <div className="CenterLoader">
+          <PulseLoader color="#ffffff" />
+        </div>
+      )}
+    </div>
+  );
+
   const renderTrackLeaderboard = (trackName: string, leaders: PixelRacingGameResult[]) => (
     <div style={{...styles.section, borderRadius: '0 0 8px 8px', marginTop: '0'}}>
       <h3 style={styles.sectionTitle}>🏆 {trackName}</h3>
@@ -1334,6 +1434,8 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
         activeTrackTab.trackName,
         activeTrackLeaderboards[activeTrackTab.trackName] ?? []
       )}
+
+      {activeTab === PIXEL_RACING_MULTIPLAYER_TAB_ID && statsEra === 'current' && renderMultiplayerRaces()}
 
       {/* Driver Championship Section */}
       {activeTab === PIXEL_RACING_CHAMPIONSHIP_TAB_ID && (

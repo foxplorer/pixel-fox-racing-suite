@@ -16,6 +16,33 @@ new code — no schema change was needed for this session's fixes).
 
 ## Work log
 
+### Session 2026-07-04, part 6 (Claude) — Multiplayer Races stats section
+
+Context: user ran the first real two-browser dummy race — it worked end to end
+(early settle on 1/2 finishers + DNF, banner flipped to "Results final — race
+inscribed ✓"), but there was no dedicated stats view for multiplayer races.
+
+- **New "Multiplayer" tab in `PixelRacingStats`** (current era only, between
+  the track tabs and Championship): lists completed multiplayer race finals —
+  winner fox + race time, X/Y finishers, track, inscription name, tx +
+  inscription links, dummy-mode note. Empty state invites signing up.
+- **Live population:** a `groupRaceFinal` activity arriving over the socket
+  (`newGameTransaction` on settlement) now lands in `multiplayerRaceActivity`
+  immediately — finish a race and the tab shows it without a refresh.
+- **Bug fixed while wiring:** `groupRaceFinal` live activities were previously
+  falling into the `!itemType` branch and being inserted into lap
+  history/leaderboards, where the winner's ~3-minute total race time ranked as
+  a (terrible) single lap. They now go only to the activity feed + multiplayer
+  section.
+- **Data-source seam (user direction):** the section renders
+  `PixelRacingGameResult` rows only. Today they come from the tx server's
+  completed-races list (`fetchCompletedScheduledRaces` →
+  `buildScheduledRaceFinalStatsRow`); in prod the same rows will come from the
+  prod database or a gorillapool metadata search on inscription
+  name = "multiplayer race" (`MULTIPLAYER_RACE_INSCRIPTION_NAME`). Swapping
+  the source requires no UI change. That fetch/fallback is a follow-up.
+- Gates: `test:frontend-core` (584), `build:frontend` clean.
+
 ### Session 2026-07-04, part 5 (Claude) — settlement push, E10/E6, prod-sync doc
 
 Why this batch: these were the last correctness/consistency gaps before the

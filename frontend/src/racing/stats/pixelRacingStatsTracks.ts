@@ -4,6 +4,7 @@ import { OFFICIAL_TRACK_DISPLAY_NAMES } from '../tracks/trackEvents'
 
 export const LEGACY_PIXEL_RACING_STATS_TRACK_NAME = 'San Luis'
 export const PIXEL_RACING_CHAMPIONSHIP_TAB_ID = 'championship'
+export const PIXEL_RACING_MULTIPLAYER_TAB_ID = 'multiplayer-races'
 
 export const getPixelRacingStatsTrackName = (
   result: Pick<PixelRacingGameResult, 'trackname'>
