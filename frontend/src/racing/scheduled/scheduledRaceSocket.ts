@@ -44,12 +44,38 @@ export interface ScheduledRaceLapProgressPayload {
   finishedAt?: string
 }
 
+export type ScheduledRaceSettlementStatus = 'settled' | 'no_contest' | 'cancelled'
+
+export interface ScheduledRaceSettlementRace {
+  id: string
+  status: ScheduledRaceSettlementStatus
+  trackName?: string
+  finalInscription?: { txid?: string | null } | null
+}
+
+export interface ScheduledRaceSettlementPayload {
+  race?: ScheduledRaceSettlementRace | null
+}
+
+const SETTLEMENT_STATUSES: ReadonlySet<string> = new Set(['settled', 'no_contest', 'cancelled'])
+
+export const parseScheduledRaceSettlement = (
+  payload: ScheduledRaceSettlementPayload | null | undefined,
+  activeRaceId: string | null | undefined
+): ScheduledRaceSettlementRace | null => {
+  const race = payload?.race
+  if (!race || !activeRaceId || race.id !== activeRaceId) return null
+  if (!SETTLEMENT_STATUSES.has(race.status)) return null
+  return race
+}
+
 interface ScheduledRaceSocketLike {
   on(event: 'scheduledRaceRoomJoined', listener: (payload: ScheduledRaceRoomSnapshot) => void): void
   on(event: 'scheduledRaceRoomSnapshot', listener: (payload: ScheduledRaceRoomSnapshot | null) => void): void
   on(event: 'scheduledRaceCountdown', listener: (payload: ScheduledRaceRoomSnapshot) => void): void
   on(event: 'scheduledRaceLapProgress', listener: (payload: ScheduledRaceLapProgressPayload) => void): void
   on(event: 'scheduledRaceFinishAccepted', listener: (payload: ScheduledRaceLapProgressPayload) => void): void
+  on(event: 'scheduledRaceSettlement', listener: (payload: ScheduledRaceSettlementPayload) => void): void
 }
 
 export interface RegisterScheduledRaceSocketListenersOptions {
@@ -59,6 +85,7 @@ export interface RegisterScheduledRaceSocketListenersOptions {
   onFinalCountdownStart?: (snapshot: ScheduledRaceRoomSnapshot) => void
   onRoomSnapshot?: (snapshot: ScheduledRaceRoomSnapshot) => void
   onLapProgress?: (payload: ScheduledRaceLapProgressPayload) => void
+  onSettlement?: (race: ScheduledRaceSettlementRace) => void
 }
 
 export const getScheduledRaceCountdownState = (
@@ -89,6 +116,7 @@ export const registerScheduledRaceSocketListeners = ({
   onFinalCountdownStart,
   onRoomSnapshot,
   onLapProgress,
+  onSettlement,
 }: RegisterScheduledRaceSocketListenersOptions): void => {
   const racesWithStartedBeeps = new Set<string>()
 
@@ -113,5 +141,10 @@ export const registerScheduledRaceSocketListeners = ({
   socket.on('scheduledRaceFinishAccepted', payload => {
     if (payload.raceId !== getActiveRaceId()) return
     onLapProgress?.(payload)
+  })
+  socket.on('scheduledRaceSettlement', payload => {
+    const race = parseScheduledRaceSettlement(payload, getActiveRaceId())
+    if (!race) return
+    onSettlement?.(race)
   })
 }

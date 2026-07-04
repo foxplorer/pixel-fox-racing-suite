@@ -665,6 +665,42 @@ test('finalizeRace marks no contest when no staged entrants finish', async () =>
   assert.deepEqual(finalized.roster.map(signup => signup.status), ['dnf', 'dnf'])
 })
 
+test('finalizeRace cancels races that never had a two-fox staged field instead of marking no contest', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Germany', nowMs })
+
+  // Lone staged fox: the race can never legitimately produce multiplayer results.
+  await store.signUp(race.id, signupInput(1), nowMs)
+  await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+
+  const finalized = await store.finalizeRace(race.id, Date.parse(race.startsAt) + 16 * 60 * 1000)
+
+  assert.equal(finalized.status, 'cancelled')
+  assert.equal(finalized.finalInscription, null)
+  assert.equal(finalized.results.length, 0)
+})
+
+test('settleDueRaces cancels untouched empty races without minting a no-contest inscription record', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Volcanoes', nowMs })
+
+  const sweepMs = Date.parse(race.startsAt) + 16 * 60 * 1000
+  const swept = await store.settleDueRaces(sweepMs)
+  const sweptRace = swept.find(candidate => candidate.id === race.id)
+
+  assert.equal(sweptRace?.status, 'cancelled')
+  assert.equal(sweptRace?.finalInscription, null)
+
+  const completed = await store.listCompleted({ trackName: 'Volcanoes', limit: 5, nowMs: sweepMs })
+  assert.equal(completed.some(candidate => candidate.id === race.id), false, 'cancelled races stay out of completed listings')
+
+  // Idempotent: the next sweep leaves the cancelled race alone.
+  const secondSweep = await store.settleDueRaces(sweepMs + 15_000)
+  assert.equal(secondSweep.some(candidate => candidate.id === race.id), false)
+})
+
 test('listCompleted returns finalized race results for stats', async () => {
   const store = new MemoryScheduledRaceStore()
   const nowMs = Date.parse('2026-06-29T12:56:00.000Z')

@@ -68,6 +68,7 @@ import type { ScheduledRace, ScheduledRaceSignup } from '../../racing/scheduled/
 import { withdrawScheduledRaceSignup } from '../../racing/scheduled/scheduledRaceApi'
 import { buildScheduledRaceRoomPlayers } from '../../racing/scheduled/scheduledRaceRoomPlayers'
 import { registerScheduledRaceSocketListeners, type ScheduledRaceRoomSnapshot } from '../../racing/scheduled/scheduledRaceSocket'
+import type { ScheduledRaceSettlementState } from '../../racing/components/ScheduledRaceStandingsPanel'
 import { buildStartGateMarqueeModel } from '../../racing/components/startGateMarquee'
 import { buildScheduledRaceLapProgress, secondsToMilliseconds, type ActiveScheduledRaceEntry } from '../../racing/scheduled/scheduledRaceFinish'
 import { deliverScheduledRaceFinish } from '../../racing/scheduled/scheduledRaceFinishDelivery'
@@ -200,6 +201,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   const [scheduledRaceLapProgressByEntrant, setScheduledRaceLapProgressByEntrant] = useState<Record<string, number[]>>({})
   const [scheduledRaceFinishOrderByEntrant, setScheduledRaceFinishOrderByEntrant] = useState<Record<string, number>>({})
   const [scheduledRaceStartBlocked, setScheduledRaceStartBlocked] = useState(false)
+  const [scheduledRaceSettlement, setScheduledRaceSettlement] = useState<ScheduledRaceSettlementState | null>(null)
+  const scheduledRaceSettlementRef = useRef<ScheduledRaceSettlementState | null>(null)
   const activeScheduledRaceIdRef = useRef<string | null>(null)
   const activeScheduledRaceEntryRef = useRef<ActiveScheduledRaceEntry | null>(null)
   const scheduledRaceReconnectStateRef = useRef<ScheduledRaceReconnectState | null>(null)
@@ -269,6 +272,10 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   useEffect(() => {
     activeScheduledRaceEntryRef.current = activeScheduledRaceEntry
   }, [activeScheduledRaceEntry])
+
+  useEffect(() => {
+    scheduledRaceSettlementRef.current = scheduledRaceSettlement
+  }, [scheduledRaceSettlement])
 
   const recordScheduledRaceFinishOrder = useCallback((entrantId: string) => {
     setScheduledRaceFinishOrderByEntrant(prev => (
@@ -648,6 +655,12 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       socket,
       getActiveRaceId: () => activeScheduledRaceIdRef.current,
       onCountdownState: (state, snapshot) => {
+        if (scheduledRaceSettlementRef.current?.status === 'cancelled') {
+          setScheduledRaceStartBlocked(true)
+          setCountdown(0)
+          setGameStatus('countdown')
+          return
+        }
         if (state.gameStatus === 'racing' && (snapshot.entrants ?? []).length < 2) {
           setScheduledRaceStartBlocked(true)
           setCountdown(0)
@@ -668,6 +681,14 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
         const lapsRequired = activeScheduledRaceEntryRef.current?.lapsRequired ?? 3
         if (payload.lapTimesMs.length >= lapsRequired) {
           recordScheduledRaceFinishOrder(payload.entrantId)
+        }
+      },
+      onSettlement: race => {
+        setScheduledRaceSettlement({ status: race.status, txid: race.finalInscription?.txid ?? null })
+        if (race.status === 'cancelled') {
+          setScheduledRaceStartBlocked(true)
+          setCountdown(0)
+          setGameStatus('countdown')
         }
       }
     })
@@ -802,6 +823,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     setActiveScheduledRaceEntry(null)
     setScheduledRaceLapProgressByEntrant({})
     setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceSettlement(null)
     setScheduledRaceStartBlocked(false)
     setGameStatus('showroom')
   }, [activeScheduledRaceEntry, gameStatus])
@@ -890,6 +912,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     setActiveScheduledRaceEntry(null)
     setScheduledRaceLapProgressByEntrant({})
     setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceSettlement(null)
     setScheduledRaceStartBlocked(false)
     setInitialRotationY(null)
     if (trackName === 'San Luis' && !hasJoinedRef.current) {
@@ -956,6 +979,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     })
     setScheduledRaceLapProgressByEntrant({ [signup.entrantId]: [] })
     setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceSettlement(null)
     setScheduledRaceStartBlocked(false)
     activeScheduledRaceIdRef.current = race.id
     if (!hasJoinedRef.current) {
@@ -1042,6 +1066,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     setActiveScheduledRaceEntry(null)
     setScheduledRaceLapProgressByEntrant({})
     setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceSettlement(null)
     setScheduledRaceStartBlocked(false)
     setInitialRotationY(null)
     const startPosition = {
@@ -1118,6 +1143,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     setActiveScheduledRaceEntry(null)
     setScheduledRaceLapProgressByEntrant({})
     setScheduledRaceFinishOrderByEntrant({})
+    setScheduledRaceSettlement(null)
     setScheduledRaceStartBlocked(false)
     resetRaceToShowroom()
   }, [resetRaceToShowroom])
@@ -1173,6 +1199,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           lapProgressByEntrant: scheduledRaceLapProgressByEntrant,
           finishOrderByEntrant: scheduledRaceFinishOrderByEntrant,
           lapsRequired: activeScheduledRaceEntry?.lapsRequired,
+          settlement: scheduledRaceSettlement,
         }
       : null
   ), [
@@ -1182,6 +1209,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     activeScheduledRaceSnapshot,
     scheduledRaceFinishOrderByEntrant,
     scheduledRaceLapProgressByEntrant,
+    scheduledRaceSettlement,
   ])
   const visibleRemotePlayers = useRemotePlayerLodRendering({
     players: activeScheduledRaceId

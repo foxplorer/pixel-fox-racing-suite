@@ -17,7 +17,7 @@ import { RacingConnectOverlay } from '../../racing/components/RacingConnectOverl
 import { RacingQualitySelector } from '../../racing/components/RacingQualitySelector'
 import { RacingFpsCounter } from '../../racing/components/RacingFpsCounter'
 import { RacingShowroomStatsStrip } from '../../racing/components/RacingShowroomStatsStrip'
-import { ScheduledRaceFinishStatusBanner, ScheduledRaceStandingsPanel, type ScheduledRaceFinishOrderByEntrant, type ScheduledRaceLapProgressByEntrant } from '../../racing/components/ScheduledRaceStandingsPanel'
+import { ScheduledRaceFinishStatusBanner, ScheduledRaceStandingsPanel, type ScheduledRaceFinishOrderByEntrant, type ScheduledRaceLapProgressByEntrant, type ScheduledRaceSettlementState } from '../../racing/components/ScheduledRaceStandingsPanel'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import type { ScheduledRaceRoomSnapshot } from '../../racing/scheduled/scheduledRaceSocket'
 import type { ScheduledRace, ScheduledRaceSignup } from '../../racing/scheduled/scheduledRaceTypes'
@@ -62,6 +62,7 @@ export interface RacingUiScheduledRaceStandings {
   lapProgressByEntrant: ScheduledRaceLapProgressByEntrant
   finishOrderByEntrant?: ScheduledRaceFinishOrderByEntrant
   lapsRequired?: number
+  settlement?: ScheduledRaceSettlementState | null
 }
 
 // ========== MAIN COMPONENT ==========
@@ -483,6 +484,7 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
           lapProgressByEntrant={scheduledRaceStandings.lapProgressByEntrant}
           finishOrderByEntrant={scheduledRaceStandings.finishOrderByEntrant}
           lapsRequired={scheduledRaceStandings.lapsRequired}
+          settlement={scheduledRaceStandings.settlement}
         />
       )}
 

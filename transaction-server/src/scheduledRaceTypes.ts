@@ -130,6 +130,7 @@ export interface ScheduledRaceListOptions {
 export interface ScheduledRaceStore {
   listUpcoming(options?: ScheduledRaceListOptions): Promise<ScheduledRaceWithRoster[]>
   listCompleted(options?: ScheduledRaceListOptions): Promise<ScheduledRaceWithRoster[]>
+  getRace(raceId: string, nowMs?: number): Promise<ScheduledRaceWithRoster>
   signUp(raceId: string, input: ScheduledRaceSignupInput, nowMs?: number): Promise<ScheduledRaceWithRoster>
   withdraw(raceId: string, entrantId: string, nowMs?: number): Promise<ScheduledRaceWithRoster>
   stage(raceId: string, entrantId: string, nowMs?: number): Promise<ScheduledRaceWithRoster>

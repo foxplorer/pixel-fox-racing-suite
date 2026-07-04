@@ -6,6 +6,7 @@ import {
   resolveScheduledRaceStatus,
   SCHEDULED_RACE_LAPS_REQUIRED,
   SCHEDULED_RACE_MAX_ENTRANTS,
+  SCHEDULED_RACE_MIN_ENTRANTS,
   SCHEDULED_RACE_MIN_LAP_TIME_MS,
   SCHEDULED_RACE_TIMEOUT_MS,
 } from './scheduledRaceLifecycle.js'
@@ -50,6 +51,11 @@ const requireText = (value: string | null | undefined, fieldName: string): strin
 
 const isActiveSignupStatus = (status: ScheduledRaceSignupStatus): boolean => (
   status !== 'withdrawn'
+)
+
+// Entrants that made it into (or past) the staged state; signed_up/withdrawn/not_staged never raced.
+const countEverStagedEntrants = (roster: Array<Pick<ScheduledRaceSignup, 'status'>>): number => (
+  roster.filter(signup => ['staged', 'finished', 'dnf'].includes(signup.status)).length
 )
 
 const sameText = (left: string, right: string): boolean => left.trim() === right.trim()
@@ -110,6 +116,11 @@ export class MemoryScheduledRaceStore implements ScheduledRaceStore {
       .sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime() || a.trackName.localeCompare(b.trackName))
       .slice(0, limit)
       .map(race => this.buildRaceWithRoster(race.id, nowMs))
+  }
+
+  async getRace(raceId: string, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
+    this.getRaceOrThrow(raceId)
+    return this.buildRaceWithRoster(raceId, nowMs)
   }
 
   async signUp(raceId: string, input: ScheduledRaceSignupInput, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
@@ -353,6 +364,14 @@ export class MemoryScheduledRaceStore implements ScheduledRaceStore {
     const roster = this.signups.get(raceId) || []
     const results = this.results.get(raceId) || []
     const nowIso = toIso(nowMs)
+
+    // Races that never had a min-size staged field are cancelled, not no-contest:
+    // no one raced, so no final-inscription record should exist for them.
+    if (countEverStagedEntrants(roster) < SCHEDULED_RACE_MIN_ENTRANTS) {
+      race.status = 'cancelled'
+      race.updatedAt = nowIso
+      return this.buildRaceWithRoster(raceId, nowMs)
+    }
 
     for (const signup of roster) {
       if (signup.status !== 'staged') continue
@@ -679,6 +698,10 @@ export class PostgresScheduledRaceStore implements ScheduledRaceStore {
     return Promise.all(rows.rows.map(row => this.buildRaceWithRoster(String(row.id), nowMs)))
   }
 
+  async getRace(raceId: string, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
+    return this.buildRaceWithRoster(raceId, nowMs)
+  }
+
   async signUp(raceId: string, input: ScheduledRaceSignupInput, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
     const client = await pool.connect()
     try {
@@ -978,6 +1001,13 @@ export class PostgresScheduledRaceStore implements ScheduledRaceStore {
       const progress = await this.getLapProgress(raceId, client)
       const results = await this.getResults(raceId, client)
       const nowIso = toIso(nowMs)
+      if (countEverStagedEntrants(roster) < SCHEDULED_RACE_MIN_ENTRANTS) {
+        await client.query(`
+          UPDATE scheduled_races SET status = 'cancelled', updated_at = $2 WHERE id = $1
+        `, [raceId, nowIso])
+        await client.query('COMMIT')
+        return this.buildRaceWithRoster(raceId, nowMs)
+      }
       for (const signup of roster) {
         if (signup.status !== 'staged') continue
         await client.query(`

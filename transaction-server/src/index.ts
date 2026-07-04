@@ -183,6 +183,9 @@ registerCollectibleRoutes(app, {
 
 registerScheduledRaceRoutes(app, {
   store: scheduledRaceStore,
+  // Time travel via `?now=` is a dev/test tool only; real-transaction (prod) mode
+  // must never expose it because the resolved status is persisted (E6).
+  allowTimeTravelNow: !USE_REAL_TRANSACTIONS || process.env.SCHEDULED_RACE_ALLOW_TIME_TRAVEL === 'true',
 })
 
 app.post('/createpixelracing', async (req, res) => {

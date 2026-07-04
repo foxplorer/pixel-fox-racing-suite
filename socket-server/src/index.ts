@@ -388,17 +388,54 @@ async function settleAndAnnounceScheduledRace(raceId: string): Promise<void> {
   }
 }
 
+// E5: the room countdown is clock-derived, so without this poll a race the
+// transaction server cancelled (or settled by other means) would still count
+// down and "start" for the players in the room. Poll the authoritative status
+// and push the terminal state into the room as a settlement event.
+const SCHEDULED_RACE_STATUS_POLL_INTERVAL_MS = 5000
+const scheduledRaceStatusPolledAtMs = new Map<string, number>()
+
+async function pollAndAnnounceScheduledRaceStatus(raceId: string): Promise<void> {
+  if (announcedScheduledRaceSettlements.has(raceId)) return
+  const response = await fetch(`${TRANSACTION_SERVER_URL}/scheduled-races/${encodeURIComponent(raceId)}`, {
+    headers: { Accept: 'application/json' },
+  })
+  if (!response.ok) return
+  const payload = await response.json().catch(() => null) as { race?: any } | null
+  const race = payload?.race
+  if (!race || !['settled', 'no_contest', 'cancelled'].includes(race.status)) return
+  if (announcedScheduledRaceSettlements.has(raceId)) return
+  announcedScheduledRaceSettlements.add(raceId)
+  const roomId = getScheduledRaceRoomId(raceId)
+  pixelRacingIo.to(roomId).emit('scheduledRaceSettlement', { race })
+  const activity = buildScheduledRaceSettlementActivity(race)
+  if (activity) {
+    pixelRacingIo.to(roomId).emit('newGameTransaction', activity)
+  }
+}
+
 maintainRacingItemCount()
 
 setInterval(() => {
   const nowMs = Date.now()
-  for (const raceId of scheduledRaceRooms.getActiveRaceIds()) {
+  const activeRaceIds = new Set(scheduledRaceRooms.getActiveRaceIds())
+  for (const raceId of scheduledRaceStatusPolledAtMs.keys()) {
+    if (!activeRaceIds.has(raceId)) scheduledRaceStatusPolledAtMs.delete(raceId)
+  }
+  for (const raceId of activeRaceIds) {
     const snapshot = scheduledRaceRooms.getSnapshot(raceId, nowMs)
     pixelRacingIo.to(snapshot.roomId).emit('scheduledRaceCountdown', snapshot)
     const startsAtMs = Date.parse(snapshot.startsAt)
     if (Number.isFinite(startsAtMs) && nowMs >= startsAtMs + SCHEDULED_RACE_TIMEOUT_MS) {
       void settleAndAnnounceScheduledRace(raceId).catch(error => {
         console.warn('Scheduled race settlement announcement failed:', error instanceof Error ? error.message : error)
+      })
+    }
+    const lastPolledMs = scheduledRaceStatusPolledAtMs.get(raceId) ?? 0
+    if (!announcedScheduledRaceSettlements.has(raceId) && nowMs - lastPolledMs >= SCHEDULED_RACE_STATUS_POLL_INTERVAL_MS) {
+      scheduledRaceStatusPolledAtMs.set(raceId, nowMs)
+      void pollAndAnnounceScheduledRaceStatus(raceId).catch(error => {
+        console.warn('Scheduled race status poll failed:', error instanceof Error ? error.message : error)
       })
     }
   }

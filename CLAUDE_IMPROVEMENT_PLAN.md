@@ -16,6 +16,43 @@ new code — no schema change was needed for this session's fixes).
 
 ## Work log
 
+### Session 2026-07-04, part 5 (Claude) — settlement push, E10/E6, prod-sync doc
+
+Why this batch: these were the last correctness/consistency gaps before the
+prod sync can be "copy files + run schema" (user goal), plus the settlement
+listener the E1 fix left open.
+
+- **Settlement listener shipped (A1 last item + P3 client half).**
+  `registerScheduledRaceSocketListeners` gained `onSettlement` (validated by new
+  `parseScheduledRaceSettlement`, filtered to the active race); the finish
+  banner now takes a `settlement` prop — countdown stops and the line flips to
+  "Results final — race inscribed ✓" / "no contest" / "cancelled". Wired in all
+  three car-track components. A `cancelled` settlement also raises the existing
+  "Race cancelled" modal and freezes the countdown (guard ref in
+  `onCountdownState`, otherwise the 1 Hz tick would clear it).
+- **E5 remainder shipped (P3 server half).** New `GET /scheduled-races/:raceId`
+  (+ `store.getRace` in both stores); the socket tick now polls each active
+  room's authoritative status every 5s and pushes terminal states
+  (`settled`/`no_contest`/`cancelled`) into the room as `scheduledRaceSettlement`
+  — a lone player in a cancelled race finally hears about it. Poll map is
+  pruned with room lifecycle (no E19-style leak).
+- **E10 shipped.** `finalizeRace` (both stores) short-circuits to `cancelled`
+  when the race never had ≥2 ever-staged entrants (`staged`/`finished`/`dnf`),
+  so untouched/lone races no longer mint tx-less `no_contest` records or
+  pollute `?status=completed`. 2 new store tests.
+- **E6 shipped.** `?now=` time travel is now behind
+  `allowTimeTravelNow` — on in dummy mode, off in real mode unless
+  `SCHEDULED_RACE_ALLOW_TIME_TRAVEL=true`.
+- **Prod-sync playbook written:** `PROD_SYNC_SCHEDULED_RACES.md` (verified prod
+  dir layout: flat, no scheduledRace files, no db.ts — pure additive copy; exact
+  file list, index.ts wiring block, schema note, env table, pre-launch blockers
+  E2/E3/E7/E8/E9).
+- Found (not fixed, pre-existing): `sdkCollectibleTransaction.test.ts` first
+  test is flaky ~1 in 5 (`getContent()` empty, random-key dependent). Unrelated
+  to racing.
+- Gates: `test:transactions` (53, +2), `test:socket` (12), `test:frontend-core`
+  (584, +2), `check:transactions`, `check:socket`, `build:frontend` all green.
+
 ### Session 2026-07-04 (Claude)
 - Wrote `CLAUDE_EDGE_CASES.md` (26 findings) from a full review of the
   scheduled-race code across all three servers.
@@ -170,10 +207,10 @@ Priority order. E-numbers reference `edgecases.md`.
       finish handler announces when the tx response shows settled/no_contest.
 - [x] Update the finish banner/HUD copy. Done 2026-07-04 — "sooner if everyone
       finishes".
-- [ ] Frontend `scheduledRaceSettlement` listener: stop the T+15m countdown in
-      the banner when the race settles early and show "Results final" +
-      inscription link (activity feed already shows the tx via
-      `newGameTransaction`).
+- [x] Frontend `scheduledRaceSettlement` listener: stop the T+15m countdown in
+      the banner when the race settles early and show "Results final" (activity
+      feed already shows the tx via `newGameTransaction`). Done 2026-07-04
+      part 5.
 - [ ] Keep 15-min timeout DNF behavior as-is (already works) but single-source
       the timeout constant (E25 — still duplicated in
       `scheduledRaceLifecycle.ts` and `scheduledRaceRooms.ts`).
@@ -185,12 +222,16 @@ Priority order. E-numbers reference `edgecases.md`.
 - [ ] Decide + handle the disconnect-before-start case: a crashed/refreshed
       client stays staged today (keeps their seat); should a
       staged-but-disconnected fox at T-0 count toward min-2?
-- [ ] Propagate `cancelled` to the socket room + client UI; room must not count
-      down/unlock a cancelled race (E5 remainder — room status is still purely
-      clock-derived).
+- [x] Propagate `cancelled` to the socket room + client UI; room must not count
+      down/unlock a cancelled race (E5 remainder). Done 2026-07-04 part 5 —
+      socket tick polls `GET /scheduled-races/:raceId` every 5s per active room
+      and pushes terminal statuses as `scheduledRaceSettlement`; client freezes
+      countdown + shows the cancel modal.
 - [x] Reject `submitResult` for `cancelled`/`settled`/`no_contest`/`finalizing`
       races and before `startsAt` (E5, E3). Done 2026-07-04.
-- [ ] Untouched empty races should end `cancelled`, not `no_contest` (E10).
+- [x] Untouched empty races should end `cancelled`, not `no_contest` (E10).
+      Done 2026-07-04 part 5 — `finalizeRace` cancels when the race never had
+      2 ever-staged entrants, both stores.
 - [ ] Show cancelled state in the showroom instead of silently dropping the
       card (E12).
 
@@ -204,7 +245,9 @@ Priority order. E-numbers reference `edgecases.md`.
 - [ ] Bind socket room `entrantId` to the socket's `identityKey` (E8).
 - [ ] Socket server owns `startsAt` per room (fetch from tx server; ignore
       client value after room creation) (E7).
-- [ ] Remove/dev-gate the `now` query param on `GET /scheduled-races` (E6).
+- [x] Remove/dev-gate the `now` query param on `GET /scheduled-races` (E6).
+      Done 2026-07-04 part 5 — allowed only in dummy mode or with
+      `SCHEDULED_RACE_ALLOW_TIME_TRAVEL=true`.
 - [ ] Enforce one active race per fox / per owner per start window (E9).
 
 ### A4. Robustness
@@ -339,22 +382,22 @@ materials in `components/materials/*`. Cars:
 
 ## Next prompt (start here next session)
 
-State after the 2026-07-04 session: A1 early settlement, result guards
-(before-start / terminal-status / 40s lap floor), E4 unstage-on-leave, and E11
-announce fixes are **implemented and green** on all gates (see Work log), in
-both memory and Postgres stores. Changes are in the working tree on `main`
-(last commit `e41a2f6`) — **not committed yet**.
+State after the 2026-07-04 part-5 session: settlement push (listener + room
+status poll, E5), E10, E6, and the prod-sync playbook
+(`PROD_SYNC_SCHEDULED_RACES.md`) are **implemented and green** on all gates.
+The remaining reliability items are prod-launch blockers (E2 auth, E3
+remainder, E7/E8/E9) and manual browser QA — nothing else blocks dev racing.
 
 Suggested next prompt:
 
-> Read CLAUDE_IMPROVEMENT_PLAN.md and CLAUDE_EDGE_CASES.md. First commit the
-> working-tree changes if they look good. Then: (1) run the first full
-> two-browser dummy race (Track B item 1, `SCHEDULED_RACE_INTERVAL_MINUTES=5`)
-> and verify early settlement fires when the second fox finishes; (2) add the
-> frontend `scheduledRaceSettlement` listener so the finish banner stops its
-> T+15m countdown on early settle; (3) fix E10 (untouched empty races should
-> end `cancelled`, not `no_contest`) and E6 (dev-gate the `?now=` param).
+> Read CLAUDE_IMPROVEMENT_PLAN.md, CLAUDE_EDGE_CASES.md, and
+> PROD_SYNC_SCHEDULED_RACES.md. Then: (1) run the first full two-browser dummy
+> race (Track B item 1, `SCHEDULED_RACE_INTERVAL_MINUTES=5`) and verify early
+> settlement flips the banner to "Results final"; also verify a lone-fox race
+> shows the cancel modal within ~5s of the courtesy cancel; (2) implement E2
+> (internal token guard on finalize/settle/final-inscription/unstage) since it
+> is the top prod blocker; (3) continue Track C graphics (C1 baseline
+> measurements, then SimpleTrees quality threading + effects.* audit).
 
-After that, the highest-value work is E5's remainder (socket room learns about
-cancellation), then C1 baseline measurements to start the graphics/LOD track
-(C2/C2b list the candidate wins).
+Also worth a look sometime: `sdkCollectibleTransaction.test.ts` first test is
+flaky ~1 in 5 runs (pre-existing, collectibles SDK, unrelated to racing).

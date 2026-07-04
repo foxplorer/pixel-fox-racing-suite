@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   getScheduledRaceCountdownState,
+  parseScheduledRaceSettlement,
   registerScheduledRaceSocketListeners,
   shouldApplyScheduledRaceSnapshot,
   type ScheduledRaceRoomSnapshot,
+  type ScheduledRaceSettlementPayload,
+  type ScheduledRaceSettlementRace,
 } from './scheduledRaceSocket'
 
 const snapshot: ScheduledRaceRoomSnapshot = {
@@ -113,4 +116,47 @@ test('registerScheduledRaceSocketListeners forwards active race lap progress and
   listeners.get('scheduledRaceFinishAccepted')?.({ raceId: 'race-1', entrantId: 'fox-1', lapTimesMs: [70000, 69000, 68000] })
 
   assert.deepEqual(progress, [[70000], [70000, 69000, 68000]])
+})
+
+test('parseScheduledRaceSettlement keeps only settlements for the active race', () => {
+  const settled: ScheduledRaceSettlementRace = { id: 'race-1', status: 'settled', finalInscription: { txid: 'tx-1' } }
+
+  assert.deepEqual(parseScheduledRaceSettlement({ race: settled }, 'race-1'), settled)
+  assert.equal(parseScheduledRaceSettlement({ race: settled }, 'race-2'), null)
+  assert.equal(parseScheduledRaceSettlement({ race: settled }, null), null)
+  assert.equal(parseScheduledRaceSettlement({ race: null }, 'race-1'), null)
+  assert.equal(parseScheduledRaceSettlement(undefined, 'race-1'), null)
+  assert.equal(
+    parseScheduledRaceSettlement({ race: { id: 'race-1', status: 'racing' as 'settled' } }, 'race-1'),
+    null,
+    'non-terminal statuses are ignored'
+  )
+})
+
+test('registerScheduledRaceSocketListeners forwards settled, no-contest, and cancelled settlements for the active race only', () => {
+  const listeners = new Map<string, (payload: ScheduledRaceSettlementPayload) => void>()
+  const settlements: ScheduledRaceSettlementRace[] = []
+
+  registerScheduledRaceSocketListeners({
+    socket: {
+      on: (event, listener) => {
+        listeners.set(event, listener as (payload: ScheduledRaceSettlementPayload) => void)
+      },
+    },
+    getActiveRaceId: () => 'race-1',
+    onCountdownState: () => {},
+    onSettlement: race => {
+      settlements.push(race)
+    },
+  })
+
+  const emit = listeners.get('scheduledRaceSettlement')
+  emit?.({ race: { id: 'race-1', status: 'settled', finalInscription: { txid: 'tx-1' } } })
+  emit?.({ race: { id: 'race-2', status: 'settled', finalInscription: { txid: 'tx-2' } } })
+  emit?.({ race: { id: 'race-1', status: 'no_contest' } })
+  emit?.({ race: { id: 'race-1', status: 'cancelled' } })
+  emit?.({ race: null })
+
+  assert.deepEqual(settlements.map(race => race.status), ['settled', 'no_contest', 'cancelled'])
+  assert.equal(settlements[0].finalInscription?.txid, 'tx-1')
 })

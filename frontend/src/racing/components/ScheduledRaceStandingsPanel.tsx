@@ -6,6 +6,11 @@ import type { ScheduledRaceRoomSnapshot } from '../scheduled/scheduledRaceSocket
 export type ScheduledRaceLapProgressByEntrant = Record<string, number[]>
 export type ScheduledRaceFinishOrderByEntrant = Record<string, number>
 
+export interface ScheduledRaceSettlementState {
+  status: 'settled' | 'no_contest' | 'cancelled'
+  txid?: string | null
+}
+
 interface ScheduledRaceStandingsPanelProps {
   snapshot: ScheduledRaceRoomSnapshot | null
   activeRaceId?: string | null
@@ -13,6 +18,7 @@ interface ScheduledRaceStandingsPanelProps {
   lapProgressByEntrant: ScheduledRaceLapProgressByEntrant
   finishOrderByEntrant?: ScheduledRaceFinishOrderByEntrant
   lapsRequired?: number
+  settlement?: ScheduledRaceSettlementState | null
 }
 
 const formatSplit = (milliseconds: number | undefined): string => {
@@ -97,6 +103,14 @@ const TrophyPicture = ({ color }: { color: string }) => (
   </svg>
 )
 
+const getSettlementStatusLine = (settlement: ScheduledRaceSettlementState): string => {
+  if (settlement.status === 'settled') {
+    return settlement.txid ? 'Results final — race inscribed ✓' : 'Results final'
+  }
+  if (settlement.status === 'no_contest') return 'Race ended — no contest, not inscribed'
+  return 'Race cancelled — not inscribed'
+}
+
 export const ScheduledRaceFinishStatusBanner = memo(function ScheduledRaceFinishStatusBanner({
   snapshot,
   activeRaceId,
@@ -104,6 +118,7 @@ export const ScheduledRaceFinishStatusBanner = memo(function ScheduledRaceFinish
   lapProgressByEntrant,
   finishOrderByEntrant = {},
   lapsRequired = 3,
+  settlement = null,
 }: ScheduledRaceStandingsPanelProps) {
   const [nowMs, setNowMs] = useState(() => Date.now())
   const localLapTimes = localEntrantId ? (lapProgressByEntrant[localEntrantId] || []) : []
@@ -121,10 +136,10 @@ export const ScheduledRaceFinishStatusBanner = memo(function ScheduledRaceFinish
   )
 
   useEffect(() => {
-    if (!shouldShow) return
+    if (!shouldShow || settlement) return
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000)
     return () => window.clearInterval(intervalId)
-  }, [shouldShow])
+  }, [shouldShow, settlement])
 
   if (!shouldShow || !localPlace || finalizesAtMs === null) return null
 
@@ -168,9 +183,10 @@ export const ScheduledRaceFinishStatusBanner = memo(function ScheduledRaceFinish
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11, fontWeight: 700 }}>
-        {remainingMs > 0 ? `Finalizes in ${formatRemainingTime(remainingMs)} — sooner if everyone finishes` : 'Finalizing now'}
-        {finalizesAtLabel ? ` · ${finalizesAtLabel}` : ''}
+      <div style={{ fontSize: 11, fontWeight: 700, color: settlement?.status === 'settled' ? '#35D06F' : undefined }}>
+        {settlement
+          ? getSettlementStatusLine(settlement)
+          : `${remainingMs > 0 ? `Finalizes in ${formatRemainingTime(remainingMs)} — sooner if everyone finishes` : 'Finalizing now'}${finalizesAtLabel ? ` · ${finalizesAtLabel}` : ''}`}
       </div>
     </div>
   )

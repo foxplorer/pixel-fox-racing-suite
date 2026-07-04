@@ -20,17 +20,19 @@ Target policy being checked against:
 | E1 early settlement | **FIXED** — `submitResult` settles the race as soon as every staged participant (works for 2-6 racers) has a finished result and the race is `racing`; the socket server announces the settlement immediately from the finish response instead of waiting for T+15m. Covered by new store tests, including a 4-player last-finisher test. |
 | E3 result trust | **PARTIAL** — results are now rejected before `startsAt`, rejected for `cancelled`/`settled`/`no_contest`/`finalizing` races, and each lap must be ≥ 40s (`SCHEDULED_RACE_MIN_LAP_TIME_MS`, matching the casual floor). Still open: the endpoint is public (needs an internal token/co-sign before prod) and there is no `finishedAt ≥ startsAt + 3×minLap` wall-clock check yet. |
 | E4 leave never unstages | **PARTIAL (main path fixed)** — new `POST /scheduled-races/:raceId/unstage` + `store.unstage` (idempotent, refuses after start); the socket server unstages the entrant on `leaveScheduledRaceRoom` while the room is not yet `racing`. Still open: a raw socket **disconnect** before start intentionally keeps the fox staged (a crash/refresh should not lose the seat) — decide whether a staged-but-disconnected fox at T-0 should count toward min-2. |
-| E5 cancelled race still runs in room | **PARTIAL** — `submitResult` now rejects results for cancelled races, so no ghost results or inscriptions. Still open: the socket room countdown does not consult tx-server status, so a lone staged player still sees the race start locally; needs a status poll plus a `scheduledRaceCancelled` room event. |
+| E5 cancelled race still runs in room | **FIXED** (part 5, 2026-07-04) — the socket tick polls `GET /scheduled-races/:raceId` (new route + `store.getRace`) every 5s per active room and broadcasts terminal statuses via `scheduledRaceSettlement`; the client settlement listener freezes the countdown and shows the "Race cancelled" modal. Earlier partial fix (results rejected for cancelled races) still stands. |
 | E11 no-contest never announced | **FIXED** — the settlement announcement now fires exactly once for `settled`/`no_contest`/`cancelled` outcomes, always emits `scheduledRaceSettlement`, and emits `newGameTransaction` only when a txid exists; the once-per-second re-settle loop is gone. |
 | E13 finish single-path | **FIXED** (later 2026-07-04) — finish now waits for the socket ack and falls back to the idempotent HTTP `/results` endpoint on rejection/timeout/no-socket, with an error banner if both fail (`scheduledRaceFinishDelivery.ts`, wired in all three car-track components). |
 | E17 reconnect orphaning | **PARTIAL** (later 2026-07-04) — socket reconnect during an active scheduled race now auto re-joins game + status + grid pose + race room (`scheduledRaceReconnect.ts`). Still open: lap-split rehydration after a full page refresh (needs `lapProgress` exposed in race responses). |
-| E2, E6-E10, E12, E14-E16, E18-E26 | Open — see the entries below. E2 (public finalize/settle routes) and E6 (`?now=` time travel) are the top prod blockers. |
+| E6 `?now=` time travel | **FIXED** (part 5, 2026-07-04) — `allowTimeTravelNow` route option: enabled in dummy mode, disabled in real mode unless `SCHEDULED_RACE_ALLOW_TIME_TRAVEL=true`. |
+| E10 empty races become no_contest | **FIXED** (part 5, 2026-07-04) — `finalizeRace` (both stores) short-circuits to `cancelled` when fewer than 2 entrants were ever staged, so no tx-less no-contest records pollute completed listings. |
+| E2, E7-E9, E12, E14-E16, E18-E26 | Open — see the entries below. E2 (public finalize/settle routes) is the top prod blocker; see `PROD_SYNC_SCHEDULED_RACES.md` §5. |
 
-New follow-up created by the E1 fix: the frontend does not yet listen for
-`scheduledRaceSettlement`, so the finish banner keeps counting down to T+15m
-even after an early settlement (the final inscription still appears through the
-existing `newGameTransaction` activity feed). Add a settlement listener that
-flips the banner to "Results final" and stops the countdown.
+~~New follow-up created by the E1 fix~~ **DONE (part 5, 2026-07-04):** the
+frontend now listens for `scheduledRaceSettlement` (via
+`registerScheduledRaceSocketListeners`'s `onSettlement`); the finish banner
+stops its countdown and shows "Results final — race inscribed ✓" /
+"no contest" / "cancelled" as appropriate.
 
 ---
 

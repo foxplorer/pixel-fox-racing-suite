@@ -3,6 +3,10 @@ import { ScheduledRaceError, type ScheduledRaceStore } from './scheduledRaceType
 
 interface RegisterScheduledRaceRoutesOptions {
   store: ScheduledRaceStore
+  // The `?now=` time-travel param persists the resolved race status, so an anonymous
+  // GET could push every listed race into finalizing/cancelled. Only dev/dummy runs
+  // may enable it; production must leave it off.
+  allowTimeTravelNow?: boolean
 }
 
 const parseLimit = (value: unknown): number | undefined => {
@@ -34,7 +38,7 @@ const sendScheduledRaceError = (res: Response, error: unknown): void => {
   })
 }
 
-export function registerScheduledRaceRoutes(app: Express, { store }: RegisterScheduledRaceRoutesOptions): void {
+export function registerScheduledRaceRoutes(app: Express, { store, allowTimeTravelNow = false }: RegisterScheduledRaceRoutesOptions): void {
   app.get('/scheduled-races', async (req, res) => {
     try {
       const status = typeof req.query.status === 'string' ? req.query.status : undefined
@@ -42,9 +46,18 @@ export function registerScheduledRaceRoutes(app: Express, { store }: RegisterSch
       const races = await listMethod({
         trackName: typeof req.query.trackName === 'string' ? req.query.trackName : undefined,
         limit: parseLimit(req.query.limit),
-        nowMs: parseNowMs(req.query.now),
+        nowMs: allowTimeTravelNow ? parseNowMs(req.query.now) : undefined,
       })
       res.json({ races })
+    } catch (error) {
+      sendScheduledRaceError(res, error)
+    }
+  })
+
+  app.get('/scheduled-races/:raceId', async (req, res) => {
+    try {
+      const race = await store.getRace(req.params.raceId)
+      res.json({ race })
     } catch (error) {
       sendScheduledRaceError(res, error)
     }
