@@ -1,5 +1,18 @@
 import React, { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import {
+  RACING_QUALITY_STORAGE_KEY,
+  resolveRacingQualityPresetId
+} from '../performance/qualitySettings'
+
+// Shadow-casting thousands of instanced tree cones is a pure shadow-pass cost
+// that only High should pay (Low has shadow maps off entirely; Medium keeps
+// car/board shadows but drops the tree forest from the shadow pass). Callers
+// that know better (or tests) can still pass castShadow explicitly.
+const resolveStoredTreeCastShadow = (): boolean => {
+  if (typeof window === 'undefined') return true
+  return resolveRacingQualityPresetId(window.localStorage.getItem(RACING_QUALITY_STORAGE_KEY)) === 'high'
+}
 
 export interface TreeInstancePlacement {
   x: number
@@ -45,10 +58,11 @@ export const SNOW_TREE_PALETTE: TreePalette = {
 export const TreeInstances: React.FC<TreeInstancesProps> = ({
   trees,
   palette = DEFAULT_TREE_PALETTE,
-  castShadow = true,
+  castShadow,
   receiveShadow = true,
   frustumCulled = true
 }) => {
+  const resolvedCastShadow = castShadow ?? resolveStoredTreeCastShadow()
   const trunkRef = useRef<THREE.InstancedMesh>(null)
   const foliage1Ref = useRef<THREE.InstancedMesh>(null)
   const foliage2Ref = useRef<THREE.InstancedMesh>(null)
@@ -102,16 +116,16 @@ export const TreeInstances: React.FC<TreeInstancesProps> = ({
 
   return (
     <>
-      <instancedMesh ref={trunkRef} args={[trunkGeometry, undefined, trees.length]} frustumCulled={frustumCulled} castShadow={castShadow} receiveShadow={receiveShadow}>
+      <instancedMesh ref={trunkRef} args={[trunkGeometry, undefined, trees.length]} frustumCulled={frustumCulled} castShadow={resolvedCastShadow} receiveShadow={receiveShadow}>
         <meshStandardMaterial color={palette.trunk} />
       </instancedMesh>
-      <instancedMesh ref={foliage1Ref} args={[foliage1Geometry, undefined, trees.length]} frustumCulled={frustumCulled} castShadow={castShadow}>
+      <instancedMesh ref={foliage1Ref} args={[foliage1Geometry, undefined, trees.length]} frustumCulled={frustumCulled} castShadow={resolvedCastShadow}>
         <meshStandardMaterial color={palette.foliage1} />
       </instancedMesh>
-      <instancedMesh ref={foliage2Ref} args={[foliage2Geometry, undefined, trees.length]} frustumCulled={frustumCulled} castShadow={castShadow}>
+      <instancedMesh ref={foliage2Ref} args={[foliage2Geometry, undefined, trees.length]} frustumCulled={frustumCulled} castShadow={resolvedCastShadow}>
         <meshStandardMaterial color={palette.foliage2} />
       </instancedMesh>
-      <instancedMesh ref={foliage3Ref} args={[foliage3Geometry, undefined, trees.length]} frustumCulled={frustumCulled} castShadow={castShadow}>
+      <instancedMesh ref={foliage3Ref} args={[foliage3Geometry, undefined, trees.length]} frustumCulled={frustumCulled} castShadow={resolvedCastShadow}>
         <meshStandardMaterial color={palette.foliage3} />
       </instancedMesh>
     </>

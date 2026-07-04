@@ -54,6 +54,9 @@ const MID_WHEEL_POSITIONS: Array<[number, number, number]> = [
   [0.95, 0.28, -1.05]
 ]
 
+// Used by the mid-tier (distant) car model only: beyond the near band a
+// distance-18 glow light cannot reach the camera, so the emissive lamp meshes
+// alone carry the "headlights on" read — no point lights here.
 const RemoteCarHeadlights = memo<{ headlightsEnabled?: boolean }>(function RemoteCarHeadlights({ headlightsEnabled = false }) {
   return (
     <>
@@ -67,20 +70,6 @@ const RemoteCarHeadlights = memo<{ headlightsEnabled?: boolean }>(function Remot
           />
         </mesh>
       ))}
-      {headlightsEnabled && (
-        <>
-          {[-0.55, 0.55].map(x => (
-            <pointLight
-              key={`remote-headlight-glow-${x}`}
-              position={[x, 0.55, 2.05]}
-              color="#fff4c2"
-              intensity={2.2}
-              distance={18}
-              decay={1.6}
-            />
-          ))}
-        </>
-      )}
     </>
   )
 })
@@ -334,7 +323,11 @@ export const OtherPlayerCar: React.FC<OtherPlayerCarProps> = ({
   return (
     <group ref={groupRef}>
       <group ref={rotationGroupRef}>
-        {headlightsEnabled && [-0.55, 0.55].map(x => (
+        {/* Two full spotlights per remote car is the single largest dynamic-light
+            cost in a race (up to 32 visible cars). Only near-tier cars throw real
+            beams, and Low skips them entirely — emissive lamps + glow still read
+            as "headlights on" at every tier. */}
+        {headlightsEnabled && lodTier === 'near' && qualityPresetId !== 'low' && [-0.55, 0.55].map(x => (
           <CarHeadlightBeam key={`stable-remote-headlight-beam-${x}`} x={x} localForward={-1} />
         ))}
         <group ref={visualTiltGroupRef}>

@@ -1,6 +1,8 @@
 import React, { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { getRacingQualityPreset } from '../performance/qualitySettings'
+import { getRacingSceneryQualitySettings, getScaledQualityValue } from '../performance/sceneryQuality'
 
 /**
  * A short fiery burst played where the car burned up in the lava. Self-timed from
@@ -21,10 +23,20 @@ export const CarLavaExplosion: React.FC = () => {
   const lightRef = useRef<THREE.PointLight>(null)
   const embersRef = useRef<THREE.Group>(null)
 
-  // Random outward velocity per ember (seeded once on mount).
+  // Random outward velocity per ember (seeded once on mount). Each ember is its
+  // own transparent mesh/draw call, so the burst size follows the preset's
+  // particle budget (Low ~18, Medium ~28, High 40).
+  const emberCount = useMemo(
+    () => getScaledQualityValue(
+      EMBER_COUNT,
+      getRacingSceneryQualitySettings(getRacingQualityPreset()).effects.particleDensityScale,
+      12
+    ),
+    []
+  )
   const embers = useMemo(
     () =>
-      Array.from({ length: EMBER_COUNT }, () => {
+      Array.from({ length: emberCount }, () => {
         const theta = Math.random() * Math.PI * 2
         const elevation = 0.2 + Math.random() * 1.1
         const speed = 14 + Math.random() * 26
@@ -35,7 +47,7 @@ export const CarLavaExplosion: React.FC = () => {
           color: Math.random() < 0.5 ? '#ff7a18' : '#ffd24a'
         }
       }),
-    []
+    [emberCount]
   )
 
   useFrame((state) => {

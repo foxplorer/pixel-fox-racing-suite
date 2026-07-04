@@ -107,6 +107,42 @@ verified in code, not assumed.
   showroom, so this matches the real flow).
 - Verified: `test:frontend-core` (582), `build:frontend`.
 
+### 2026-07-04 (round 3) — remote headlight tiering + bespoke tree shadows + lava burst budget
+
+Why: these were the three `effects.*`/shadow systems the inventory flagged as
+unscaled; the headlight one turned out to be the single largest dynamic-light
+cost in the game.
+
+- **Remote-car headlight lights are now LOD/preset-tiered**
+  (`OtherPlayerCar.tsx`, shared by all car tracks). Before: every visible
+  remote car with headlights on carried **2 full spotlights** (distance 160)
+  + 2 glow point lights — worst case 64 spotlights + 64 point lights on High
+  with 32 visible cars, forward-rendered per-fragment cost. After: spotlights
+  only on **near-tier** cars (max 4/8/12 by preset) and never on Low; the
+  mid-tier (distant) model loses its glow point lights (distance-18 glow is
+  invisible beyond the 75-160u near band). Emissive lamp meshes keep the
+  "headlights on" read at every tier. Worst case now: Low 0, Medium 16,
+  High 24 spotlights. **Local car beams untouched** — your own view keeps
+  full lighting on all presets.
+- **`TreeInstances` defaults `castShadow` from the stored preset** (High only),
+  same pattern as `CurvedBoard.segmentScale`. Auto-covers the bespoke
+  `SimpleTrees` on Australia, Belgium, San Luis (400 trees × 4 instanced
+  meshes each dropped from the Medium shadow pass). Explicit props still win:
+  ImportedBasicScenery (already High-only) and Aspen (always false) unchanged.
+  **Deliberately did NOT preset-scale bespoke tree counts:** `SimpleTrees`
+  positions feed collision data (`onTreesGenerated`), so fewer rendered trees
+  would mean invisible-tree collisions or per-preset gameplay differences.
+- **`CarLavaExplosion` embers follow `particleDensityScale`** (40 → ~28 Medium,
+  ~18 Low; each ember is its own transparent draw call). Small win, rare
+  event, but closes the audit item.
+- **effects.* audit result:** volcano lava pools/emitters/lights
+  (`VolcanoCaveScenery`), stadium fox hops, bird flocks, rain, and snowfall
+  were already preset-scaled — no other unscaled consumers found.
+- Gates: `test:frontend-core` (584), `build:frontend` clean.
+- Manual QA notes: check a night race on Medium — remote cars beyond the near
+  band show lit lamps but no beam throw (intended); confirm bespoke-track tree
+  shadows on Medium read fine without the forest shadow pass.
+
 ### Track/folder architecture note (why board code exists 3×)
 The 6 car tracks run through **three** game components:
 `components/foxracing/FoxRacingGame.tsx` (Australia **and** all
@@ -132,11 +168,13 @@ below as a remaining win, not done opportunistically.
    `particleDensityScale`.
 3. **Merge each board's ~7 meshes** (front/back/edges/caps/posts) into 1-2
    geometries/draw calls. Bigger lift, best done after C1 measurements.
-4. **`effects.*` consumer audit:** confirm lava explosion, headlight beams,
-   collectible sparkles actually read `meshDetailScale` / `activeLightScale` /
-   `particleDensityScale`; wire the ones that don't.
-5. **SimpleTrees quality threading on bespoke tracks:** preset-scaled count +
-   High-only castShadow (mirrors today's imported-track change).
+4. ~~`effects.*` consumer audit~~ **DONE (round 3)** — remote headlight
+   beams/glow tiered by LOD+preset (the big one), lava explosion embers
+   scaled; everything else was already wired.
+5. ~~SimpleTrees quality threading~~ **DONE (round 3), shadow half** —
+   `TreeInstances` castShadow defaults to High-only from the stored preset.
+   Count scaling intentionally skipped (tree positions are collision data;
+   see round-3 notes).
 6. **Procedural texture cache per preset:** avoid full canvas rebuilds when
    switching quality; measure rebuild cost first.
 7. **Remote car mesh LOD:** simple mesh beyond ~1/2 renderDistance, detailed
