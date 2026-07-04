@@ -2,6 +2,12 @@ import React, { useEffect, useRef, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import crowdSound from '../../assets/crowd_long.mp3'
+import {
+  getRacingQualityPreset,
+  RACING_QUALITY_STORAGE_KEY,
+  resolveRacingQualityPresetId
+} from '../performance/qualitySettings'
+import { getRacingSceneryQualitySettings } from '../performance/sceneryQuality'
 
 // Compact voxel format: [x, y, z, r, g, b]
 export type VoxelTuple = [number, number, number, number, number, number]
@@ -97,6 +103,17 @@ const HOP_DURATION = 0.8 // seconds for hop animation
 const HOP_HEIGHT = 0.6 // max hop height
 const HOP_PERCENTAGE = 0.3 // 30% of foxes per wave (overlapping = ~continuous)
 
+// Hop waves rewrite instanced matrices every frame while foxes animate, so the
+// wave size follows the quality preset's particle density: Low crowds hop in
+// smaller waves (fewer per-frame matrix uploads), High keeps the full 30%.
+const resolveHopPercentage = (): number => {
+  if (typeof window === 'undefined') return HOP_PERCENTAGE
+  const preset = getRacingQualityPreset(
+    resolveRacingQualityPresetId(window.localStorage.getItem(RACING_QUALITY_STORAGE_KEY))
+  )
+  return HOP_PERCENTAGE * getRacingSceneryQualitySettings(preset).effects.particleDensityScale
+}
+
 export const BillboardStadiumFoxes = React.memo(function BillboardStadiumFoxes({
   foxPlacements,
   textureAtlas,
@@ -106,6 +123,10 @@ export const BillboardStadiumFoxes = React.memo(function BillboardStadiumFoxes({
   isSoundEnabled = false
 }: BillboardStadiumFoxesProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
+  const hopPercentageRef = useRef<number | null>(null)
+  if (hopPercentageRef.current === null) {
+    hopPercentageRef.current = resolveHopPercentage()
+  }
   // Map of fox index -> { startTime, phaseOffset } for chaotic hopping
   const hoppingFoxesRef = useRef<Map<number, { startTime: number; phase: number }>>(new Map())
   const lastHopTriggerRef = useRef<number>(0)
@@ -254,7 +275,7 @@ export const BillboardStadiumFoxes = React.memo(function BillboardStadiumFoxes({
       lastHopTriggerRef.current = time
 
       // Add new random foxes to hop (overlapping with existing hoppers)
-      const hopCount = Math.ceil(foxPlacements.length * HOP_PERCENTAGE)
+      const hopCount = Math.ceil(foxPlacements.length * (hopPercentageRef.current ?? HOP_PERCENTAGE))
       let added = 0
       let attempts = 0
       while (added < hopCount && attempts < hopCount * 3) {

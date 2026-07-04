@@ -92,6 +92,19 @@ export function registerScheduledRaceRoutes(app: Express, { store }: RegisterSch
     }
   })
 
+  app.post('/scheduled-races/:raceId/unstage', async (req, res) => {
+    try {
+      const entrantId = getEntrantId(req)
+      if (!entrantId) {
+        throw new ScheduledRaceError('missing_field', 'entrantId is required')
+      }
+      const race = await store.unstage(req.params.raceId, entrantId)
+      res.json({ race })
+    } catch (error) {
+      sendScheduledRaceError(res, error)
+    }
+  })
+
   app.post('/scheduled-races/:raceId/results', async (req, res) => {
     try {
       const entrantId = getEntrantId(req)

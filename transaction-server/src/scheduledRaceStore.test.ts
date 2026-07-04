@@ -253,6 +253,93 @@ test('stage compacts entered racers into front grid slots when earlier signups n
   ])
 })
 
+test('submitResult only settles early after the last of several staged entrants finishes', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Germany', nowMs })
+  const startsAtMs = Date.parse(race.startsAt)
+
+  for (let index = 1; index <= 4; index++) {
+    await store.signUp(race.id, signupInput(index), nowMs)
+    await store.stage(race.id, signupInput(index).foxOriginOutpoint, nowMs)
+  }
+
+  for (let index = 1; index <= 3; index++) {
+    const partial = await store.submitResult(race.id, {
+      entrantId: signupInput(index).foxOriginOutpoint,
+      totalTimeMs: 210000 + index * 1000,
+      lapTimesMs: [69000, 70000, 71000 + index * 1000],
+    }, startsAtMs + 210_000 + index * 1000)
+    assert.equal(partial.status, 'racing')
+    assert.equal(partial.finalInscription, null)
+  }
+
+  const settled = await store.submitResult(race.id, {
+    entrantId: signupInput(4).foxOriginOutpoint,
+    totalTimeMs: 218000,
+    lapTimesMs: [69000, 70000, 79000],
+  }, startsAtMs + 218_000)
+
+  assert.equal(settled.status, 'settled')
+  assert.ok(settled.finalInscription?.txid)
+  assert.deepEqual(settled.results.map(result => result.finishPosition), [1, 2, 3, 4])
+  assert.ok(settled.results.every(result => result.status === 'finished'))
+})
+
+test('unstage returns a staged entrant to signed_up and frees the staged slot before the start', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Volcanoes', nowMs })
+
+  await store.signUp(race.id, signupInput(1), nowMs)
+  await store.signUp(race.id, signupInput(2), nowMs)
+  await store.signUp(race.id, signupInput(3), nowMs)
+  await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+  await store.stage(race.id, signupInput(2).foxOriginOutpoint, nowMs)
+
+  const unstaged = await store.unstage(race.id, signupInput(1).foxOriginOutpoint, nowMs + 1000)
+
+  assert.equal(unstaged.stagedCount, 1)
+  const first = unstaged.roster.find(signup => signup.entrantId === signupInput(1).foxOriginOutpoint.replace('.', '_'))
+  assert.equal(first?.status, 'signed_up')
+  assert.equal(first?.stagedGridSlot, null)
+  assert.equal(first?.stagedAt, null)
+
+  const restaged = await store.stage(race.id, signupInput(3).foxOriginOutpoint, nowMs + 2000)
+  assert.equal(
+    restaged.roster.find(signup => signup.entrantId === signupInput(3).foxOriginOutpoint.replace('.', '_'))?.stagedGridSlot,
+    1
+  )
+})
+
+test('unstage is idempotent for entrants that are not staged', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Volcanoes', nowMs })
+
+  await store.signUp(race.id, signupInput(1), nowMs)
+  const unchanged = await store.unstage(race.id, signupInput(1).foxOriginOutpoint, nowMs + 1000)
+
+  assert.equal(unchanged.roster[0].status, 'signed_up')
+})
+
+test('unstage rejects once the scheduled start time has arrived', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Volcanoes', nowMs })
+  const startsAtMs = Date.parse(race.startsAt)
+
+  await store.signUp(race.id, signupInput(1), nowMs)
+  await store.signUp(race.id, signupInput(2), nowMs)
+  await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+  await store.stage(race.id, signupInput(2).foxOriginOutpoint, nowMs)
+
+  await assert.rejects(
+    () => store.unstage(race.id, signupInput(1).foxOriginOutpoint, startsAtMs),
+    (error: unknown) => error instanceof ScheduledRaceError && error.code === 'unstage_closed'
+  )
+})
+
 test('stage rejects before the staging window opens', async () => {
   const store = new MemoryScheduledRaceStore()
   const [race] = await store.listUpcoming({ trackName: 'Australia', nowMs: baseNowMs })
@@ -297,6 +384,7 @@ test('submitResult stores staged entrant result and assigns finish position', as
   const store = new MemoryScheduledRaceStore()
   const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
   const [race] = await store.listUpcoming({ trackName: 'Australia', nowMs })
+  const startsAtMs = Date.parse(race.startsAt)
 
   await store.signUp(race.id, signupInput(1), nowMs)
   await store.signUp(race.id, signupInput(2), nowMs)
@@ -307,9 +395,9 @@ test('submitResult stores staged entrant result and assigns finish position', as
     entrantId: signupInput(1).foxOriginOutpoint,
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
-  }, nowMs + 10_000)
+  }, startsAtMs + 213_500)
 
-  assert.equal(updated.status, 'staging')
+  assert.equal(updated.status, 'racing')
   assert.equal(updated.results.length, 1)
   assert.deepEqual(updated.results[0], {
     raceId: race.id,
@@ -318,33 +406,135 @@ test('submitResult stores staged entrant result and assigns finish position', as
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
     status: 'finished',
-    finishedAt: new Date(nowMs + 10_000).toISOString(),
+    finishedAt: new Date(startsAtMs + 213_500).toISOString(),
   })
   assert.equal(updated.roster[0].status, 'finished')
+})
+
+test('submitResult rejects results before the scheduled start', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Australia', nowMs })
+
+  await store.signUp(race.id, signupInput(1), nowMs)
+  await store.signUp(race.id, signupInput(2), nowMs)
+  await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+  await store.stage(race.id, signupInput(2).foxOriginOutpoint, nowMs)
+
+  await assert.rejects(
+    () => store.submitResult(race.id, {
+      entrantId: signupInput(1).foxOriginOutpoint,
+      totalTimeMs: 213000,
+      lapTimesMs: [70000, 71000, 72000],
+    }, nowMs + 10_000),
+    (error: unknown) => error instanceof ScheduledRaceError && error.code === 'race_not_started'
+  )
+})
+
+test('submitResult rejects laps faster than the 40 second floor', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Australia', nowMs })
+  const startsAtMs = Date.parse(race.startsAt)
+
+  await store.signUp(race.id, signupInput(1), nowMs)
+  await store.signUp(race.id, signupInput(2), nowMs)
+  await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+  await store.stage(race.id, signupInput(2).foxOriginOutpoint, nowMs)
+
+  await assert.rejects(
+    () => store.submitResult(race.id, {
+      entrantId: signupInput(1).foxOriginOutpoint,
+      totalTimeMs: 173000,
+      lapTimesMs: [30000, 71000, 72000],
+    }, startsAtMs + 173_500),
+    (error: unknown) => error instanceof ScheduledRaceError && error.code === 'invalid_lap_time'
+  )
+})
+
+test('submitResult rejects results once the race is cancelled for a short field', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Australia', nowMs })
+  const startsAtMs = Date.parse(race.startsAt)
+
+  await store.signUp(race.id, signupInput(1), nowMs)
+  await store.signUp(race.id, signupInput(2), nowMs)
+  await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+
+  await assert.rejects(
+    () => store.submitResult(race.id, {
+      entrantId: signupInput(1).foxOriginOutpoint,
+      totalTimeMs: 213000,
+      lapTimesMs: [70000, 71000, 72000],
+    }, startsAtMs + 213_500),
+    (error: unknown) => error instanceof ScheduledRaceError && error.code === 'race_not_accepting_results'
+  )
+})
+
+test('submitResult settles the race early when every staged entrant finishes', async () => {
+  const store = new MemoryScheduledRaceStore()
+  const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
+  const [race] = await store.listUpcoming({ trackName: 'Australia', nowMs })
+  const startsAtMs = Date.parse(race.startsAt)
+
+  await store.signUp(race.id, signupInput(1), nowMs)
+  await store.signUp(race.id, signupInput(2), nowMs)
+  await store.signUp(race.id, signupInput(3), nowMs)
+  await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+  await store.stage(race.id, signupInput(2).foxOriginOutpoint, nowMs)
+
+  const afterFirst = await store.submitResult(race.id, {
+    entrantId: signupInput(2).foxOriginOutpoint,
+    totalTimeMs: 210000,
+    lapTimesMs: [69000, 70000, 71000],
+  }, startsAtMs + 210_500)
+  assert.equal(afterFirst.status, 'racing')
+  assert.equal(afterFirst.finalInscription, null)
+
+  const settled = await store.submitResult(race.id, {
+    entrantId: signupInput(1).foxOriginOutpoint,
+    totalTimeMs: 213000,
+    lapTimesMs: [70000, 71000, 72000],
+  }, startsAtMs + 213_500)
+
+  assert.equal(settled.status, 'settled')
+  assert.match(settled.finalInscription?.txid || '', /^[0-9a-f]{64}$/)
+  assert.deepEqual(settled.results.map(result => [result.status, result.finishPosition]), [
+    ['finished', 1],
+    ['finished', 2],
+  ])
+  assert.ok(settled.results.every(result => result.status !== 'dnf'))
+  assert.equal(
+    settled.roster.find(signup => signup.entrantId === signupInput(3).foxOriginOutpoint.replace('.', '_'))?.status,
+    'signed_up'
+  )
 })
 
 test('submitResult is idempotent for identical duplicate result', async () => {
   const store = new MemoryScheduledRaceStore()
   const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
   const [race] = await store.listUpcoming({ trackName: 'Belgium', nowMs })
+  const startsAtMs = Date.parse(race.startsAt)
 
   await store.signUp(race.id, signupInput(1), nowMs)
   await store.signUp(race.id, signupInput(2), nowMs)
   await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+  await store.stage(race.id, signupInput(2).foxOriginOutpoint, nowMs)
 
   await store.submitResult(race.id, {
     entrantId: signupInput(1).foxOriginOutpoint,
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
-  }, nowMs + 10_000)
+  }, startsAtMs + 213_500)
   const duplicate = await store.submitResult(race.id, {
     entrantId: signupInput(1).foxOriginOutpoint,
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
-  }, nowMs + 11_000)
+  }, startsAtMs + 214_500)
 
   assert.equal(duplicate.results.length, 1)
-  assert.equal(duplicate.results[0].finishedAt, new Date(nowMs + 10_000).toISOString())
+  assert.equal(duplicate.results[0].finishedAt, new Date(startsAtMs + 213_500).toISOString())
 })
 
 test('submitResult rejects conflicting duplicate result', async () => {
@@ -352,21 +542,23 @@ test('submitResult rejects conflicting duplicate result', async () => {
   const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
   const [race] = await store.listUpcoming({ trackName: 'San Luis', nowMs })
 
+  const startsAtMs = Date.parse(race.startsAt)
   await store.signUp(race.id, signupInput(1), nowMs)
   await store.signUp(race.id, signupInput(2), nowMs)
   await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
+  await store.stage(race.id, signupInput(2).foxOriginOutpoint, nowMs)
   await store.submitResult(race.id, {
     entrantId: signupInput(1).foxOriginOutpoint,
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
-  }, nowMs + 10_000)
+  }, startsAtMs + 213_500)
 
   await assert.rejects(
     () => store.submitResult(race.id, {
       entrantId: signupInput(1).foxOriginOutpoint,
       totalTimeMs: 214000,
       lapTimesMs: [70000, 71000, 73000],
-    }, nowMs + 11_000),
+    }, startsAtMs + 214_500),
     (error: unknown) => error instanceof ScheduledRaceError && error.code === 'result_conflict'
   )
 })
@@ -414,6 +606,7 @@ test('finalizeRace marks unfinished staged entrants dnf and exposes podium order
   const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
   const [race] = await store.listUpcoming({ trackName: 'Volcanoes', nowMs })
 
+  const startsAtMs = Date.parse(race.startsAt)
   await store.signUp(race.id, signupInput(1), nowMs)
   await store.signUp(race.id, signupInput(2), nowMs)
   await store.signUp(race.id, signupInput(3), nowMs)
@@ -424,18 +617,18 @@ test('finalizeRace marks unfinished staged entrants dnf and exposes podium order
     entrantId: signupInput(2).foxOriginOutpoint,
     totalTimeMs: 210000,
     lapTimesMs: [69000, 70000, 71000],
-  }, nowMs + 10_000)
+  }, startsAtMs + 210_500)
   await store.submitResult(race.id, {
     entrantId: signupInput(1).foxOriginOutpoint,
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
-  }, nowMs + 11_000)
+  }, startsAtMs + 213_500)
   await store.recordLapProgress(race.id, {
     entrantId: signupInput(3).foxOriginOutpoint,
     lapTimesMs: [72000, 73500],
-  }, nowMs + 12_000)
+  }, startsAtMs + 214_000)
 
-  const finalized = await store.finalizeRace(race.id, nowMs + 20_000)
+  const finalized = await store.finalizeRace(race.id, startsAtMs + 220_000)
 
   assert.equal(finalized.status, 'finalizing')
   assert.deepEqual(finalized.results.map(result => [result.entrantId, result.status, result.finishPosition]), [
@@ -477,6 +670,7 @@ test('listCompleted returns finalized race results for stats', async () => {
   const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
   const [race] = await store.listUpcoming({ trackName: 'Belgium', nowMs })
 
+  const startsAtMs = Date.parse(race.startsAt)
   await store.signUp(race.id, signupInput(1), nowMs)
   await store.signUp(race.id, signupInput(2), nowMs)
   await store.stage(race.id, signupInput(1).foxOriginOutpoint, nowMs)
@@ -485,13 +679,13 @@ test('listCompleted returns finalized race results for stats', async () => {
     entrantId: signupInput(1).foxOriginOutpoint,
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
-  }, nowMs + 10_000)
-  await store.finalizeRace(race.id, nowMs + 20_000)
+  }, startsAtMs + 213_500)
+  await store.finalizeRace(race.id, startsAtMs + 220_000)
 
   const completed = await store.listCompleted({
     trackName: 'Belgium',
     limit: 3,
-    nowMs: nowMs + 20_000,
+    nowMs: startsAtMs + 220_000,
   })
 
   assert.equal(completed.length, 1)
@@ -505,6 +699,7 @@ test('createFinalInscription creates deterministic dummy multiplayer race inscri
   const nowMs = Date.parse('2026-06-29T12:56:00.000Z')
   const [race] = await store.listUpcoming({ trackName: 'Volcanoes', nowMs })
 
+  const startsAtMs = Date.parse(race.startsAt)
   await store.signUp(race.id, signupInput(1), nowMs)
   await store.signUp(race.id, signupInput(2), nowMs)
   await store.signUp(race.id, signupInput(3), nowMs)
@@ -515,16 +710,16 @@ test('createFinalInscription creates deterministic dummy multiplayer race inscri
     entrantId: signupInput(2).foxOriginOutpoint,
     totalTimeMs: 210000,
     lapTimesMs: [69000, 70000, 71000],
-  }, nowMs + 10_000)
+  }, startsAtMs + 210_500)
   await store.submitResult(race.id, {
     entrantId: signupInput(1).foxOriginOutpoint,
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
-  }, nowMs + 11_000)
-  await store.finalizeRace(race.id, nowMs + 20_000)
+  }, startsAtMs + 213_500)
+  await store.finalizeRace(race.id, startsAtMs + 220_000)
 
-  const settled = await store.createFinalInscription(race.id, nowMs + 30_000)
-  const duplicate = await store.createFinalInscription(race.id, nowMs + 40_000)
+  const settled = await store.createFinalInscription(race.id, startsAtMs + 230_000)
+  const duplicate = await store.createFinalInscription(race.id, startsAtMs + 240_000)
 
   assert.equal(settled.status, 'settled')
   assert.equal(settled.finalInscription?.status, 'broadcasted')
@@ -621,14 +816,17 @@ test('dummy scheduled race path signs up, stages, finishes, finalizes, creates f
     totalTimeMs: 209000,
     lapTimesMs: [69000, 70000, 70000],
   }, finishedMs)
-  await store.submitResult(race.id, {
+  const afterAllFinished = await store.submitResult(race.id, {
     entrantId: signupInput(1).foxOriginOutpoint,
     totalTimeMs: 213000,
     lapTimesMs: [70000, 71000, 72000],
   }, finishedMs + 1000)
 
+  assert.equal(afterAllFinished.status, 'settled')
+  assert.ok(afterAllFinished.finalInscription?.txid)
+
   const finalized = await store.finalizeRace(race.id, finalizedMs)
-  assert.equal(finalized.status, 'finalizing')
+  assert.equal(finalized.status, 'settled')
   assert.deepEqual(finalized.podium.map(result => [result.entrantId, result.finishPosition]), [
     [signupInput(2).foxOriginOutpoint.replace('.', '_'), 1],
     [signupInput(1).foxOriginOutpoint.replace('.', '_'), 2],

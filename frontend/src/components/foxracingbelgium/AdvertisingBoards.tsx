@@ -5,6 +5,23 @@ import { startFinishPosition, startFinishDirection, trackCurve } from './TrackDa
 import { getCenterlineOffset } from '../../racing/core/trackProfile'
 import type { TerrainHeightSampler } from '../../racing/core/roadCorridor'
 import { getTrackRuntimeConfig } from '../../racing/tracks/trackRuntimeConfig'
+import { getScaledQualityValue } from '../../racing/performance/sceneryQuality'
+import {
+  getRacingQualityPreset,
+  RACING_QUALITY_STORAGE_KEY,
+  resolveRacingQualityPresetId
+} from '../../racing/performance/qualitySettings'
+
+// Callers that already know their quality preset pass segmentScale explicitly
+// (ImportedBasicScenery does). Legacy callers without preset plumbing (Belgium's
+// full-track barrier ribbons, UK scenery) fall back to the stored preset so the
+// tessellation tier still applies without threading a prop through every layer.
+const resolveStoredSegmentScale = (): number => {
+  if (typeof window === 'undefined') return 1
+  return getRacingQualityPreset(
+    resolveRacingQualityPresetId(window.localStorage.getItem(RACING_QUALITY_STORAGE_KEY))
+  ).scenery.detailDistanceScale
+}
 import pixelRacingLogoImage from '../../assets/pixel_racing_logo.png'
 import yourAdHereImage from '../../assets/your_ad_here.png'
 
@@ -19,6 +36,12 @@ export interface CurvedBoardData {
   side: 'left' | 'right'
   showTextureLogos?: boolean
   getHeightAtPosition?: TerrainHeightSampler
+  /**
+   * Scales curve tessellation for quality tiers (1 = full detail). Face strips,
+   * edges, and posts all sample the shared curvePoints arrays, so every face
+   * derives its segment count from the same scaled value.
+   */
+  segmentScale?: number
 }
 
 // Curved board component that follows a curve path
@@ -31,9 +54,16 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
   offset,
   side,
   showTextureLogos = true,
-  getHeightAtPosition
+  getHeightAtPosition,
+  segmentScale
 }) => {
   const { gl } = useThree()
+  const resolvedSegmentScale = segmentScale ?? resolveStoredSegmentScale()
+  // Floors stay high on purpose: the sharp-corner perpDir smoothing (dot < 0.7 blend)
+  // and per-point terrain height sampling on hilly tracks both get touchy when board
+  // samples spread out, so quality scaling trims tessellation gently instead of halving it.
+  const faceSegments = getScaledQualityValue(100, resolvedSegmentScale, 60)
+  const lengthSegments = getScaledQualityValue(200, resolvedSegmentScale, 120)
 
   // ===== TEXTURE ORIENTATION CONSTANTS - Toggle these to fix logo direction =====
   // Set to true/false to control each face independently
@@ -65,7 +95,7 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
   // Calculate total board length for UV mapping
   const totalLength = useMemo(() => {
     let length = 0
-    const segments = 200
+    const segments = lengthSegments
     for (let i = 0; i < segments; i++) {
       const t1 = startT + (endT - startT) * (i / segments)
       const t2 = startT + (endT - startT) * ((i + 1) / segments)
@@ -76,7 +106,7 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
       length += p1.distanceTo(p2)
     }
     return length
-  }, [curve, startT, endT])
+  }, [curve, startT, endT, lengthSegments])
 
   // Store the canvas so we can create multiple textures from it
   const [logoCanvas, setLogoCanvas] = React.useState<HTMLCanvasElement | null>(null)
@@ -192,7 +222,7 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
   // Sample points along the curve (shared by all faces)
   // Includes smoothing for sharp corners to prevent visual glitches
   const curvePoints = useMemo(() => {
-    const segments = 100
+    const segments = faceSegments
     const points: THREE.Vector3[] = []
     const tangents: THREE.Vector3[] = []
     const perpDirs: THREE.Vector3[] = []
@@ -234,11 +264,11 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
     }
 
     return { points, tangents, perpDirs, accumulatedLengths }
-  }, [curve, startT, endT, offset, side, boardCenterHeight, boardGroundOffset, height, getHeightAtPosition])
+  }, [curve, startT, endT, offset, side, boardCenterHeight, boardGroundOffset, height, getHeightAtPosition, faceSegments])
   
   // Front face geometry (facing track) - logo reads left-to-right
   const frontFaceGeometry = useMemo(() => {
-    const segments = 100
+    const segments = faceSegments
     const geometry = new THREE.BufferGeometry()
     const vertices: number[] = []
     const normals: number[] = []
@@ -292,11 +322,11 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
     geometry.computeVertexNormals()
     
     return geometry
-  }, [curvePoints, totalLength, height, frameThickness, side])
+  }, [curvePoints, totalLength, height, frameThickness, side, faceSegments])
   
   // Back face geometry (facing away from track) - logo reads left-to-right when viewed from behind
   const backFaceGeometry = useMemo(() => {
-    const segments = 100
+    const segments = faceSegments
     const geometry = new THREE.BufferGeometry()
     const vertices: number[] = []
     const normals: number[] = []
@@ -353,7 +383,7 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
     geometry.computeVertexNormals()
     
     return geometry
-  }, [curvePoints, totalLength, height, frameThickness, side])
+  }, [curvePoints, totalLength, height, frameThickness, side, faceSegments])
   
   // Left edge geometry (start of curve) - logo reads top-to-bottom
   const leftEdgeFrontGeometry = useMemo(() => {
@@ -555,12 +585,12 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
   
   // Top and bottom edge geometries (solid color, no texture)
   const topBottomGeometry = useMemo(() => {
-    const segments = 100
+    const segments = faceSegments
     const geometry = new THREE.BufferGeometry()
     const vertices: number[] = []
     const normals: number[] = []
     const indices: number[] = []
-    
+
     const { points, perpDirs } = curvePoints
     const up = new THREE.Vector3(0, 1, 0)
     
@@ -827,7 +857,8 @@ export const CurvedBoard: React.FC<CurvedBoardData> = React.memo(({
     prevProps.offset === nextProps.offset &&
     prevProps.side === nextProps.side &&
     prevProps.showTextureLogos === nextProps.showTextureLogos &&
-    prevProps.getHeightAtPosition === nextProps.getHeightAtPosition
+    prevProps.getHeightAtPosition === nextProps.getHeightAtPosition &&
+    prevProps.segmentScale === nextProps.segmentScale
   )
 })
 

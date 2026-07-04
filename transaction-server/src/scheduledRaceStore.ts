@@ -6,6 +6,7 @@ import {
   resolveScheduledRaceStatus,
   SCHEDULED_RACE_LAPS_REQUIRED,
   SCHEDULED_RACE_MAX_ENTRANTS,
+  SCHEDULED_RACE_MIN_LAP_TIME_MS,
   SCHEDULED_RACE_TIMEOUT_MS,
 } from './scheduledRaceLifecycle.js'
 import {
@@ -244,6 +245,23 @@ export class MemoryScheduledRaceStore implements ScheduledRaceStore {
     return this.buildRaceWithRoster(raceId, nowMs)
   }
 
+  async unstage(raceId: string, entrantId: string, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
+    const race = this.getRaceOrThrow(raceId)
+    const signup = this.getSignupOrThrow(raceId, entrantId)
+    if (signup.status !== 'staged') {
+      return this.buildRaceWithRoster(raceId, nowMs)
+    }
+    if (nowMs >= new Date(race.startsAt).getTime()) {
+      throw new ScheduledRaceError('unstage_closed', `Race ${raceId} has already started`, 409)
+    }
+
+    signup.status = 'signed_up'
+    signup.stagedAt = null
+    signup.stagedGridSlot = null
+    race.updatedAt = toIso(nowMs)
+    return this.buildRaceWithRoster(raceId, nowMs)
+  }
+
   async submitResult(raceId: string, input: ScheduledRaceResultInput, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
     const race = this.getRaceOrThrow(raceId)
     const signup = this.getSignupOrThrow(raceId, input.entrantId)
@@ -263,6 +281,8 @@ export class MemoryScheduledRaceStore implements ScheduledRaceStore {
       return this.buildRaceWithRoster(raceId, nowMs)
     }
 
+    this.assertRaceAcceptsResults(race, nowMs)
+
     const result: ScheduledRaceResult = {
       raceId,
       entrantId: signup.entrantId,
@@ -277,7 +297,33 @@ export class MemoryScheduledRaceStore implements ScheduledRaceStore {
     this.results.set(raceId, existingResults)
     signup.status = 'finished'
     race.updatedAt = nowIso
+
+    if (this.shouldSettleEarly(raceId, nowMs)) {
+      return this.settleRace(raceId, nowMs)
+    }
     return this.buildRaceWithRoster(raceId, nowMs)
+  }
+
+  private assertRaceAcceptsResults(race: ScheduledRace, nowMs: number): void {
+    const currentStatus = this.resolveRaceStatus(race, nowMs)
+    if (['cancelled', 'settled', 'no_contest', 'finalizing'].includes(currentStatus)) {
+      throw new ScheduledRaceError('race_not_accepting_results', `Race ${race.id} is no longer accepting results`, 409)
+    }
+    if (nowMs < new Date(race.startsAt).getTime()) {
+      throw new ScheduledRaceError('race_not_started', `Race ${race.id} has not started yet`, 409)
+    }
+  }
+
+  private shouldSettleEarly(raceId: string, nowMs: number): boolean {
+    const race = this.races.get(raceId)
+    if (!race || this.resolveRaceStatus(race, nowMs) !== 'racing') return false
+    const participants = (this.signups.get(raceId) || [])
+      .filter(signup => signup.status === 'staged' || signup.status === 'finished')
+    if (participants.length === 0) return false
+    const results = this.results.get(raceId) || []
+    return participants.every(participant => (
+      results.some(result => result.entrantId === participant.entrantId && result.status === 'finished')
+    ))
   }
 
   async recordLapProgress(raceId: string, input: ScheduledRaceLapProgressInput, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
@@ -443,6 +489,9 @@ export class MemoryScheduledRaceStore implements ScheduledRaceStore {
     if (!lapTimesMs.every(lapTimeMs => Number.isFinite(lapTimeMs) && lapTimeMs > 0)) {
       throw new ScheduledRaceError('invalid_lap_time', 'lapTimesMs must contain positive finite numbers')
     }
+    if (!lapTimesMs.every(lapTimeMs => lapTimeMs >= SCHEDULED_RACE_MIN_LAP_TIME_MS)) {
+      throw new ScheduledRaceError('invalid_lap_time', `Each lap must be at least ${SCHEDULED_RACE_MIN_LAP_TIME_MS / 1000} seconds`)
+    }
 
     const totalTimeMs = Math.round(input.totalTimeMs)
     const summedLapTimesMs = lapTimesMs.reduce((total, lapTimeMs) => total + lapTimeMs, 0)
@@ -461,6 +510,9 @@ export class MemoryScheduledRaceStore implements ScheduledRaceStore {
     const lapTimesMs = input.lapTimesMs.map(lapTimeMs => Math.round(lapTimeMs))
     if (!lapTimesMs.every(lapTimeMs => Number.isFinite(lapTimeMs) && lapTimeMs > 0)) {
       throw new ScheduledRaceError('invalid_lap_time', 'lapTimesMs must contain positive finite numbers')
+    }
+    if (!lapTimesMs.every(lapTimeMs => lapTimeMs >= SCHEDULED_RACE_MIN_LAP_TIME_MS)) {
+      throw new ScheduledRaceError('invalid_lap_time', `Each lap must be at least ${SCHEDULED_RACE_MIN_LAP_TIME_MS / 1000} seconds`)
     }
     return lapTimesMs
   }
@@ -777,6 +829,35 @@ export class PostgresScheduledRaceStore implements ScheduledRaceStore {
     }
   }
 
+  async unstage(raceId: string, entrantId: string, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      const race = await this.getRaceOrThrow(raceId, client)
+      const signup = await this.getSignupOrThrow(raceId, entrantId, client)
+      if (signup.status !== 'staged') {
+        await client.query('COMMIT')
+        return this.buildRaceWithRoster(raceId, nowMs)
+      }
+      if (nowMs >= new Date(race.startsAt).getTime()) {
+        throw new ScheduledRaceError('unstage_closed', `Race ${raceId} has already started`, 409)
+      }
+      await client.query(`
+        UPDATE scheduled_race_signups
+        SET status = 'signed_up', staged_at = NULL, staged_grid_slot = NULL
+        WHERE race_id = $1 AND entrant_id = $2
+      `, [raceId, signup.entrantId])
+      await this.touchRace(raceId, toIso(nowMs), client)
+      await client.query('COMMIT')
+      return this.buildRaceWithRoster(raceId, nowMs)
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+
   async recordLapProgress(raceId: string, input: ScheduledRaceLapProgressInput, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
     const client = await pool.connect()
     try {
@@ -811,6 +892,7 @@ export class PostgresScheduledRaceStore implements ScheduledRaceStore {
   }
 
   async submitResult(raceId: string, input: ScheduledRaceResultInput, nowMs = Date.now()): Promise<ScheduledRaceWithRoster> {
+    let settleEarly = false
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
@@ -830,6 +912,22 @@ export class PostgresScheduledRaceStore implements ScheduledRaceStore {
         return this.buildRaceWithRoster(raceId, nowMs)
       }
 
+      const roster = await this.getRoster(raceId, client)
+      const startsAtMs = new Date(race.startsAt).getTime()
+      const currentStatus = resolveScheduledRaceStatus({
+        startsAtMs,
+        nowMs,
+        signupCount: roster.length,
+        stagedCount: roster.filter(candidate => ['staged', 'finished', 'dnf'].includes(candidate.status)).length,
+        currentStatus: race.status,
+      })
+      if (['cancelled', 'settled', 'no_contest', 'finalizing'].includes(currentStatus)) {
+        throw new ScheduledRaceError('race_not_accepting_results', `Race ${raceId} is no longer accepting results`, 409)
+      }
+      if (nowMs < startsAtMs) {
+        throw new ScheduledRaceError('race_not_started', `Race ${raceId} has not started yet`, 409)
+      }
+
       const results = [...existingResults, {
         raceId,
         entrantId: signup.entrantId,
@@ -845,7 +943,19 @@ export class PostgresScheduledRaceStore implements ScheduledRaceStore {
         UPDATE scheduled_race_signups SET status = 'finished' WHERE race_id = $1 AND entrant_id = $2
       `, [raceId, signup.entrantId])
       await this.touchRace(raceId, toIso(nowMs), client)
+
+      const participants = roster
+        .map(candidate => candidate.entrantId === signup.entrantId ? { ...candidate, status: 'finished' as const } : candidate)
+        .filter(candidate => candidate.status === 'staged' || candidate.status === 'finished')
+      settleEarly = currentStatus === 'racing'
+        && participants.length > 0
+        && participants.every(participant => (
+          results.some(result => result.entrantId === participant.entrantId && result.status === 'finished')
+        ))
       await client.query('COMMIT')
+      if (settleEarly) {
+        return this.settleRace(raceId, nowMs)
+      }
       return this.buildRaceWithRoster(raceId, nowMs)
     } catch (error) {
       await client.query('ROLLBACK')

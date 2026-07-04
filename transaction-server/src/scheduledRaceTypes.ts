@@ -133,6 +133,7 @@ export interface ScheduledRaceStore {
   signUp(raceId: string, input: ScheduledRaceSignupInput, nowMs?: number): Promise<ScheduledRaceWithRoster>
   withdraw(raceId: string, entrantId: string, nowMs?: number): Promise<ScheduledRaceWithRoster>
   stage(raceId: string, entrantId: string, nowMs?: number): Promise<ScheduledRaceWithRoster>
+  unstage(raceId: string, entrantId: string, nowMs?: number): Promise<ScheduledRaceWithRoster>
   recordLapProgress(raceId: string, input: ScheduledRaceLapProgressInput, nowMs?: number): Promise<ScheduledRaceWithRoster>
   submitResult(raceId: string, input: ScheduledRaceResultInput, nowMs?: number): Promise<ScheduledRaceWithRoster>
   finalizeRace(raceId: string, nowMs?: number): Promise<ScheduledRaceWithRoster>

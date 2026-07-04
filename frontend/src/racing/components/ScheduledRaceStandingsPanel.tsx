@@ -169,7 +169,7 @@ export const ScheduledRaceFinishStatusBanner = memo(function ScheduledRaceFinish
         </div>
       </div>
       <div style={{ fontSize: 11, fontWeight: 700 }}>
-        {remainingMs > 0 ? `Finalizes in ${formatRemainingTime(remainingMs)}` : 'Finalizing now'}
+        {remainingMs > 0 ? `Finalizes in ${formatRemainingTime(remainingMs)} — sooner if everyone finishes` : 'Finalizing now'}
         {finalizesAtLabel ? ` · ${finalizesAtLabel}` : ''}
       </div>
     </div>

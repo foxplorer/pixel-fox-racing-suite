@@ -70,6 +70,8 @@ import { buildScheduledRaceRoomPlayers } from '../../racing/scheduled/scheduledR
 import { registerScheduledRaceSocketListeners, type ScheduledRaceRoomSnapshot } from '../../racing/scheduled/scheduledRaceSocket'
 import { buildStartGateMarqueeModel } from '../../racing/components/startGateMarquee'
 import { buildScheduledRaceLapProgress, secondsToMilliseconds, type ActiveScheduledRaceEntry } from '../../racing/scheduled/scheduledRaceFinish'
+import { deliverScheduledRaceFinish } from '../../racing/scheduled/scheduledRaceFinishDelivery'
+import { registerScheduledRaceReconnectListener, type ScheduledRaceReconnectState } from '../../racing/scheduled/scheduledRaceReconnect'
 import { startFinishDirection as sanLuisStartFinishDirection, startFinishPosition as sanLuisStartFinishPosition } from './TrackData'
 
 const collectibleImageUrls = {
@@ -200,6 +202,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   const [scheduledRaceStartBlocked, setScheduledRaceStartBlocked] = useState(false)
   const activeScheduledRaceIdRef = useRef<string | null>(null)
   const activeScheduledRaceEntryRef = useRef<ActiveScheduledRaceEntry | null>(null)
+  const scheduledRaceReconnectStateRef = useRef<ScheduledRaceReconnectState | null>(null)
   
   // Socket connection state
   const socketRef = useRef<Socket | null>(null)
@@ -458,6 +461,22 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
         }))
       }
     }
+
+    registerScheduledRaceReconnectListener({
+      socket,
+      getActiveRaceId: () => activeScheduledRaceEntryRef.current?.raceId ?? null,
+      getReconnectState: () => scheduledRaceReconnectStateRef.current,
+      buildJoinGamePayload: state => buildJoinGamePayload({
+        identityKey: identityKeyRef.current,
+        foxName: foxNameRef.current,
+        ordinalAddress: ordinalAddressRef.current,
+        foxOriginOutpoint: foxOriginOutpointRef.current,
+        playerColor: playerColorRef.current,
+        trackName: state.roomJoin.trackName,
+        startFinishPosition: state.spawnPosition
+      }),
+      getGameStatus: () => gameStatusRef.current
+    })
 
     registerRacingSocketConnectionListeners({
       socket,
@@ -813,7 +832,17 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       })
       if (scheduledProgress.finished && scheduledProgress.finishReport) {
         recordScheduledRaceFinishOrder(activeScheduledRaceEntry.entrantId)
-        socketRef.current?.emit('reportScheduledRaceFinish', scheduledProgress.finishReport)
+        void deliverScheduledRaceFinish({
+          socket: socketRef.current,
+          report: scheduledProgress.finishReport,
+          transactionServerUrl: TRANSACTION_SERVER_URL,
+        }).then(delivery => {
+          if (delivery.delivered === 'http') {
+            console.warn('Scheduled race finish recovered via transaction server:', delivery.socketError)
+          }
+        }).catch(error => {
+          setLapSubmissionError(error instanceof Error ? error.message : 'Scheduled race finish submission failed')
+        })
       }
       return
     }
@@ -946,13 +975,19 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       speed: 0,
       headlightsEnabled: true
     })
-    socketRef.current?.emit('joinScheduledRaceRoom', {
+    const scheduledRoomJoinPayload = {
       raceId: race.id,
       trackName: race.trackName,
       entrantId: signup.entrantId,
       gridSlot: signup.stagedGridSlot ?? signup.gridSlot,
       startsAt: race.startsAt
-    })
+    }
+    scheduledRaceReconnectStateRef.current = {
+      roomJoin: scheduledRoomJoinPayload,
+      spawnPosition: nextSpawnPosition,
+      rotationY: gridSlot.rotationY
+    }
+    socketRef.current?.emit('joinScheduledRaceRoom', scheduledRoomJoinPayload)
 
     applyScheduledRaceStartState({
       setGameStatus,

@@ -97,7 +97,13 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
           species={forestSpecies}
         />
       )}
-      {!forest && <TreeInstances trees={trees} palette={treePalette} />}
+      {!forest && (
+        <TreeInstances
+          trees={trees}
+          palette={treePalette}
+          castShadow={qualityPreset.id === 'high'}
+        />
+      )}
       {boards.map((board, index) => (
         <CurvedBoard
           key={`imported-basic-board-${trackDefinition.trackId}-${index}`}
@@ -109,6 +115,7 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
           height={board.height}
           showTextureLogos={showBoardTextureLogos}
           getHeightAtPosition={getHeightAtPosition}
+          segmentScale={qualityPreset.scenery.detailDistanceScale}
         />
       ))}
     </>

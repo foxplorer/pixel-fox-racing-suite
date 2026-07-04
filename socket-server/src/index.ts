@@ -313,6 +313,21 @@ async function submitScheduledRaceLapProgress(report: ScheduledRaceLapProgressRe
   return payload
 }
 
+async function unstageScheduledRaceEntrant(raceId: string, entrantId: string): Promise<void> {
+  const response = await fetch(`${TRANSACTION_SERVER_URL}/scheduled-races/${encodeURIComponent(raceId)}/unstage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ entrantId }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    const message = payload && typeof payload === 'object' && 'message' in payload
+      ? String((payload as { message?: unknown }).message)
+      : `Scheduled race unstage failed with ${response.status}`
+    throw new Error(message)
+  }
+}
+
 async function settleScheduledRace(raceId: string): Promise<any> {
   const response = await fetch(`${TRANSACTION_SERVER_URL}/scheduled-races/${encodeURIComponent(raceId)}/settle`, {
     method: 'POST',
@@ -363,12 +378,14 @@ async function settleAndAnnounceScheduledRace(raceId: string): Promise<void> {
   if (announcedScheduledRaceSettlements.has(raceId)) return
   const payload = await settleScheduledRace(raceId)
   const race = payload?.race
-  const activity = buildScheduledRaceSettlementActivity(race)
-  if (!activity) return
+  if (!race || !['settled', 'no_contest', 'cancelled'].includes(race.status)) return
   announcedScheduledRaceSettlements.add(raceId)
   const roomId = getScheduledRaceRoomId(raceId)
   pixelRacingIo.to(roomId).emit('scheduledRaceSettlement', { race })
-  pixelRacingIo.to(roomId).emit('newGameTransaction', activity)
+  const activity = buildScheduledRaceSettlementActivity(race)
+  if (activity) {
+    pixelRacingIo.to(roomId).emit('newGameTransaction', activity)
+  }
 }
 
 maintainRacingItemCount()
@@ -514,8 +531,24 @@ pixelRacingIo.on('connection', socket => {
 
   socket.on('leaveScheduledRaceRoom', () => {
     const player = pixelRacingState.players.get(socket.id)
+    const leavingEntrant = scheduledRaceRooms.getEntrantForPlayer(socket.id)
+    const leavingRaceId = scheduledRaceRooms.getRaceIdForPlayer(socket.id)
+    let roomStatusBeforeLeave: string | null = null
+    if (leavingRaceId) {
+      try {
+        roomStatusBeforeLeave = scheduledRaceRooms.getSnapshot(leavingRaceId, Date.now()).status
+      } catch {
+        roomStatusBeforeLeave = null
+      }
+    }
     const raceId = scheduledRaceRooms.leavePlayer(socket.id)
     if (!raceId) return
+
+    if (leavingEntrant && roomStatusBeforeLeave && roomStatusBeforeLeave !== 'racing') {
+      void unstageScheduledRaceEntrant(raceId, leavingEntrant.entrantId).catch(error => {
+        console.warn('Scheduled race unstage failed:', error instanceof Error ? error.message : error)
+      })
+    }
 
     socket.leave(getScheduledRaceRoomId(raceId))
     if (player) {
@@ -753,6 +786,13 @@ pixelRacingIo.on('connection', socket => {
       transactionResult,
     }
     pixelRacingIo.to(getScheduledRaceRoomId(data.raceId)).emit('scheduledRaceFinishAccepted', payload)
+
+    const resultRace = (transactionResult as { race?: { status?: string } } | null)?.race
+    if (resultRace?.status === 'settled' || resultRace?.status === 'no_contest') {
+      void settleAndAnnounceScheduledRace(data.raceId).catch(error => {
+        console.warn('Scheduled race early settlement announcement failed:', error instanceof Error ? error.message : error)
+      })
+    }
   })
 
   socket.on('disconnect', () => {
