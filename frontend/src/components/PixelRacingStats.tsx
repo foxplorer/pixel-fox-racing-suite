@@ -755,14 +755,15 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
   const currentEraResultCount = gamecount.toLocaleString();
   const legacyEraResultCount = LEGACY_ERA_DISPLAY_COUNT.toLocaleString();
   const trackTabs = [
-    ...trackNamesForTabs.map(trackName => ({
-      id: getPixelRacingStatsTrackTabId(trackName),
-      label: trackName,
-      icon: TRACK_ICON_BY_NAME[trackName] ?? '🏁',
-      count: activeTrackLeaderboards[trackName]?.length ?? 0,
-      trackName
-    })),
-    // Multiplayer races only exist in the current era.
+    {
+      id: PIXEL_RACING_CHAMPIONSHIP_TAB_ID,
+      label: 'Championship',
+      icon: '🏆',
+      count: activeDriverChampionship.length,
+      trackName: null
+    },
+    // Multiplayer races only exist in the current era. Keep it near the front
+    // because it is a mode-level activity view, not a per-track leaderboard.
     ...(statsEra === 'current' ? [{
       id: PIXEL_RACING_MULTIPLAYER_TAB_ID,
       label: 'Multiplayer',
@@ -770,13 +771,13 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
       count: multiplayerRaceActivity.length,
       trackName: null
     }] : []),
-    {
-      id: PIXEL_RACING_CHAMPIONSHIP_TAB_ID,
-      label: 'Championship',
-      icon: '🏆',
-      count: activeDriverChampionship.length,
-      trackName: null
-    }
+    ...trackNamesForTabs.map(trackName => ({
+      id: getPixelRacingStatsTrackTabId(trackName),
+      label: trackName,
+      icon: TRACK_ICON_BY_NAME[trackName] ?? '🏁',
+      count: activeTrackLeaderboards[trackName]?.length ?? 0,
+      trackName
+    }))
   ];
   const activeTrackTab = trackTabs.find(tab => tab.id === activeTab && tab.trackName);
 

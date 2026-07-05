@@ -10,6 +10,73 @@ Initial work belongs in the open source suite. Prod frontend, prod socket
 server, and prod transaction server should be synced later with care because
 prod has deployment-specific routes, state, and UI that should be preserved.
 
+## Implementation Update, 2026-07-05
+
+- Frontend, socket server, and transaction server multiplayer scheduled-race
+  changes have been migrated to the production repositories.
+- Prod frontend migration preserved the production topbar hamburger menu and the
+  production-only Pixel Racing faucet behavior in the choose-player modal.
+- Prod socket migration preserved the existing production socket services and
+  added scheduled-race room events, countdown snapshots, lap-progress reports,
+  finish reports, and settlement announcements. `TRANSACTION_SERVER_URL` uses
+  the existing config var and falls back only if unset.
+- Prod transaction server now uses Postgres scheduled-race persistence by
+  default. The scheduled-race schema is additive and can be applied while the
+  app is online with:
+
+  ```bash
+  heroku run "bun run migrate:scheduled-races-schema" --app tenmillionfoxes
+  ```
+
+- Prod final multiplayer race inscriptions are real broadcasts, not dummy txids.
+  The final inscription uses the same `PIXELRACING_RESULTS_ADDRESS` destination
+  as legacy Pixel Racing ITT/time-trial lap inscriptions, with the same fallback
+  address if that config var is absent.
+- Prod final multiplayer inscriptions reserve payment UTXOs from the same legacy
+  Pixel Racing `january_biggerutxos`/bigger payment path. The shared UTXO row is
+  marked with `server_instance = "pixelracing-multiplayer-server"` while
+  reserved so the table records multiplayer usage.
+- Successful prod multiplayer final txids are submitted to GorillaPool after
+  broadcast, matching the legacy `/createpixelracing` indexing behavior.
+- Multiplayer final inscription MAP metadata uses
+  `name: "multiplayer race"`, `game: "pixelracing"`,
+  `raceType: "multiplayer"`, and
+  `transactionType: "pixelracing_multiplayer_result"`. The inscription body
+  carries the complete race payload: roster, fox outpoints/origins, names,
+  colors, grid slots, finish positions, lap arrays, DNF rows, race ID, track,
+  start time, finalization time, and required lap count.
+- Multiplayer stats in the frontend are currently database-backed, not
+  GorillaPool-backed. The Multiplayer tab calls
+  `GET /scheduled-races?status=completed`; current-era track leaderboards also
+  include flattened scheduled-race lap rows from that same DB response. The
+  final multiplayer inscription txid appears in the Multiplayer tab activity.
+- Race settlement behavior:
+  - If fewer than two entrants ever stage, the race is cancelled and no final
+    inscription record is created.
+  - If two or more entrants stage and no one finishes, staged entrants become
+    DNF, the race becomes `no_contest`, and no on-chain final inscription is
+    created.
+  - If at least one entrant finishes, unfinished staged entrants become DNF and
+    the final multiplayer inscription is created with finishers and DNFs in one
+    payload.
+  - If all staged entrants finish before the 15-minute timeout, settlement and
+    the Race Over UI happen early.
+- Frontend race-over UX now explicitly handles every local scheduled racer. A
+  finisher can keep driving for fun after lap 3 until settlement; at settlement
+  every active racer is moved to local `finished` state, sees a full-screen
+  `Race Over` modal with finish place or `DNF`, sees the inscription/no-contest
+  status, and gets a `Back to Showroom` button. The top-right Switch Track
+  control is also allowed after settlement.
+- Current accepted testing posture: online production testing is acceptable for
+  this low-traffic phase, but the known public-route/tampering risks remain
+  documented and should be hardened before meaningful rewards, prizes, or broad
+  promotion.
+- Verified after the frontend race-over fix:
+  - open-source frontend `npm run test:core`
+  - open-source frontend `npm run build`
+  - prod frontend `npm run test:core`
+  - prod frontend `npm run build`
+
 ## Implementation Update, 2026-07-04
 
 - Manual Volcanoes scheduled-race testing after the new start-gate design found

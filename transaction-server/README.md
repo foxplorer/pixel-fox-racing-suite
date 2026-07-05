@@ -94,6 +94,29 @@ frontend transaction-server URL config.
 `GET /scheduled-races?status=completed` returns finalized, settled, and
 no-contest races with roster/results/podium data for local stats integration.
 
+Schema setup for Postgres-backed scheduled races:
+
+```bash
+psql "$DATABASE_URL" -f transaction-server/scheduled-races-schema.sql
+```
+
+or, when running from inside the transaction-server directory:
+
+```bash
+psql "$DATABASE_URL" -f scheduled-races-schema.sql
+```
+
+Optional timing overrides:
+
+```dotenv
+SCHEDULED_RACE_INTERVAL_MINUTES=5
+SCHEDULED_RACE_SETTLEMENT_INTERVAL_MS=15000
+```
+
+The default scheduled-race cadence is hourly. `SCHEDULED_RACE_INTERVAL_MINUTES`
+is useful for local or low-traffic online testing; set it back to `60` or unset
+it before treating the schedule as a production event cadence.
+
 `POST /scheduled-races/:raceId/results` accepts `entrantId`, `totalTimeMs`, and
 `lapTimesMs`. The in-memory store validates that the entrant was staged, the lap
 count matches the race's `lapsRequired`, and the total time matches the summed
@@ -118,6 +141,30 @@ The inscription payload contains the roster, finishers, DNFs, lap arrays, race
 ID, track, start time, and finalization time. Separate trophy outputs are
 intentionally not part of the current model; trophy/no-trophy UI is inferred
 from finish position.
+
+Settlement rules:
+
+- If fewer than two entrants ever stage, the race is cancelled and no final
+  inscription record is created.
+- If two or more entrants stage and nobody finishes before the timeout, staged
+  entrants are recorded as DNF, the race becomes `no_contest`, and no on-chain
+  inscription tx is required.
+- If at least one entrant finishes, unfinished staged entrants are recorded as
+  DNF and the final race payload includes both finishers and DNFs.
+- If every staged entrant finishes before the 15-minute timeout, the race may
+  settle early instead of waiting for the timeout.
+
+Frontend stats integration currently reads completed multiplayer races from the
+scheduled-race API, not from GorillaPool. `GET /scheduled-races?status=completed`
+is flattened into per-lap rows for current-era track leaderboards, while the
+final race inscription txid appears in the Multiplayer activity tab.
+
+Production deployments can replace the dummy final-inscription creator with a
+real broadcaster. The Pixel Fox production deployment uses the legacy Pixel
+Racing payment UTXO path, sends final multiplayer inscriptions to
+`PIXELRACING_RESULTS_ADDRESS`, records payment reservations with
+`server_instance = "pixelracing-multiplayer-server"`, and submits successful
+txids to GorillaPool for indexing.
 
 ## Metanet Protocol-Key Delivery Test
 
