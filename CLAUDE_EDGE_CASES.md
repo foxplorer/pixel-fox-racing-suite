@@ -8,6 +8,13 @@ Findings from a code review of the open source suite on 2026-07-04
 deployment; several items are acceptable in dev but must be fixed before the
 prod sync.
 
+2026-07-05 rollout note: user accepted the trust-boundary risk for low-traffic
+online testing so the feature can be exercised on real servers sooner. That
+does **not** close E2/E3/E7/E8/E9; it only means they are documented,
+accepted beta risks until the mode is promoted from testing to trusted
+production. See `PROD_SYNC_SCHEDULED_RACES.md` §5a for the online-testing
+guardrails.
+
 Target policy being checked against:
 - Settle/inscribe at `startsAt + 15min`; unfinished staged foxes get DNF. ✅ implemented
 - Also settle **early** as soon as all staged foxes finish 3 laps. ✅ FIXED 2026-07-04 (E1)
@@ -18,7 +25,7 @@ Target policy being checked against:
 | Case | Status |
 | --- | --- |
 | E1 early settlement | **FIXED** — `submitResult` settles the race as soon as every staged participant (works for 2-6 racers) has a finished result and the race is `racing`; the socket server announces the settlement immediately from the finish response instead of waiting for T+15m. Covered by new store tests, including a 4-player last-finisher test. |
-| E3 result trust | **PARTIAL** — results are now rejected before `startsAt`, rejected for `cancelled`/`settled`/`no_contest`/`finalizing` races, and each lap must be ≥ 40s (`SCHEDULED_RACE_MIN_LAP_TIME_MS`, matching the casual floor). Still open: the endpoint is public (needs an internal token/co-sign before prod) and there is no `finishedAt ≥ startsAt + 3×minLap` wall-clock check yet. |
+| E3 result trust | **PARTIAL / ACCEPTED FOR ONLINE TESTING ONLY** — results are now rejected before `startsAt`, rejected for `cancelled`/`settled`/`no_contest`/`finalizing` races, and each lap must be ≥ 40s (`SCHEDULED_RACE_MIN_LAP_TIME_MS`, matching the casual floor). Still open: the endpoint is public (needs an internal token/co-sign before trusted prod) and there is no `finishedAt ≥ startsAt + 3×minLap` or `startsAt + totalTimeMs` wall-clock check yet. |
 | E4 leave never unstages | **PARTIAL (main path fixed)** — new `POST /scheduled-races/:raceId/unstage` + `store.unstage` (idempotent, refuses after start); the socket server unstages the entrant on `leaveScheduledRaceRoom` while the room is not yet `racing`. Still open: a raw socket **disconnect** before start intentionally keeps the fox staged (a crash/refresh should not lose the seat) — decide whether a staged-but-disconnected fox at T-0 should count toward min-2. |
 | E5 cancelled race still runs in room | **FIXED** (part 5, 2026-07-04) — the socket tick polls `GET /scheduled-races/:raceId` (new route + `store.getRace`) every 5s per active room and broadcasts terminal statuses via `scheduledRaceSettlement`; the client settlement listener freezes the countdown and shows the "Race cancelled" modal. Earlier partial fix (results rejected for cancelled races) still stands. |
 | E11 no-contest never announced | **FIXED** — the settlement announcement now fires exactly once for `settled`/`no_contest`/`cancelled` outcomes, always emits `scheduledRaceSettlement`, and emits `newGameTransaction` only when a txid exists; the once-per-second re-settle loop is gone. |
@@ -26,7 +33,7 @@ Target policy being checked against:
 | E17 reconnect orphaning | **PARTIAL** (later 2026-07-04) — socket reconnect during an active scheduled race now auto re-joins game + status + grid pose + race room (`scheduledRaceReconnect.ts`). Still open: lap-split rehydration after a full page refresh (needs `lapProgress` exposed in race responses). |
 | E6 `?now=` time travel | **FIXED** (part 5, 2026-07-04) — `allowTimeTravelNow` route option: enabled in dummy mode, disabled in real mode unless `SCHEDULED_RACE_ALLOW_TIME_TRAVEL=true`. |
 | E10 empty races become no_contest | **FIXED** (part 5, 2026-07-04) — `finalizeRace` (both stores) short-circuits to `cancelled` when fewer than 2 entrants were ever staged, so no tx-less no-contest records pollute completed listings. |
-| E2, E7-E9, E12, E14-E16, E18-E26 | Open — see the entries below. E2 (public finalize/settle routes) is the top prod blocker; see `PROD_SYNC_SCHEDULED_RACES.md` §5. |
+| E2, E7-E9, E12, E14-E16, E18-E26 | Open — see the entries below. E2 (public finalize/settle routes) is the top trusted-prod blocker; acceptable only for low-traffic beta testing with the guardrails in `PROD_SYNC_SCHEDULED_RACES.md` §5a. |
 
 ~~New follow-up created by the E1 fix~~ **DONE (part 5, 2026-07-04):** the
 frontend now listens for `scheduledRaceSettlement` (via

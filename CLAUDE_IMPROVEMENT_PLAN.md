@@ -262,13 +262,15 @@ Priority order. E-numbers reference `edgecases.md`.
 - [ ] Show cancelled state in the showroom instead of silently dropping the
       card (E12).
 
-### A3. Trust boundaries (needed before prod, fine to stub in dev)
+### A3. Trust boundaries (needed before trusted prod; accepted beta risk for online testing)
 - [ ] Guard `finalize`/`settle`/`final-inscription`/`unstage` routes (internal
-      token or time guard) (E2).
+      token or time guard) (E2). 2026-07-05 decision: low-traffic online testing
+      may happen before this lands, but multiplayer records are not
+      tamper-resistant until fixed; see `PROD_SYNC_SCHEDULED_RACES.md` §5a.
 - [x] Server-side lap-time floor for scheduled results and lap progress (≥40s
       like the casual path). Done 2026-07-04.
-- [ ] Reject finishes arriving before `startsAt + 3×minLap` wall-clock (E3
-      remainder).
+- [ ] Reject finishes arriving before `startsAt + 3×minLap` and before
+      `startsAt + totalTimeMs` wall-clock (E3 remainder).
 - [ ] Bind socket room `entrantId` to the socket's `identityKey` (E8).
 - [ ] Socket server owns `startsAt` per room (fetch from tx server; ignore
       client value after room creation) (E7).

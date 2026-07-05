@@ -125,6 +125,48 @@ land before real players race for real inscriptions:
 5. Remember the **socket server** and **frontend** also need their prod deploys
    pointed at the prod transaction server (this doc covers only the tx server).
 
+## 5a. Online testing exception — acceptable known risk
+
+For low-traffic online testing, it is acceptable to deploy the current
+open-source scheduled-race implementation before closing §5, as long as the
+deployment is treated as a **test/beta feature** and not announced as a trusted
+competitive mode.
+
+Known risk accepted for testing:
+
+1. `POST /scheduled-races/:raceId/results` and `/progress` are public. A caller
+   who knows a staged `entrantId` can bypass the socket server and submit
+   client-claimed lap data.
+2. `POST /scheduled-races/:raceId/finalize`, `/final-inscription`, and `/settle`
+   are public. A caller can force state transitions earlier than intended.
+3. Result timing has only basic validation: results are rejected before
+   `startsAt`, after terminal/finalizing states, and when any lap is below 40s,
+   but the store does **not** yet require the HTTP submission wall-clock to be
+   at least `startsAt + totalTimeMs` or `startsAt + 3×minLap`.
+4. Socket room identity is still client-claimed (`entrantId` and `startsAt`
+   should eventually be verified against the transaction server).
+
+Operational guardrails while testing online:
+
+1. Label multiplayer races as beta/test in any admin/deploy notes.
+2. Prefer dummy/test races until the trust-boundary fixes are done.
+3. Monitor completed race rows for impossible total times, unexpected early
+   finalization, and duplicate/conflicting entrant behavior.
+4. Do not use the resulting multiplayer records for prizes, rankings, or any
+   durable public claims until §5 is closed.
+5. If tampering appears, disable the scheduled-race UI first; the current API
+   surface is intentionally not hardened enough to rely on obscurity.
+
+Promotion criteria from online testing to trusted production:
+
+1. Add an internal/admin auth boundary for finalize/settle/final-inscription and
+   a socket-server co-sign or internal token for result/progress writes.
+2. Add wall-clock validation for finish submissions.
+3. Bind socket room joins to the staged signup identity and authoritative
+   `startsAt`.
+4. Re-run the full two-browser scheduled-race flow on the prod stack after those
+   fixes land.
+
 ## 6. Post-sync verification
 
 1. `bun test` (or prod's test runner) — `scheduledRaceStore.test.ts` passes
