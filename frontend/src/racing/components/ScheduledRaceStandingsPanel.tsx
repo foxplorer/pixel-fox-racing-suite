@@ -130,9 +130,8 @@ export const ScheduledRaceFinishStatusBanner = memo(function ScheduledRaceFinish
     activeRaceId &&
     snapshot.raceId === activeRaceId &&
     localEntrantId &&
-    localLapTimes.length >= lapsRequired &&
-    localPlace &&
-    finalizesAtMs !== null
+    finalizesAtMs !== null &&
+    (settlement || (localLapTimes.length >= lapsRequired && localPlace))
   )
 
   useEffect(() => {
@@ -141,10 +140,14 @@ export const ScheduledRaceFinishStatusBanner = memo(function ScheduledRaceFinish
     return () => window.clearInterval(intervalId)
   }, [shouldShow, settlement])
 
-  if (!shouldShow || !localPlace || finalizesAtMs === null) return null
+  if (!shouldShow || finalizesAtMs === null) return null
 
   const remainingMs = Math.max(0, finalizesAtMs - nowMs)
-  const trophyColor = getTrophyColor(localPlace)
+  const trophyColor = localPlace ? getTrophyColor(localPlace) : null
+  const finalTitle = localPlace ? `Finished ${getOrdinal(localPlace)}` : 'Race Complete'
+  const finalSubtitle = localPlace
+    ? trophyColor ? `${getOrdinal(localPlace)} place trophy` : 'No trophy for this finish'
+    : settlement?.status === 'settled' ? 'Results final' : 'Race ended'
 
   return (
     <div style={{
@@ -176,10 +179,10 @@ export const ScheduledRaceFinishStatusBanner = memo(function ScheduledRaceFinish
         {trophyColor && <TrophyPicture color={trophyColor} />}
         <div>
           <div style={{ color: trophyColor || '#ffffff', fontSize: 15, fontWeight: 800 }}>
-            Finished {getOrdinal(localPlace)}
+            {finalTitle}
           </div>
           <div style={{ color: trophyColor || '#d7d7d7', fontSize: 12, fontWeight: 800 }}>
-            {trophyColor ? `${getOrdinal(localPlace)} place trophy` : 'No trophy for this finish'}
+            {finalSubtitle}
           </div>
         </div>
       </div>

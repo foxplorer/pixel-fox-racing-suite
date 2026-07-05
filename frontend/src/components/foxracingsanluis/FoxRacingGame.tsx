@@ -685,11 +685,14 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       },
       onSettlement: race => {
         setScheduledRaceSettlement({ status: race.status, txid: race.finalInscription?.txid ?? null })
+        setCountdown(0)
         if (race.status === 'cancelled') {
           setScheduledRaceStartBlocked(true)
-          setCountdown(0)
           setGameStatus('countdown')
+          return
         }
+        setScheduledRaceStartBlocked(false)
+        setGameStatus('finished')
       }
     })
 

@@ -65,6 +65,27 @@ export interface RacingUiScheduledRaceStandings {
   settlement?: ScheduledRaceSettlementState | null
 }
 
+const getOrdinalLabel = (place: number): string => {
+  const mod100 = place % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${place}th`
+  switch (place % 10) {
+    case 1:
+      return `${place}st`
+    case 2:
+      return `${place}nd`
+    case 3:
+      return `${place}rd`
+    default:
+      return `${place}th`
+  }
+}
+
+const getSettlementLine = (settlement: ScheduledRaceSettlementState): string => {
+  if (settlement.status === 'settled') return settlement.txid ? 'Race inscribed' : 'Race complete'
+  if (settlement.status === 'no_contest') return 'Race ended — no contest'
+  return 'Race cancelled'
+}
+
 // ========== MAIN COMPONENT ==========
 
 interface RacingUIProps {
@@ -149,10 +170,23 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	// Track window size for responsive minimaps (must be before any conditional returns)
 	const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight })
 	const hasMultiplayerShowroom = Boolean(transactionServerUrl && onEnterScheduledRace)
-	const [showroomMode, setShowroomMode] = useState<'multiplayer' | 'itt'>(() => hasMultiplayerShowroom ? 'multiplayer' : 'itt')
+  const [showroomMode, setShowroomMode] = useState<'multiplayer' | 'itt'>(() => hasMultiplayerShowroom ? 'multiplayer' : 'itt')
   const isScheduledRaceActive = Boolean(scheduledRaceStandings?.activeRaceId)
-  const canLeaveScheduledRace = isScheduledRaceActive && (gameStatus === 'loading' || gameStatus === 'countdown')
+  const hasScheduledRaceSettlement = Boolean(scheduledRaceStandings?.settlement)
+  const canLeaveScheduledRace = isScheduledRaceActive && (
+    gameStatus === 'loading' ||
+    gameStatus === 'countdown' ||
+    hasScheduledRaceSettlement
+  )
   const showScheduledRaceStartBlockedModal = scheduledRaceStartBlocked && isScheduledRaceActive
+  const localScheduledRacePlace = scheduledRaceStandings?.localEntrantId
+    ? scheduledRaceStandings.finishOrderByEntrant?.[scheduledRaceStandings.localEntrantId]
+    : undefined
+  const showScheduledRaceOverModal = Boolean(
+    onEnterShowroom &&
+    scheduledRaceStandings?.settlement &&
+    scheduledRaceStandings.settlement.status !== 'cancelled'
+  )
 
 	useEffect(() => {
 	  const handleResize = () => {
@@ -398,7 +432,7 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
           type="button"
           onClick={onEnterShowroom}
           aria-label="Switch track"
-          title={canLeaveScheduledRace ? 'Leave this scheduled race and switch track' : 'Switch track'}
+          title={hasScheduledRaceSettlement ? 'Return to the showroom after this race' : canLeaveScheduledRace ? 'Leave this scheduled race and switch track' : 'Switch track'}
           style={{
             position: 'absolute',
             top: 18,
@@ -472,6 +506,60 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
                 Back to Showroom
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showScheduledRaceOverModal && scheduledRaceStandings?.settlement && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 132,
+          pointerEvents: 'auto',
+          display: 'grid',
+          placeItems: 'center',
+          background: 'rgba(0,0,0,0.34)',
+          backdropFilter: 'blur(2px)'
+        }}>
+          <div style={{
+            width: 'min(90vw, 430px)',
+            borderRadius: 8,
+            border: '1px solid rgba(53, 208, 111, 0.42)',
+            background: 'rgba(8, 8, 8, 0.9)',
+            boxShadow: '0 18px 44px rgba(0,0,0,0.45)',
+            padding: '18px',
+            color: '#fff',
+            fontFamily: 'monospace',
+            textAlign: 'left'
+          }}>
+            <div style={{ color: '#35D06F', fontSize: 16, fontWeight: 900, marginBottom: 8 }}>
+              Race Over
+            </div>
+            <div style={{ color: '#ffffff', fontSize: 20, fontWeight: 900, marginBottom: 8 }}>
+              {localScheduledRacePlace ? `Finished ${getOrdinalLabel(localScheduledRacePlace)}` : 'DNF'}
+            </div>
+            <div style={{ color: '#d8d8d8', fontSize: 12, lineHeight: 1.45, marginBottom: 14 }}>
+              {getSettlementLine(scheduledRaceStandings.settlement)}
+              {scheduledRaceStandings.settlement.txid ? ` · ${scheduledRaceStandings.settlement.txid.slice(0, 8)}...${scheduledRaceStandings.settlement.txid.slice(-6)}` : ''}
+            </div>
+            <button
+              type="button"
+              onClick={onEnterShowroom}
+              style={{
+                width: '100%',
+                height: 38,
+                borderRadius: 6,
+                border: '1px solid rgba(255,255,255,0.24)',
+                background: 'rgba(255,255,255,0.12)',
+                color: '#fff',
+                fontFamily: 'monospace',
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: 'pointer'
+              }}
+            >
+              Back to Showroom
+            </button>
           </div>
         </div>
       )}
