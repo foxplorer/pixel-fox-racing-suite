@@ -37,7 +37,8 @@ const HUDDisplay = memo<{
   lapTimes: number[]
   lapTxids: { [index: number]: string }
   scheduledRaceStandings?: RacingUiScheduledRaceStandings | null
-}>(({ distanceTraveled, speed, lapTime, gameStatus, lapTimes, lapTxids, scheduledRaceStandings }) => (
+  compact?: boolean
+}>(({ distanceTraveled, speed, lapTime, gameStatus, lapTimes, lapTxids, scheduledRaceStandings, compact }) => (
   <RacingHudMetrics
     distanceTraveled={distanceTraveled}
     speed={speed}
@@ -46,6 +47,7 @@ const HUDDisplay = memo<{
     lapTimes={scheduledRaceStandings ? undefined : lapTimes}
     lapTxids={lapTxids}
     lapListMarginTop="70px"
+    compact={compact}
     lapListReplacement={scheduledRaceStandings ? (
       <ScheduledRaceStandingsPanel
         snapshot={scheduledRaceStandings.snapshot}
@@ -607,6 +609,7 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
           lapTimes={lapTimes}
           lapTxids={lapTxids}
           scheduledRaceStandings={scheduledRaceStandings}
+          compact={isMobileRacingUi}
         />
 
       {isLiveDriving && !isMobileRacingUi && onQualityPresetChange && (

@@ -10,6 +10,7 @@ import {
   isCarGasKey,
   isCarMovementKey
 } from './carHandling'
+import { registerCarControlHandlers } from './carControlInput'
 
 type KeyState = Record<string, boolean>
 
@@ -60,6 +61,35 @@ export const useCarKeyboardControls = ({
   }, [onGasPlayError, onGasPressed, onGasReleased, onHeadlightsToggle])
 
   useEffect(() => {
+    // Shared press/release path: called by the keyboard handlers below and,
+    // via the carControlInput registry, by MobileDrivingControls — so touch
+    // input gets identical key state, gas audio, and status gating.
+    const pressControl = (code: string) => {
+      keys.current[code] = true
+
+      if (isCarGasKey(code) && gameStatus === 'racing' && !isGasSoundPlaying.current && isSoundEnabled) {
+        startCarGasAudio({
+          audio: gasAudio,
+          speed: speed.current,
+          isPlaying: isGasSoundPlaying,
+          onGasPressed: () => onGasPressedRef.current?.(),
+          onPlayError: err => onGasPlayErrorRef.current?.(err)
+        })
+      }
+    }
+
+    const releaseControl = (code: string) => {
+      keys.current[code] = false
+
+      if (isCarGasKey(code) && isGasSoundPlaying.current && !hasActiveCarGasKey(keys.current)) {
+        stopCarGasAudio({
+          audio: gasAudio,
+          isPlaying: isGasSoundPlaying,
+          onGasReleased: () => onGasReleasedRef.current?.()
+        })
+      }
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isEditableKeyboardTarget(event.target)) return
 
@@ -72,29 +102,11 @@ export const useCarKeyboardControls = ({
         onHeadlightsToggleRef.current?.()
       }
 
-      keys.current[event.code] = true
-
-      if (isCarGasKey(event.code) && gameStatus === 'racing' && !isGasSoundPlaying.current && isSoundEnabled) {
-        startCarGasAudio({
-          audio: gasAudio,
-          speed: speed.current,
-          isPlaying: isGasSoundPlaying,
-          onGasPressed: () => onGasPressedRef.current?.(),
-          onPlayError: err => onGasPlayErrorRef.current?.(err)
-        })
-      }
+      pressControl(event.code)
     }
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      keys.current[event.code] = false
-
-      if (isCarGasKey(event.code) && isGasSoundPlaying.current && !hasActiveCarGasKey(keys.current)) {
-        stopCarGasAudio({
-          audio: gasAudio,
-          isPlaying: isGasSoundPlaying,
-          onGasReleased: () => onGasReleasedRef.current?.()
-        })
-      }
+      releaseControl(event.code)
     }
 
     // Backgrounding (calls, app switches — routine on mobile) never delivers
@@ -116,11 +128,16 @@ export const useCarKeyboardControls = ({
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    const unregisterControlHandlers = registerCarControlHandlers({
+      press: pressControl,
+      release: releaseControl
+    })
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      unregisterControlHandlers()
       stopCarGasAudio({ audio: gasAudio, isPlaying: isGasSoundPlaying })
     }
   }, [gameStatus, gasAudio, isGasSoundPlaying, isSoundEnabled, keys, speed])

@@ -27,10 +27,11 @@ Decisions made during implementation that refine this plan:
 - The `visibilitychange` key/gas release went into `useCarKeyboardControls`
   itself, so desktop tab-switching benefits too.
 
-Still open: step 8 remainder (HUD shrink/panel collapse polish), step 9
-(responsive showroom), step 11 on-device spike (needs a phone; dev server
-binds 0.0.0.0:5173), Yours-wallet desktop-only gating, and step 6b before any
-production merge.
+Still open: step 9 (responsive showroom) and the step 11 on-device spike
+(user will deploy the branch to a separate Cloudflare Pages site for mobile
+testing, keeping prod untouched). Yours-wallet gating was dropped by user
+decision 2026-07-06: clicking Yours without the extension routes to the Yours
+GitHub page, so mobile users are not trapped in the retry loop.
 
 ## Core Position
 
@@ -326,9 +327,9 @@ If this fails, reduce scene budgets before investing in polished UI.
 4. ✅ Add the iOS fake-fullscreen fallback to `useFullscreenToggle` and a portrait/rotate overlay.
 5. ✅ Add `MobileDrivingControls` wired via synthetic keyboard events into the existing key-state path (spike only).
 6. ✅ Verify touch gas audio start/stop and add the one-time mobile audio unlock. *(Unlock wired to first touch on menu/controls; gas start/stop needs on-device verification in step 11.)*
-6b. ⬜ Before production merge: extract shared `pressCarControl`/`releaseCarControl` handlers from `useCarKeyboardControls` and switch `MobileDrivingControls` off synthetic events.
+6b. ✅ Before production merge: extract shared `pressCarControl`/`releaseCarControl` handlers from `useCarKeyboardControls` and switch `MobileDrivingControls` off synthetic events. *(Registry module `carControlInput.ts`; synthetic events remain only as fallback for vehicles that haven't registered handlers, e.g. snowmobile.)*
 7. ✅ Add mobile HUD layout rules, including the escape-hatch menu (back to showroom / switch track / exit race). *(Menu shipped as `MobileRaceMenu` incl. fullscreen toggle; HUD shrink itself is step 8 remainder.)*
-8. 🔶 Hide or collapse desktop-only panels during mobile racing. *(Controls helper, quality panel, camera selector hidden; `RacingHudMetrics` shrink still open.)*
+8. ✅ Hide or collapse desktop-only panels during mobile racing. *(Controls helper, quality panel, camera selector hidden; `RacingHudMetrics` has a compact mobile variant — smaller type, safe-area offsets, lap-history list dropped, standings kept.)*
 9. ⬜ Make the showroom layout responsive (shared desktop + mobile benefit), then add the mobile collapse tier.
 10. ✅ Add lifecycle handling: `visibilitychange` key/audio release, `webglcontextlost` recovery state. *(Plus `powerPreference: 'high-performance'` and native idle-audio loop on mobile.)*
 11. 🔶 Run real-device performance tests and tune budgets; add the adaptive FPS downgrade only if thermals demand it. *(Instrumentation shipped — FPS counter shows draw calls/triangles; the on-device runs remain.)*

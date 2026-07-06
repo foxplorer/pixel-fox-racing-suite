@@ -3,17 +3,21 @@ import {
   createMobileControlPressTracker,
   type MobileDrivingControlId
 } from './mobileDrivingControls'
+import { pressCarControl, releaseCarControl } from '../vehicles/carControlInput'
 
 interface MobileDrivingControlsProps {
   onFirstInteraction?: () => void
 }
 
-// Spike wiring (MOBILE_MODE_PLAN.md → Input Architecture): synthetic window
-// KeyboardEvents reuse the existing keyboard handlers untouched, including gas
-// audio start/stop and status gating. Before a production merge this switches
-// to shared pressCarControl/releaseCarControl handlers.
-const dispatchSyntheticControlKey = (type: 'keydown' | 'keyup', code: string): void => {
-  window.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }))
+// Primary path: the shared handlers registered by useCarKeyboardControls, so
+// touch drives the exact keyboard code path (key state, gas audio, gating).
+// Fallback: synthetic window KeyboardEvents, for vehicles that have not
+// registered handlers (e.g. snowmobile until its controls are adapted).
+const emitControlKey = (type: 'keydown' | 'keyup', code: string): void => {
+  const handled = type === 'keydown' ? pressCarControl(code) : releaseCarControl(code)
+  if (!handled) {
+    window.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }))
+  }
 }
 
 const CONTROL_LABELS: Record<MobileDrivingControlId, string> = {
@@ -69,7 +73,7 @@ export const MobileDrivingControls = memo<MobileDrivingControlsProps>(function M
     onFirstInteractionRef.current = onFirstInteraction
   }, [onFirstInteraction])
 
-  const tracker = useMemo(() => createMobileControlPressTracker(dispatchSyntheticControlKey), [])
+  const tracker = useMemo(() => createMobileControlPressTracker(emitControlKey), [])
 
   const syncPressedControls = useCallback(() => {
     setPressedControls(tracker.getPressedControls())

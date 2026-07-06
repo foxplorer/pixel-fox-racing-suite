@@ -16,6 +16,34 @@ new code — no schema change was needed for this session's fixes).
 
 ## Work log
 
+### Session 2026-07-06, part 3 (Claude) — mobile mode phase 3: step 6b + compact HUD
+
+- **Step 6b shipped (production input path).** New
+  `racing/vehicles/carControlInput.ts` registry:
+  `useCarKeyboardControls` extracts its keydown/keyup bodies into shared
+  `pressControl`/`releaseControl` and registers them on mount.
+  `MobileDrivingControls` now calls `pressCarControl`/`releaseCarControl`
+  directly — same key state, gas audio, and status gating as the keyboard,
+  no synthetic events. Synthetic `KeyboardEvent` dispatch remains only as a
+  fallback when no handlers are registered (snowmobile, until adapted). All
+  four car FreeRoamCar variants (incl. aspen) share the hook, so they all
+  register.
+- **Compact mobile HUD (step 8 closed).** `RacingHudMetrics` gained a
+  `compact` prop: 16/16/14px type, safe-area top/right offsets, lap-history
+  list dropped (scheduled-race standings replacement still shown — position
+  matters in multiplayer). `RacingUI` passes `compact` on the mobile profile.
+- **Yours-wallet gating dropped (user decision):** no extension on mobile ⇒
+  the Yours connect path routes to the yours-org GitHub, so no device gating
+  is needed; SHUAllet/Metanet intentionally remain available on desktop too.
+- **Testing plan (user):** the `mobile-mode` branch will deploy to a separate
+  Cloudflare Pages site for on-device testing, leaving the prod site alone.
+  Note for that deploy: `VITE_PIXELRACING_SOCKET_URL` /
+  `VITE_PIXELRACING_TRANSACTION_URL` default to localhost — set them at build
+  time if multiplayer should work there; time-trial/showroom/touch controls
+  work static.
+- Gates: `test:core` 602/602 (2 new), tsc diff vs main clean, `vite build`
+  clean.
+
 ### Session 2026-07-06, part 2 (Claude) — mobile mode phase 2: escape hatch, lifecycle, spike instrumentation
 
 Continues `MOBILE_MODE_PLAN.md` on `mobile-mode` (steps 7, 10, and step-11
