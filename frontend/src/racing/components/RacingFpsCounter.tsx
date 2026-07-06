@@ -1,4 +1,9 @@
 import React, { memo, useEffect, useRef, useState } from 'react'
+import {
+  areRacingRenderStatsFresh,
+  formatTriangleCount,
+  getRacingRenderStats
+} from '../debug/racingRenderStats'
 
 interface RacingFpsCounterProps {
   top?: number
@@ -24,6 +29,7 @@ export const RacingFpsCounter = memo<RacingFpsCounterProps>(function RacingFpsCo
   zIndex
 }) {
   const [fps, setFps] = useState(0)
+  const [renderStats, setRenderStats] = useState<{ drawCalls: number; triangles: number } | null>(null)
   const framesRef = useRef(0)
   const lastTimeRef = useRef(performance.now())
 
@@ -42,6 +48,12 @@ export const RacingFpsCounter = memo<RacingFpsCounterProps>(function RacingFpsCo
       setFps(currentFps)
       framesRef.current = 0
       lastTimeRef.current = now
+      if (areRacingRenderStatsFresh(now)) {
+        const { drawCalls, triangles } = getRacingRenderStats()
+        setRenderStats({ drawCalls, triangles })
+      } else {
+        setRenderStats(null)
+      }
     }, 500)
 
     animationId = requestAnimationFrame(countFrame)
@@ -71,6 +83,11 @@ export const RacingFpsCounter = memo<RacingFpsCounterProps>(function RacingFpsCo
       color: getFpsColor(fps)
     }}>
       FPS: {fps}
+      {renderStats && (
+        <div style={{ color: '#d8d8d8', fontSize: '10px', marginTop: '2px' }}>
+          DC {renderStats.drawCalls} · TRI {formatTriangleCount(renderStats.triangles)}
+        </div>
+      )}
     </div>
   )
 })

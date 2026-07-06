@@ -1,7 +1,9 @@
-import React from 'react'
-import { Canvas } from '@react-three/fiber'
+import React, { useMemo, useState } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
+import { getRacingDeviceProfileSnapshot } from '../platform/useRacingDeviceProfile'
+import { reportRacingRenderStats } from '../debug/racingRenderStats'
 import type { RacingGameCollectibleItem as GameItem } from '../collectibles/collectibleTypes'
 import type { RacingCanvasQualitySettings } from '../performance/qualitySettings'
 import { CarTrackStartGate, type CarTrackStartGateLayoutOptions } from './CarTrackStartGate'
@@ -12,6 +14,13 @@ import { RaceCameraLookAtInitializer, getInitialRaceCameraPosition } from './rac
 import type { TerrainHeightSampler } from '../core/roadCorridor'
 
 type CarTrackWorldStatus = 'idle' | 'showroom' | 'loading' | 'countdown' | 'racing' | 'crashed' | 'finished'
+
+const RenderStatsReporter: React.FC = () => {
+  useFrame(({ gl }) => {
+    reportRacingRenderStats(gl.info.render.calls, gl.info.render.triangles)
+  })
+  return null
+}
 
 interface CarTrackWorldShellManualCamera {
   isManualCamera: boolean
@@ -57,12 +66,17 @@ export const CarTrackWorldShell: React.FC<CarTrackWorldShellProps> = ({
   frameloop = 'always'
 }) => {
   const initialCameraPosition = getInitialRaceCameraPosition(startFinishPosition, startFinishDirection)
+  const [isContextLost, setIsContextLost] = useState(false)
+  // Sampled once per mount: only used for renderer creation options.
+  const prefersMobileRenderer = useMemo(() => getRacingDeviceProfileSnapshot().prefersMobileRacingUi, [])
 
   return (
+    <>
     <Canvas
       key="racing"
       shadows={canvasQuality.shadows}
       dpr={canvasQuality.dpr}
+      gl={prefersMobileRenderer ? { powerPreference: 'high-performance' } : undefined}
       camera={{
         position: [initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z],
         fov: 60,
@@ -70,7 +84,20 @@ export const CarTrackWorldShell: React.FC<CarTrackWorldShellProps> = ({
         near: 0.1
       }}
       frameloop={frameloop}
+      onCreated={({ gl }) => {
+        const canvasElement = gl.domElement
+        canvasElement.addEventListener('webglcontextlost', event => {
+          // preventDefault tells the browser we handle restoration, so it
+          // will fire webglcontextrestored instead of leaving a dead canvas.
+          event.preventDefault()
+          setIsContextLost(true)
+        })
+        canvasElement.addEventListener('webglcontextrestored', () => {
+          setIsContextLost(false)
+        })
+      }}
     >
+      <RenderStatsReporter />
       <RaceCameraLookAtInitializer target={startFinishPosition} />
       {staticScenery}
       <CarTrackStartGate
@@ -102,5 +129,28 @@ export const CarTrackWorldShell: React.FC<CarTrackWorldShellProps> = ({
         }}
       />
     </Canvas>
+    {isContextLost && (
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 40,
+        display: 'grid',
+        placeItems: 'center',
+        background: 'rgba(0, 0, 0, 0.8)',
+        color: '#fff',
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        textAlign: 'center',
+        userSelect: 'none'
+      }}>
+        <div>
+          <div style={{ fontWeight: 800, marginBottom: '6px' }}>Restoring graphics…</div>
+          <div style={{ fontSize: '11px', color: '#c9c9c9' }}>
+            The graphics context was interrupted. Hang tight.
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

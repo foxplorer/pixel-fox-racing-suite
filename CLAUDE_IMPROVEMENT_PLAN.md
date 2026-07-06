@@ -16,6 +16,50 @@ new code — no schema change was needed for this session's fixes).
 
 ## Work log
 
+### Session 2026-07-06, part 2 (Claude) — mobile mode phase 2: escape hatch, lifecycle, spike instrumentation
+
+Continues `MOBILE_MODE_PLAN.md` on `mobile-mode` (steps 7, 10, and step-11
+instrumentation; audio-unlock wiring closed out from phase 1).
+
+- **`MobileRaceMenu`** (plan step 7 escape hatch): compact ☰ button, top-left
+  (HUD metrics own the top-right), safe-area padded, shown on mobile for all
+  race statuses. Items: Enter/Exit Fullscreen, Switch Track, Exit to Showroom
+  (both route through the showroom track selector per the plan; respects the
+  same `canLeaveScheduledRace` gating as the desktop button). The desktop
+  "Switch Track" pill is now desktop-only.
+- **Fullscreen threading**: `RacingUI` gained optional
+  `isFullscreen`/`onToggleFullscreen`/`onMobileFirstInteraction` props, wired
+  from the three car-track `FoxRacingGame` shells — mobile players can now
+  enter fullscreen (with the phase-1 iOS fake-fullscreen fallback) without the
+  desktop in-world button.
+- **Audio unlock wired** (closes phase-1 TODO): each car game builds
+  `handleMobileFirstInteraction` → `unlockAudioElementsForTouch(idle, beeps,
+  ding[, volcano])`, fired from the first touch on the race menu or driving
+  controls, so countdown/crash sounds survive iOS per-element autoplay locks.
+- **Lifecycle (plan step 10)**:
+  - `useCarKeyboardControls` releases all pressed keys and stops gas audio on
+    `visibilitychange → hidden` (backgrounding never delivers the pending
+    keyups; benefits desktop tab-switching too).
+  - `CarTrackWorldShell` listens for `webglcontextlost` (preventDefault so the
+    browser restores) / `webglcontextrestored` and shows a "Restoring
+    graphics…" overlay instead of a frozen frame. Also passes
+    `powerPreference: 'high-performance'` on touch-first devices (dual-GPU
+    phones pick the fast one).
+  - `useLoopingIdleAudio` uses native `audio.loop = true` on mobile instead of
+    the 50 ms `currentTime` poll, which mobile browsers throttle when the
+    screen dims.
+- **Spike instrumentation (step 11 prep)**: `racing/debug/racingRenderStats.ts`
+  module store + `RenderStatsReporter` (useFrame) inside the car-track Canvas;
+  `RacingFpsCounter` now shows `DC n · TRI nk` when stats are fresh, and a
+  centered FPS/stats readout renders on mobile during live driving (the
+  desktop quality panel that hosted it is hidden on mobile).
+- Gates: `test:core` 600/600 (2 new), tsc diff vs main clean (51 pre-existing
+  on both), `vite build` clean.
+- **Still open**: HUD shrink + panel collapse polish (step 8 remainder),
+  responsive showroom (step 9), real-device spike (step 11 — needs a phone;
+  dev server already binds 0.0.0.0:5173), Yours-wallet desktop-only gating,
+  step 6b synthetic-events → shared handlers before production merge.
+
 ### Session 2026-07-06 (Claude) — mobile mode phase 1 (branch `mobile-mode`)
 
 Context: began implementing `MOBILE_MODE_PLAN.md` (steps 1–6 of its

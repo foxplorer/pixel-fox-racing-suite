@@ -97,12 +97,30 @@ export const useCarKeyboardControls = ({
       }
     }
 
+    // Backgrounding (calls, app switches — routine on mobile) never delivers
+    // the keyups we are waiting for, so release everything and stop the gas.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'hidden') return
+      Object.keys(keys.current).forEach(code => {
+        keys.current[code] = false
+      })
+      if (isGasSoundPlaying.current) {
+        stopCarGasAudio({
+          audio: gasAudio,
+          isPlaying: isGasSoundPlaying,
+          onGasReleased: () => onGasReleasedRef.current?.()
+        })
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       stopCarGasAudio({ audio: gasAudio, isPlaying: isGasSoundPlaying })
     }
   }, [gameStatus, gasAudio, isGasSoundPlaying, isSoundEnabled, keys, speed])

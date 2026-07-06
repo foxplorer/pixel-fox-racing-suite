@@ -19,6 +19,7 @@ import { RacingFpsCounter } from '../../racing/components/RacingFpsCounter'
 import { RacingShowroomStatsStrip } from '../../racing/components/RacingShowroomStatsStrip'
 import { MobileDrivingControls } from '../../racing/components/MobileDrivingControls'
 import { MobileOrientationOverlay } from '../../racing/components/MobileOrientationOverlay'
+import { MobileRaceMenu } from '../../racing/components/MobileRaceMenu'
 import { useRacingDeviceProfile } from '../../racing/platform/useRacingDeviceProfile'
 import { ScheduledRaceFinishStatusBanner, ScheduledRaceStandingsPanel, type ScheduledRaceFinishOrderByEntrant, type ScheduledRaceLapProgressByEntrant, type ScheduledRaceSettlementState } from '../../racing/components/ScheduledRaceStandingsPanel'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
@@ -126,6 +127,9 @@ interface RacingUIProps {
   onEnterScheduledRace?: (race: ScheduledRace, signup: ScheduledRaceSignup) => void
   scheduledRaceStandings?: RacingUiScheduledRaceStandings | null
   scheduledRaceStartBlocked?: boolean
+  isFullscreen?: boolean
+  onToggleFullscreen?: () => void
+  onMobileFirstInteraction?: () => void
   devRemotePlayerLoad?: {
     configuredCount: number
     visibleCount: number
@@ -168,6 +172,9 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
   onEnterScheduledRace,
   scheduledRaceStandings,
   scheduledRaceStartBlocked = false,
+  isFullscreen,
+  onToggleFullscreen,
+  onMobileFirstInteraction,
   devRemotePlayerLoad
 }) => {
 	// Track window size for responsive minimaps (must be before any conditional returns)
@@ -433,7 +440,17 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 50 }}>
-      {onEnterShowroom && gameStatus !== 'idle' && gameStatus !== 'showroom' && (!scheduledRaceStandings || canLeaveScheduledRace) && (
+      {isMobileRacingUi && (
+        <MobileRaceMenu
+          canLeaveRace={!scheduledRaceStandings || canLeaveScheduledRace}
+          onEnterShowroom={onEnterShowroom}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={onToggleFullscreen}
+          onAnyInteraction={onMobileFirstInteraction}
+        />
+      )}
+
+      {!isMobileRacingUi && onEnterShowroom && gameStatus !== 'idle' && gameStatus !== 'showroom' && (!scheduledRaceStandings || canLeaveScheduledRace) && (
         <button
           type="button"
           onClick={onEnterShowroom}
@@ -639,7 +656,20 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 
       {!isMobileRacingUi && <RacingControlsHelper />}
 
-      {isMobileRacingUi && isLiveDriving && <MobileDrivingControls />}
+      {isMobileRacingUi && isLiveDriving && (
+        <MobileDrivingControls onFirstInteraction={onMobileFirstInteraction} />
+      )}
+
+      {isMobileRacingUi && isLiveDriving && (
+        <RacingFpsCounter
+          position="absolute"
+          top={12}
+          left="50%"
+          right="auto"
+          transform="translateX(-50%)"
+          zIndex={60}
+        />
+      )}
 
       {gameStatus === 'countdown' && countdown > 0 && countdown <= 3 && (
         <RacingCountdownDisplay countdown={countdown} />

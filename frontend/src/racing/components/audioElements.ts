@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getRacingDeviceProfileSnapshot } from '../platform/useRacingDeviceProfile'
 
 interface PreloadedAudioOptions {
   volume?: number
@@ -119,6 +120,14 @@ export const useLoopingIdleAudio = (
         .then(() => {
           console.log('✅ Idle sound playing')
           markSoundEnabled()
+
+          // Mobile browsers throttle timers when the tab is hidden or the
+          // screen dims, which stalls the 50ms loop poll. Native looping
+          // keeps the idle bed running there instead.
+          if (getRacingDeviceProfileSnapshot().prefersMobileRacingUi) {
+            audio.loop = true
+            return
+          }
 
           if (loopCheckIntervalRef.current) {
             clearInterval(loopCheckIntervalRef.current)

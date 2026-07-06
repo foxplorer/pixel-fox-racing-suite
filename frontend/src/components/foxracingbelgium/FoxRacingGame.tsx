@@ -39,7 +39,7 @@ import { RacingChatInputBar } from '../../racing/components/RacingChatInputBar'
 import { RacingSoundToggle } from '../../racing/components/RacingSoundToggle'
 import { getCarRacingGameViewportStyle } from '../../racing/components/racingGameViewport'
 import { useRacingDeviceProfile } from '../../racing/platform/useRacingDeviceProfile'
-import { createPreloadedAudio, playAudioElement, useLoopingIdleAudio } from '../../racing/components/audioElements'
+import { createPreloadedAudio, playAudioElement, unlockAudioElementsForTouch, useLoopingIdleAudio } from '../../racing/components/audioElements'
 import { useRaceCountdownFlow } from '../../racing/components/useRaceCountdownFlow'
 import { useCurrentPlayersPanelRender } from '../../racing/components/useCurrentPlayersPanelRender'
 import { useRacingChatSender } from '../../racing/components/useRacingChatSender'
@@ -393,6 +393,10 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     pauseIdleAudioForGas,
     resumeIdleAudioAfterGas
   } = useLoopingIdleAudio(audio)
+
+  const handleMobileFirstInteraction = useCallback(() => {
+    unlockAudioElementsForTouch([audio, raceStartBeepsAudio, dingAudio])
+  }, [audio, dingAudio, raceStartBeepsAudio])
   
   const playDingSound = useCallback(() => {
     if (isSoundEnabled && dingAudio) {
@@ -1250,6 +1254,9 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           speed={speed}
           countdown={countdown}
           hasJoined={hasJoined}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
+          onMobileFirstInteraction={handleMobileFirstInteraction}
           onJoin={handleStartRace}
           onEnterShowroom={handleEnterShowroom}
           onRestart={handleRestart}
