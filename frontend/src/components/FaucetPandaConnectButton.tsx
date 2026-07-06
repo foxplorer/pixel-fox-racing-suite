@@ -328,7 +328,10 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
   ) : null;
 
   return (
-    <div style={{ display: 'grid', justifyItems: 'center', gap: '10px' }}>
+    // justifyItems must stay 'start': the error text block below is wider than
+    // the 220px buttons, and centering would shift the buttons right whenever
+    // an error message appears.
+    <div style={{ display: 'grid', justifyItems: 'start', gap: '10px' }}>
       <button
         type="button"
         className="FaucetButtonHover"
@@ -385,7 +388,20 @@ export const FaucetPandaConnectButton = (props: FaucetPandaConnectButtonProps) =
             ? shualletError
             : selectedProvider === METANET_WALLET_PROVIDER
             ? 'Metanet needs another step. Make sure Metanet Client is open and unlocked at localhost:3321, then click "Connect Metanet" again to finish granting permissions.'
-            : 'Almost there — make sure the Yours extension is enabled and unlocked, then click "Connect Yours" again to finish granting permissions.'}
+            : (
+              <>
+                Almost there — make sure the{' '}
+                <a
+                  href="https://github.com/yours-org/yours-wallet"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#ffffff', textDecoration: 'underline' }}
+                >
+                  Yours extension
+                </a>
+                {' '}is enabled and unlocked, then click "Connect Yours" again to finish granting permissions.
+              </>
+            )}
         </div>
       )}
     </div>
