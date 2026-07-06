@@ -1,4 +1,4 @@
-export type RacingQualityPresetId = 'low' | 'medium' | 'high'
+export type RacingQualityPresetId = 'mobile' | 'low' | 'medium' | 'high'
 
 export interface RacingQualityPreset {
   id: RacingQualityPresetId
@@ -6,6 +6,7 @@ export interface RacingQualityPreset {
   renderer: {
     pixelRatioCap: number
     shadows: boolean
+    antialias: boolean
   }
   remotePlayers: {
     renderDistance: number
@@ -44,12 +45,33 @@ export const DEFAULT_RACING_QUALITY_PRESET_ID: RacingQualityPresetId = 'medium'
 export const RACING_QUALITY_STORAGE_KEY = 'pixelFoxRacing.qualityPreset'
 
 export const RACING_QUALITY_PRESETS: Record<RacingQualityPresetId, RacingQualityPreset> = {
+  mobile: {
+    id: 'mobile',
+    label: 'Mobile',
+    renderer: {
+      pixelRatioCap: 1,
+      shadows: false,
+      antialias: false
+    },
+    remotePlayers: {
+      renderDistance: 120,
+      maxVisible: 4
+    },
+    minimap: {
+      updateEveryFrames: 6
+    },
+    scenery: {
+      densityScale: 0.35,
+      detailDistanceScale: 0.45
+    }
+  },
   low: {
     id: 'low',
     label: 'Low',
     renderer: {
       pixelRatioCap: 1,
-      shadows: false
+      shadows: false,
+      antialias: false
     },
     remotePlayers: {
       renderDistance: 180,
@@ -68,7 +90,8 @@ export const RACING_QUALITY_PRESETS: Record<RacingQualityPresetId, RacingQuality
     label: 'Medium',
     renderer: {
       pixelRatioCap: 1.5,
-      shadows: true
+      shadows: true,
+      antialias: true
     },
     remotePlayers: {
       renderDistance: 300,
@@ -87,7 +110,8 @@ export const RACING_QUALITY_PRESETS: Record<RacingQualityPresetId, RacingQuality
     label: 'High',
     renderer: {
       pixelRatioCap: 2,
-      shadows: true
+      shadows: true,
+      antialias: true
     },
     remotePlayers: {
       renderDistance: 600,
@@ -112,7 +136,7 @@ export const getRacingQualityPreset = (
 export const resolveRacingQualityPresetId = (
   presetId: string | null | undefined
 ): RacingQualityPresetId => {
-  return presetId === 'low' || presetId === 'medium' || presetId === 'high'
+  return presetId === 'mobile' || presetId === 'low' || presetId === 'medium' || presetId === 'high'
     ? presetId
     : DEFAULT_RACING_QUALITY_PRESET_ID
 }
@@ -154,7 +178,7 @@ export const getRacingCanvasQualitySettings = (
   return {
     dpr: [1, preset.renderer.pixelRatioCap],
     shadows: preset.renderer.shadows,
-    antialias: preset.id !== 'low'
+    antialias: preset.renderer.antialias
   }
 }
 

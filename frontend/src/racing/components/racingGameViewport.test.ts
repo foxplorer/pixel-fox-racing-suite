@@ -25,3 +25,20 @@ test('getCarRacingGameViewportStyle preserves active race sizing', () => {
   assert.equal(style.backgroundColor, '#000')
   assert.equal(style.margin, '0 auto')
 })
+
+test('getCarRacingGameViewportStyle uses dvh and no clamp for mobile racing', () => {
+  const style = getCarRacingGameViewportStyle('racing', { useMobileViewportUnits: true })
+
+  assert.equal(style.height, '100dvh')
+  assert.equal(style.maxHeight, 'none')
+  assert.equal(style.overscrollBehavior, 'none')
+})
+
+test('getCarRacingGameViewportStyle keeps mobile idle view shorter than fullscreen', () => {
+  const idleStyle = getCarRacingGameViewportStyle('idle', { useMobileViewportUnits: true })
+  const showroomStyle = getCarRacingGameViewportStyle('showroom', { useMobileViewportUnits: true })
+
+  assert.equal(idleStyle.height, '80dvh')
+  assert.equal(showroomStyle.height, '100dvh')
+  assert.equal(showroomStyle.maxHeight, 'none')
+})

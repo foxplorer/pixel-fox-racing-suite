@@ -115,6 +115,19 @@ const SURFACE_QUALITY_TABLE: Record<
   Record<RacingQualityPresetId, Omit<RacingSurfaceTextureConfig, 'palette'>>
 > = {
   asphalt: {
+    // Mobile keeps low's resolution but paints fewer detail passes: texture
+    // generation happens on the main thread at track load, and phones feel
+    // that stall much more than desktops.
+    mobile: {
+      textureSize: 256,
+      tileWorldSize: ASPHALT_TILE_WORLD_SIZE,
+      detailPasses: 200,
+      anisotropy: 1,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.96,
+      metalness: 0
+    },
     low: {
       textureSize: 256,
       tileWorldSize: ASPHALT_TILE_WORLD_SIZE,
@@ -147,6 +160,16 @@ const SURFACE_QUALITY_TABLE: Record<
     }
   },
   grass: {
+    mobile: {
+      textureSize: 256,
+      tileWorldSize: GRASS_TILE_WORLD_SIZE,
+      detailPasses: 450,
+      anisotropy: 1,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.96,
+      metalness: 0
+    },
     low: {
       textureSize: 256,
       tileWorldSize: GRASS_TILE_WORLD_SIZE,
@@ -179,6 +202,16 @@ const SURFACE_QUALITY_TABLE: Record<
     }
   },
   'volcanic-rock': {
+    mobile: {
+      textureSize: 256,
+      tileWorldSize: VOLCANIC_ROCK_TILE_WORLD_SIZE,
+      detailPasses: 260,
+      anisotropy: 1,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.95,
+      metalness: 0.02
+    },
     low: {
       textureSize: 256,
       tileWorldSize: VOLCANIC_ROCK_TILE_WORLD_SIZE,
@@ -213,6 +246,16 @@ const SURFACE_QUALITY_TABLE: Record<
   // Paint is glossier than the tarmac it sits on (slight thermoplastic sheen), so it
   // runs a lower roughness. detailPasses here are grime flecks + worn chips.
   'road-paint-yellow': {
+    mobile: {
+      textureSize: 128,
+      tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
+      detailPasses: 60,
+      anisotropy: 1,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.72,
+      metalness: 0.0
+    },
     low: {
       textureSize: 128,
       tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
@@ -245,6 +288,16 @@ const SURFACE_QUALITY_TABLE: Record<
     }
   },
   'road-paint-white': {
+    mobile: {
+      textureSize: 128,
+      tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,
+      detailPasses: 60,
+      anisotropy: 1,
+      normalMap: false,
+      normalScale: 0,
+      roughness: 0.72,
+      metalness: 0.0
+    },
     low: {
       textureSize: 128,
       tileWorldSize: ROAD_PAINT_TILE_WORLD_SIZE,

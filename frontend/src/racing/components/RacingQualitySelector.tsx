@@ -10,7 +10,7 @@ interface RacingQualitySelectorProps {
   layout?: 'horizontal' | 'vertical'
 }
 
-const QUALITY_PRESET_IDS: RacingQualityPresetId[] = ['low', 'medium', 'high']
+const QUALITY_PRESET_IDS: RacingQualityPresetId[] = ['mobile', 'low', 'medium', 'high']
 
 export const RacingQualitySelector = memo<RacingQualitySelectorProps>(function RacingQualitySelector({
   selectedPresetId,
@@ -38,7 +38,7 @@ export const RacingQualitySelector = memo<RacingQualitySelectorProps>(function R
         style={{
           display: isVertical ? 'flex' : 'grid',
           flexDirection: isVertical ? 'column' : undefined,
-          gridTemplateColumns: isVertical ? undefined : 'repeat(3, 1fr)',
+          gridTemplateColumns: isVertical ? undefined : `repeat(${QUALITY_PRESET_IDS.length}, 1fr)`,
           gap: isVertical ? '4px' : '6px',
           width: '100%'
         }}

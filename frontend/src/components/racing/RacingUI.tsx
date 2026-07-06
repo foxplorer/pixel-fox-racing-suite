@@ -17,6 +17,9 @@ import { RacingConnectOverlay } from '../../racing/components/RacingConnectOverl
 import { RacingQualitySelector } from '../../racing/components/RacingQualitySelector'
 import { RacingFpsCounter } from '../../racing/components/RacingFpsCounter'
 import { RacingShowroomStatsStrip } from '../../racing/components/RacingShowroomStatsStrip'
+import { MobileDrivingControls } from '../../racing/components/MobileDrivingControls'
+import { MobileOrientationOverlay } from '../../racing/components/MobileOrientationOverlay'
+import { useRacingDeviceProfile } from '../../racing/platform/useRacingDeviceProfile'
 import { ScheduledRaceFinishStatusBanner, ScheduledRaceStandingsPanel, type ScheduledRaceFinishOrderByEntrant, type ScheduledRaceLapProgressByEntrant, type ScheduledRaceSettlementState } from '../../racing/components/ScheduledRaceStandingsPanel'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import type { ScheduledRaceRoomSnapshot } from '../../racing/scheduled/scheduledRaceSocket'
@@ -169,6 +172,9 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 }) => {
 	// Track window size for responsive minimaps (must be before any conditional returns)
 	const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight })
+	const deviceProfile = useRacingDeviceProfile()
+	const isMobileRacingUi = deviceProfile.prefersMobileRacingUi
+	const isLiveDriving = gameStatus === 'racing' || gameStatus === 'countdown'
 	const hasMultiplayerShowroom = Boolean(transactionServerUrl && onEnterScheduledRace)
   const [showroomMode, setShowroomMode] = useState<'multiplayer' | 'itt'>(() => hasMultiplayerShowroom ? 'multiplayer' : 'itt')
   const isScheduledRaceActive = Boolean(scheduledRaceStandings?.activeRaceId)
@@ -586,7 +592,7 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
           scheduledRaceStandings={scheduledRaceStandings}
         />
 
-      {(gameStatus === 'racing' || gameStatus === 'countdown') && onQualityPresetChange && (
+      {isLiveDriving && !isMobileRacingUi && onQualityPresetChange && (
         <div style={{
           position: 'absolute',
           top: 424,
@@ -624,14 +630,16 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
         </div>
       )}
 
-      {(gameStatus === 'racing' || gameStatus === 'countdown') && onCameraModeChange && (
+      {isLiveDriving && !isMobileRacingUi && onCameraModeChange && (
         <RacingCameraModeSelector
           cameraMode={cameraMode}
           onCameraModeChange={onCameraModeChange}
         />
       )}
 
-      <RacingControlsHelper />
+      {!isMobileRacingUi && <RacingControlsHelper />}
+
+      {isMobileRacingUi && isLiveDriving && <MobileDrivingControls />}
 
       {gameStatus === 'countdown' && countdown > 0 && countdown <= 3 && (
         <RacingCountdownDisplay countdown={countdown} />
@@ -646,6 +654,10 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
           description="Your fox burned up in the lava!"
           restartLabel="Restart Track"
         />
+      )}
+
+      {isMobileRacingUi && isLiveDriving && !deviceProfile.isLandscape && (
+        <MobileOrientationOverlay />
       )}
     </div>
   )

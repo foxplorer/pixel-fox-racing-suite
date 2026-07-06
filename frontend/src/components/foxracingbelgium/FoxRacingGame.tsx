@@ -38,6 +38,7 @@ import { RacingLoadingOverlay } from '../../racing/components/RacingLoadingOverl
 import { RacingChatInputBar } from '../../racing/components/RacingChatInputBar'
 import { RacingSoundToggle } from '../../racing/components/RacingSoundToggle'
 import { getCarRacingGameViewportStyle } from '../../racing/components/racingGameViewport'
+import { useRacingDeviceProfile } from '../../racing/platform/useRacingDeviceProfile'
 import { createPreloadedAudio, playAudioElement, useLoopingIdleAudio } from '../../racing/components/audioElements'
 import { useRaceCountdownFlow } from '../../racing/components/useRaceCountdownFlow'
 import { useCurrentPlayersPanelRender } from '../../racing/components/useCurrentPlayersPanelRender'
@@ -137,7 +138,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   const TESTING_MODE = false // Set to false to enable transaction submission
   // =======================================================================
 
-  const { containerRef, isFullscreen, toggleFullscreen } = useFullscreenToggle<HTMLDivElement>()
+  const { containerRef, isFullscreen, toggleFullscreen, fallbackFullscreenStyle } = useFullscreenToggle<HTMLDivElement>()
+  const deviceProfile = useRacingDeviceProfile()
   const [gameStatus, setGameStatus] = useState<GameStatus>('idle')
   const [score, setScore] = useState(0)
   const [distanceTraveled, setDistanceTraveled] = useState(0)
@@ -1165,7 +1167,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
 
   return (
     <>
-      <div ref={containerRef} style={getCarRacingGameViewportStyle(gameStatus)}>
+      <div ref={containerRef} style={{ ...getCarRacingGameViewportStyle(gameStatus, { useMobileViewportUnits: deviceProfile.prefersMobileRacingUi }), ...(fallbackFullscreenStyle ?? {}) }}>
         {/* Loading Screen */}
         {gameStatus === 'loading' && (
           <RacingLoadingOverlay />

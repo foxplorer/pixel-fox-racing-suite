@@ -3,7 +3,7 @@ import { SeededRandom } from '../../core/seededRandom'
 
 export type TreeSpecies = 'broadleaf' | 'conifer'
 
-export type TreeBillboardQuality = 'low' | 'medium' | 'high'
+export type TreeBillboardQuality = 'mobile' | 'low' | 'medium' | 'high'
 
 export interface TreeBillboardPalette {
   trunk: string
@@ -57,6 +57,7 @@ interface TreeQualityProfile {
 }
 
 const QUALITY_PROFILES: Record<TreeBillboardQuality, TreeQualityProfile> = {
+  mobile: { cellSize: 64, detailScale: 0.4 },
   low: { cellSize: 96, detailScale: 0.55 },
   medium: { cellSize: 128, detailScale: 1 },
   high: { cellSize: 192, detailScale: 1.7 }

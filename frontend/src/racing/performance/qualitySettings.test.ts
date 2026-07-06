@@ -15,6 +15,18 @@ test('getRacingQualityPreset resolves defaults and known presets', () => {
   assert.equal(getRacingQualityPreset('high').remotePlayers.maxVisible, 32)
 })
 
+test('mobile preset uses the tightest render budget', () => {
+  const mobile = RACING_QUALITY_PRESETS.mobile
+  assert.equal(mobile.renderer.pixelRatioCap, 1)
+  assert.equal(mobile.renderer.shadows, false)
+  assert.equal(mobile.renderer.antialias, false)
+  assert.ok(mobile.remotePlayers.maxVisible <= RACING_QUALITY_PRESETS.low.remotePlayers.maxVisible)
+  assert.ok(mobile.remotePlayers.renderDistance <= RACING_QUALITY_PRESETS.low.remotePlayers.renderDistance)
+  assert.ok(mobile.minimap.updateEveryFrames >= RACING_QUALITY_PRESETS.low.minimap.updateEveryFrames)
+  assert.ok(mobile.scenery.densityScale <= RACING_QUALITY_PRESETS.low.scenery.densityScale)
+  assert.ok(mobile.scenery.detailDistanceScale <= RACING_QUALITY_PRESETS.low.scenery.detailDistanceScale)
+})
+
 test('quality presets scale remote player budget upward', () => {
   assert.ok(RACING_QUALITY_PRESETS.low.remotePlayers.maxVisible < RACING_QUALITY_PRESETS.medium.remotePlayers.maxVisible)
   assert.ok(RACING_QUALITY_PRESETS.medium.remotePlayers.maxVisible < RACING_QUALITY_PRESETS.high.remotePlayers.maxVisible)
@@ -23,6 +35,7 @@ test('quality presets scale remote player budget upward', () => {
 })
 
 test('resolveRacingQualityPresetId accepts known ids and falls back to default', () => {
+  assert.equal(resolveRacingQualityPresetId('mobile'), 'mobile')
   assert.equal(resolveRacingQualityPresetId('low'), 'low')
   assert.equal(resolveRacingQualityPresetId('medium'), 'medium')
   assert.equal(resolveRacingQualityPresetId('high'), 'high')
@@ -31,6 +44,11 @@ test('resolveRacingQualityPresetId accepts known ids and falls back to default',
 })
 
 test('getRacingCanvasQualitySettings derives renderer budget from preset', () => {
+  assert.deepEqual(getRacingCanvasQualitySettings(getRacingQualityPreset('mobile')), {
+    dpr: [1, 1],
+    shadows: false,
+    antialias: false
+  })
   assert.deepEqual(getRacingCanvasQualitySettings(getRacingQualityPreset('low')), {
     dpr: [1, 1],
     shadows: false,

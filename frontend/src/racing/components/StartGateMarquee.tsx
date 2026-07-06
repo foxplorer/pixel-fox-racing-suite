@@ -13,6 +13,13 @@ export interface StartGateMarqueeQualitySettings {
 }
 
 export const START_GATE_MARQUEE_QUALITY: Record<RacingQualityPresetId, StartGateMarqueeQualitySettings> = {
+  mobile: {
+    canvasWidth: 192,
+    canvasHeight: 48,
+    redrawsPerSecond: 4,
+    ledGridMask: false,
+    glow: false
+  },
   low: {
     canvasWidth: 192,
     canvasHeight: 48,

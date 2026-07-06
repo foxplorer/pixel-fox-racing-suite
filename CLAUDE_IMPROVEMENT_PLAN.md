@@ -16,6 +16,65 @@ new code — no schema change was needed for this session's fixes).
 
 ## Work log
 
+### Session 2026-07-06 (Claude) — mobile mode phase 1 (branch `mobile-mode`)
+
+Context: began implementing `MOBILE_MODE_PLAN.md` (steps 1–6 of its
+implementation sequence) on the experimental `mobile-mode` branch — same repo,
+not a separate one, so racing logic/preset fixes never need double-porting.
+
+- **`useRacingDeviceProfile`** (new `racing/platform/`): feature detection
+  (pointer: coarse, hover: none, maxTouchPoints, viewport) with live
+  media-query/resize/orientationchange subscriptions. `prefersMobileRacingUi`
+  = touch + coarse primary pointer, so tablets/foldables get mobile UI while
+  desktop touchscreens (fine primary pointer) keep desktop UI. Pure
+  `computeRacingDeviceProfile` is unit-tested (6 device shapes).
+- **`mobile` quality preset**: added to the `RacingQualityPresetId` union with
+  the plan's budget (dpr cap 1, no shadows, 4 remotes @120m, minimap every 6
+  frames, scenery 0.35/0.45). Antialias became an explicit per-preset flag
+  (was `id !== 'low'` string-matching). Resolver accepts `'mobile'` from
+  localStorage; selector shows 4 options; `useRacingQualitySetting`
+  auto-selects mobile on first run (no stored key) for coarse-pointer devices
+  without persisting, so an explicit choice remains the only stored value.
+  **The union extension type-forced mobile rows into every preset-keyed budget
+  table** — start-gate marquee, procedural surface textures (5 surfaces, low
+  res + ~half detail passes to cut the main-thread texture-gen stall at track
+  load), remote-player LOD (2 near @60m), scenery effects (1 rolling-hill
+  layer, 0.25 light scale), and tree billboard atlas (64px cells) — which is
+  exactly the "reduce on mobile" list from the plan, enforced by tsc.
+- **Viewport**: `getCarRacingGameViewportStyle(status, { useMobileViewportUnits })`
+  returns `dvh` heights, drops the 900px clamp, adds `overscroll-behavior:
+  none` (mobile Safari `vh` includes retracted browser chrome). Wired in the
+  three car-track `FoxRacingGame` shells via the device profile.
+- **Fullscreen**: `useFullscreenToggle` now tries standard →
+  `webkitRequestFullscreen` (iPadOS) → CSS fake-fullscreen fallback (iPhone
+  Safari has no element fullscreen API). Fallback is returned as a
+  `fallbackFullscreenStyle` object the container merges declaratively, so
+  React re-renders can't clobber imperative style mutations. Hook return stays
+  backward-compatible (aspen/snowmobile untouched).
+- **Touch controls (spike wiring)**: `MobileDrivingControls` — 4 buttons
+  (◀ ▶ / BRAKE GAS) dispatching synthetic window KeyboardEvents so the
+  existing keyboard hook (incl. gas-audio start/stop and status gating) works
+  unchanged; per the plan this is spike-only and switches to extracted
+  press/release handlers before production. Pointer-capture per pointerId,
+  multi-touch (unit-tested press tracker: one keydown per control across
+  multiple fingers), releases all keys on visibilitychange/blur/unmount,
+  safe-area-inset positioning, `touch-action: none`.
+- **Rotate overlay**: `MobileOrientationOverlay` shown over the game when
+  mobile + portrait during countdown/racing.
+- **RacingUI**: on mobile during live driving — touch controls shown; keyboard
+  controls helper, quality panel, and camera-mode selector hidden (follow cam
+  stays default, so drei OrbitControls never competes with the buttons).
+- **Audio**: `unlockAudioElementsForTouch` in `audioElements.ts` (muted
+  play→pause per element, WeakSet-tracked, retriable) — exported but not yet
+  wired to a first-tap site; that lands with the escape-hatch menu.
+- Gates: `test:core` 598/598 (24 new tests), `tsc --noEmit` diffed against
+  main: no new errors (51 pre-existing on both).
+- **Still open from the plan** (next sessions): escape-hatch race menu (plan
+  step 7), collapsing desktop panels/HUD shrink (step 8), responsive showroom
+  (step 9), visibilitychange/webglcontextlost lifecycle (step 10), real-device
+  performance spike + audio-unlock wiring (step 11), Yours-wallet
+  "desktop only" gating in the connect flow.
+
 ### Session 2026-07-04, part 6 (Claude) — Multiplayer Races stats section
 
 Context: user ran the first real two-browser dummy race — it worked end to end

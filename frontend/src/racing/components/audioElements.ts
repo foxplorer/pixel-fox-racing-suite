@@ -23,6 +23,39 @@ export const createPreloadedAudio = (
   return audioElement
 }
 
+const unlockedAudioElements = new WeakSet<HTMLAudioElement>()
+
+// Mobile autoplay policy blocks play() until a user gesture, tracked per
+// element on iOS. Call from the first touch (fullscreen tap or first control
+// press) so later programmatic starts (countdown, crash, gas) succeed.
+export const unlockAudioElementsForTouch = (
+  audioElements: readonly HTMLAudioElement[]
+): void => {
+  audioElements.forEach(audioElement => {
+    if (unlockedAudioElements.has(audioElement)) return
+
+    const wasMuted = audioElement.muted
+    audioElement.muted = true
+
+    const finishUnlock = () => {
+      audioElement.pause()
+      audioElement.currentTime = 0
+      audioElement.muted = wasMuted
+      unlockedAudioElements.add(audioElement)
+    }
+
+    const playPromise = audioElement.play()
+    if (playPromise === undefined) {
+      finishUnlock()
+      return
+    }
+    playPromise.then(finishUnlock).catch(() => {
+      // Still locked; the next gesture retries.
+      audioElement.muted = wasMuted
+    })
+  })
+}
+
 interface PlayAudioOptions {
   reset?: boolean
   errorMessage?: string

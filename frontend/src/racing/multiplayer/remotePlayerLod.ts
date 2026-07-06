@@ -26,6 +26,10 @@ interface RemotePlayerLodBudget {
 }
 
 const REMOTE_PLAYER_LOD_BUDGETS: Record<RacingQualityPreset['id'], RemotePlayerLodBudget> = {
+  mobile: {
+    nearMaxVisible: 2,
+    nearDistance: 60
+  },
   low: {
     nearMaxVisible: 4,
     nearDistance: 75
