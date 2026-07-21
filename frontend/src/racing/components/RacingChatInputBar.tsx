@@ -1,4 +1,5 @@
 import React from 'react'
+import { useRacingDeviceProfile } from '../platform/useRacingDeviceProfile'
 
 export const RACING_CHAT_MESSAGE_MAX_LENGTH = 30
 export const SNOWMOBILE_CHAT_MESSAGE_MAX_LENGTH = 50
@@ -43,71 +44,76 @@ export const RacingChatInputBar: React.FC<RacingChatInputBarProps> = ({
   compact = false,
   stopOnlyGameKeys = false,
   preventDefaultOnEnter = false
-}) => (
-  <div className={className} style={{
-    position: 'absolute',
-    bottom,
-    left,
-    width,
-    maxWidth,
-    display: 'flex',
-    gap,
-    zIndex,
-    pointerEvents: compact ? 'auto' : undefined
-  }}>
-    <input
-      type="text"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') {
-          if (preventDefaultOnEnter) {
-            event.preventDefault()
-          }
-          onSend()
-        }
+}) => {
+  const { prefersMobileRacingUi, isLandscape } = useRacingDeviceProfile()
+  if (prefersMobileRacingUi && !isLandscape) return null
 
-        if (stopOnlyGameKeys) {
-          const isGameKey = RACING_CHAT_GAME_KEYS.includes(event.key.toLowerCase())
-          if (isGameKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+  return (
+    <div className={className} style={{
+      position: 'absolute',
+      bottom,
+      left,
+      width,
+      maxWidth,
+      display: 'flex',
+      gap,
+      zIndex,
+      pointerEvents: compact ? 'auto' : undefined
+    }}>
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            if (preventDefaultOnEnter) {
+              event.preventDefault()
+            }
+            onSend()
+          }
+
+          if (stopOnlyGameKeys) {
+            const isGameKey = RACING_CHAT_GAME_KEYS.includes(event.key.toLowerCase())
+            if (isGameKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+              event.stopPropagation()
+            }
+          } else {
             event.stopPropagation()
           }
-        } else {
-          event.stopPropagation()
-        }
-      }}
-      placeholder={placeholder}
-      maxLength={maxLength}
-      style={{
-        flex: compact ? undefined : 1,
-        width: compact ? '200px' : undefined,
-        padding: compact ? '8px 12px' : '10px 15px',
-        borderRadius: compact ? '6px' : '20px',
-        border: compact ? '1px solid rgba(255,255,255,0.2)' : '2px solid #fff',
-        background: compact ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0,0,0,0.7)',
-        color: '#fff',
-        fontFamily: compact ? 'monospace' : 'PublicPixel, monospace',
-        fontSize: '12px',
-        outline: 'none',
-        minWidth: compact ? undefined : '0'
-      }}
-    />
-    <button
-      onClick={onSend}
-      style={{
-        padding: compact ? '8px 16px' : '0 20px',
-        borderRadius: compact ? '6px' : '20px',
-        border: compact ? 'none' : '2px solid #fff',
-        background: buttonBackground,
-        color: '#fff',
-        fontFamily: compact ? 'monospace' : 'PublicPixel, monospace',
-        fontSize: '12px',
-        fontWeight: compact ? 'bold' : undefined,
-        cursor: 'pointer',
-        textTransform: compact ? undefined : 'uppercase'
-      }}
-    >
-      {buttonLabel}
-    </button>
-  </div>
-)
+        }}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        style={{
+          flex: compact ? undefined : 1,
+          width: compact ? '200px' : undefined,
+          padding: compact ? '8px 12px' : '10px 15px',
+          borderRadius: compact ? '6px' : '20px',
+          border: compact ? '1px solid rgba(255,255,255,0.2)' : '2px solid #fff',
+          background: compact ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0,0,0,0.7)',
+          color: '#fff',
+          fontFamily: compact ? 'monospace' : 'PublicPixel, monospace',
+          fontSize: '12px',
+          outline: 'none',
+          minWidth: compact ? undefined : '0'
+        }}
+      />
+      <button
+        onClick={onSend}
+        style={{
+          padding: compact ? '8px 16px' : '0 20px',
+          borderRadius: compact ? '6px' : '20px',
+          border: compact ? 'none' : '2px solid #fff',
+          background: buttonBackground,
+          color: '#fff',
+          fontFamily: compact ? 'monospace' : 'PublicPixel, monospace',
+          fontSize: '12px',
+          fontWeight: compact ? 'bold' : undefined,
+          cursor: 'pointer',
+          textTransform: compact ? undefined : 'uppercase'
+        }}
+      >
+        {buttonLabel}
+      </button>
+    </div>
+  )
+}

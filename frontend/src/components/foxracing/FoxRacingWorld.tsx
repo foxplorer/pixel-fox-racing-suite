@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useCallback } from 'react'
+import React, { useRef, useState, useMemo, useCallback, useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { UnifiedShowroom } from '../racing/UnifiedShowroom'
@@ -59,7 +59,9 @@ const MELBOURNE_RAIN_STREAK_VARIATION = 1.4
 const DEFAULT_SHADOW_CAMERA_EXTENT = 1000
 const IMPORTED_SHADOW_CAMERA_EXTENT = 1800
 const IMPORTED_TERRAIN_RESOLUTION = 420
+const GERMANY_MOBILE_TERRAIN_RESOLUTION = 192
 const IMPORTED_TERRAIN_Y_OFFSET = -0.12
+const MOBILE_TERRAIN_Y_OFFSET = -0.42
 const UNITED_KINGDOM_TERRAIN_Y_OFFSET = -0.24
 const IMPORTED_SHADOW_MAP_SIZE = 4096
 const DEFAULT_SHADOW_MAP_SIZE = 2048
@@ -69,6 +71,12 @@ const START_STADIUM_SEATS_PER_ROW = 25
 const START_STADIUM_SEAT_WIDTH = 3
 const START_STADIUM_ROW_DEPTH = 4.5
 const START_STADIUM_PAD_BLEND = 20
+const MOBILE_ROAD_TERRAIN_PROTECTION_MARGIN = 56
+const GERMANY_MOBILE_ROAD_TERRAIN_PROTECTION_MARGIN = 88
+const LOW_ROAD_TERRAIN_PROTECTION_MARGIN = 24
+const DEFAULT_ROAD_TERRAIN_PROTECTION_MARGIN = 8
+const ROAD_TERRAIN_CLEARANCE_BELOW_ROAD = 0.45
+const GERMANY_MOBILE_ROAD_TERRAIN_CLEARANCE_BELOW_ROAD = 0.65
 
 // Camera position will be set by follow camera in FreeRoamCar component
 // Initial position set for smooth transition during countdown
@@ -109,6 +117,7 @@ interface FoxRacingWorldProps {
   startGateMarqueeModel?: StartGateMarqueeModel | null
   isFullscreen?: boolean
   onToggleFullscreen?: () => void
+  onManualCameraChange?: (isManual: boolean) => void
 }
 
 const resolveQualityNumberBudget = (
@@ -336,7 +345,8 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   sceneryMode = 'australia',
   startGateMarqueeModel = null,
   isFullscreen = false,
-  onToggleFullscreen
+  onToggleFullscreen,
+  onManualCameraChange
 }) => {
   const worldRuntime = useCarTrackWorldRuntime({
     config: trackDefinition,
@@ -346,11 +356,13 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     onWorldLoaded,
     onSceneReady
   })
-  const rainDropCount = getQualityScaledCount(MELBOURNE_RAIN_DROP_COUNT, worldRuntime.qualityPreset, 400)
+  const isMobileQuality = worldRuntime.qualityPreset.id === 'mobile'
+  const rainDropCount = getQualityScaledCount(MELBOURNE_RAIN_DROP_COUNT, worldRuntime.qualityPreset, isMobileQuality ? 0 : 400)
   const hillLayers = worldRuntime.sceneryQuality.rollingHillLayers
   const isImportedScenery = sceneryMode !== 'australia'
   const isRainyAustralia = sceneryMode === 'australia'
   const isVolcano = trackDefinition.trackId === 'volcanoes'
+  const shouldRenderRollingHills = !isMobileQuality && !isVolcano
   const initialHeadlightsEnabled = true
   const terrainHeightSampler = worldRuntime.terrainHeightSampler
   const sceneHeightSampler = useMemo(() => createStartStadiumTerrainSampler(
@@ -365,8 +377,13 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   const skyColor = isVolcano ? '#3a1c0c' : isRainyAustralia ? '#52616c' : isTerrainAwareScenery ? '#87CEEB' : '#52616c'
   const fogColor = isVolcano ? '#502711' : isRainyAustralia ? '#5f6f7b' : isTerrainAwareScenery ? '#87CEEB' : '#5f6f7b'
   const ambientColor = isVolcano ? '#ffa85a' : isRainyAustralia ? '#b7c3cf' : isTerrainAwareScenery ? '#ffffff' : '#b7c3cf'
-  const ambientIntensity = isVolcano ? 1.25 : isRainyAustralia ? 0.42 : isTerrainAwareScenery ? 0.6 : 0.42
-  const sunIntensity = isVolcano ? 0.95 : isRainyAustralia ? 0.45 : isTerrainAwareScenery ? 1 : 0.45
+  // Rainy Australia is intentionally dim, but on mobile the procedural grass is
+  // painted with far fewer detail passes (a load-stall budget), so it renders as
+  // nearly the bare dark base green instead of the bright blade-flecked turf the
+  // desktop tiers bake. Under the low overcast light that reads as "too dark", so
+  // the mobile budget gets a lighting lift to compensate. Desktop is unchanged.
+  const ambientIntensity = isVolcano ? 1.25 : isRainyAustralia ? (isMobileQuality ? 0.66 : 0.42) : isTerrainAwareScenery ? 0.6 : 0.42
+  const sunIntensity = isVolcano ? 0.95 : isRainyAustralia ? (isMobileQuality ? 0.64 : 0.45) : isTerrainAwareScenery ? 1 : 0.45
   const sunColor = isVolcano ? '#ffc279' : isRainyAustralia ? '#d6dde3' : isTerrainAwareScenery ? '#ffffff' : '#d6dde3'
   const terrainColor = isVolcano ? '#5e3a25' : undefined
   const fogNear = isVolcano ? 120 : isTerrainAwareScenery ? 150 : 140
@@ -411,12 +428,53 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     }
   }, [isVolcano, worldRuntime.trackCurve, sceneHeightSampler])
   const renderBudget = getTrackRenderBudgetValue(trackDefinition.renderBudget, worldRuntime.qualityPreset.id, {
-    terrainResolution: isTerrainAwareScenery ? IMPORTED_TERRAIN_RESOLUTION : 160,
-    terrainYOffset: trackDefinition.trackId === 'united-kingdom' ? UNITED_KINGDOM_TERRAIN_Y_OFFSET : IMPORTED_TERRAIN_Y_OFFSET,
+    terrainResolution: isMobileQuality
+      ? trackDefinition.trackId === 'germany'
+        ? GERMANY_MOBILE_TERRAIN_RESOLUTION
+        : 56
+      : isTerrainAwareScenery
+        ? IMPORTED_TERRAIN_RESOLUTION
+        : 160,
+    // Mobile uses a coarse sampled terrain grid. Extra clearance keeps grass
+    // triangles from visually bridging over the separate asphalt ribbon.
+    terrainYOffset: isMobileQuality
+      ? MOBILE_TERRAIN_Y_OFFSET
+      : trackDefinition.trackId === 'united-kingdom'
+        ? UNITED_KINGDOM_TERRAIN_Y_OFFSET
+        : IMPORTED_TERRAIN_Y_OFFSET,
     shadowCameraExtent: isTerrainAwareScenery ? IMPORTED_SHADOW_CAMERA_EXTENT : DEFAULT_SHADOW_CAMERA_EXTENT,
     shadowMapSize: isTerrainAwareScenery ? IMPORTED_SHADOW_MAP_SIZE : DEFAULT_SHADOW_MAP_SIZE,
     shadowCameraFar: isTerrainAwareScenery ? 3200 : 2000
   })
+  const terrainRoadProtection = useMemo(() => {
+    if (!trackDefinition.spatialTrackIndex || !worldRuntime.roadCorridor) return undefined
+    const isGermanyMobile = trackDefinition.trackId === 'germany' && worldRuntime.qualityPreset.id === 'mobile'
+
+    return {
+      index: trackDefinition.spatialTrackIndex,
+      corridor: worldRuntime.roadCorridor,
+      clearanceBelowRoad: isGermanyMobile
+        ? GERMANY_MOBILE_ROAD_TERRAIN_CLEARANCE_BELOW_ROAD
+        : ROAD_TERRAIN_CLEARANCE_BELOW_ROAD,
+      extraMargin: isGermanyMobile
+        ? GERMANY_MOBILE_ROAD_TERRAIN_PROTECTION_MARGIN
+        : worldRuntime.qualityPreset.id === 'mobile'
+        ? MOBILE_ROAD_TERRAIN_PROTECTION_MARGIN
+        : worldRuntime.qualityPreset.id === 'low'
+          ? LOW_ROAD_TERRAIN_PROTECTION_MARGIN
+          : DEFAULT_ROAD_TERRAIN_PROTECTION_MARGIN
+    }
+  }, [trackDefinition.spatialTrackIndex, trackDefinition.trackId, worldRuntime.qualityPreset.id, worldRuntime.roadCorridor])
+  const importedSceneryMode = isMobileQuality
+    ? (
+      trackDefinition.trackId === 'belgium' ||
+      trackDefinition.trackId === 'germany' ||
+      trackDefinition.trackId === 'volcanoes' ||
+      trackDefinition.trackId === 'united-kingdom'
+        ? 'boards-and-forest'
+        : 'boards-only'
+    )
+    : 'full'
   const [treePositions, setTreePositions] = useState<Array<{ x: number; z: number; scale: number; radius: number }>>([])
   const [advertisingBoardPositions, setAdvertisingBoardPositions] = useState<Array<{
     curve: THREE.CatmullRomCurve3
@@ -426,6 +484,14 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     side: 'left' | 'right'
     height: number
   }>>([])
+  useEffect(() => {
+    if (!isMobileQuality) return
+    // Trees are not rendered on mobile, so clear their collision set. Advertising
+    // boards ARE rendered on mobile now (boards-only scenery mode), so their
+    // collision set is populated below instead of cleared — you shouldn't be able
+    // to drive through a board you can see.
+    setTreePositions([])
+  }, [isMobileQuality])
   // Additional stadium seating positions around the track (outside only)
   const additionalStadiumData = useMemo(() => {
     if (sceneryMode !== 'australia' || sceneHeightSampler) return []
@@ -465,6 +531,11 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     })
   }, [worldRuntime.manualCamera])
 
+  // Report manual-camera state up so the parent can hide the minimap while manual controls are on.
+  useEffect(() => {
+    onManualCameraChange?.(worldRuntime.manualCamera.isManualCamera)
+  }, [onManualCameraChange, worldRuntime.manualCamera.isManualCamera])
+
   const handleZoomIn = useCallback(() => {
     const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
     if (!controls?.object) return
@@ -501,8 +572,12 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     controls.update()
   }, [worldRuntime.manualCamera.orbitControlsRef])
 
+  if (gameStatus === 'idle') {
+    return null
+  }
+
   // Showroom Canvas
-  if (gameStatus === 'showroom' || gameStatus === 'idle') {
+  if (gameStatus === 'showroom') {
     return (
       <CarTrackShowroomShell
         canvasQuality={worldRuntime.canvasQuality}
@@ -576,6 +651,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
               color={terrainColor}
               qualityPresetId={worldRuntime.qualityPreset.id}
               surface={isVolcano ? 'volcanic-rock' : 'grass'}
+              roadProtection={terrainRoadProtection}
             />
           ) : (
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.2, 0]} receiveShadow>
@@ -588,9 +664,9 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
               />
             </mesh>
           )}
-          {sceneryMode === 'australia' && <AustraliaRain dropCount={rainDropCount} />}
-          <RollingHills radius={1800} layers={hillLayers} />
-          {isVolcano && <DistantVolcanoes radius={2200} layers={2} />}
+          {!isMobileQuality && sceneryMode === 'australia' && <AustraliaRain dropCount={rainDropCount} />}
+          {shouldRenderRollingHills && <RollingHills radius={1800} layers={hillLayers} />}
+          {!isMobileQuality && isVolcano && <DistantVolcanoes radius={2200} layers={2} />}
           {sceneryMode === 'australia' && (
             <TrackBillboardForest
               trackCurve={worldRuntime.trackCurve}
@@ -605,7 +681,8 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
               qualityPreset={worldRuntime.qualityPreset}
               getHeightAtPosition={sceneHeightSampler}
               forestOptions={forestOptions}
-              onTreesGenerated={setTreePositions}
+              mode={importedSceneryMode}
+              onTreesGenerated={isMobileQuality ? undefined : setTreePositions}
               onBoardsGenerated={setAdvertisingBoardPositions}
             />
           )}
@@ -618,8 +695,18 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
             qualityPresetId={worldRuntime.qualityPreset.id}
             wetSurface={sceneryMode === 'australia'}
           />
-          {!isTerrainAwareScenery && sceneryMode === 'australia' && <AdvertisingBoards onBoardsGenerated={setAdvertisingBoardPositions} />}
-          {!isTerrainAwareScenery && sceneryMode === 'australia' && <StadiumSeating isSoundEnabled={isSoundEnabled} />}
+          {!isTerrainAwareScenery && sceneryMode === 'australia' && (
+            <AdvertisingBoards onBoardsGenerated={setAdvertisingBoardPositions} />
+          )}
+          {!isTerrainAwareScenery && sceneryMode === 'australia' && (
+            <StadiumSeating
+              rows={7}
+              seatsPerRow={20}
+              side="both"
+              isSoundEnabled={isSoundEnabled}
+              foxDensityScale={1}
+            />
+          )}
           {isTerrainAwareScenery && (
             <SpaStadiumSeating
               rows={7}
@@ -630,10 +717,10 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
               distanceFromTrack={48}
               getHeightAtPosition={sceneHeightSampler}
               isSoundEnabled={isSoundEnabled}
-              foxDensityScale={worldRuntime.qualityPreset.scenery.densityScale}
+              foxDensityScale={1}
             />
           )}
-          {additionalStadiumData.map((data, index) => (
+          {!isMobileQuality && additionalStadiumData.map((data, index) => (
             <StadiumSeating
               key={`stadium-${index}`}
               rows={7}

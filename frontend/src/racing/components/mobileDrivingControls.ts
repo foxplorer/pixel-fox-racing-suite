@@ -1,4 +1,5 @@
 export type MobileDrivingControlId = 'left' | 'right' | 'brake' | 'gas'
+export type MobileDrivingInputMode = 'car' | 'keyboard'
 
 // Touch buttons drive the same key codes the keyboard path reads, so car
 // handling, gas audio, and multiplayer fairness stay identical to keyboard.
@@ -11,8 +12,33 @@ export const MOBILE_CONTROL_KEY_CODES: Record<MobileDrivingControlId, string> = 
 
 export type MobileControlKeyEmitter = (type: 'keydown' | 'keyup', code: string) => void
 
+export const getMobileControlKeyboardKey = (code: string): string => {
+  switch (code) {
+    case 'ArrowLeft':
+      return 'ArrowLeft'
+    case 'ArrowRight':
+      return 'ArrowRight'
+    case 'KeyS':
+      return 's'
+    case 'KeyW':
+      return 'w'
+    default:
+      return code
+  }
+}
+
+export const getMobileSteeringControl = (
+  steeringValue: number,
+  deadzone = 0.18
+): 'left' | 'right' | null => {
+  if (steeringValue <= -deadzone) return 'left'
+  if (steeringValue >= deadzone) return 'right'
+  return null
+}
+
 export interface MobileControlPressTracker {
   press: (pointerId: number, control: MobileDrivingControlId) => void
+  update: (pointerId: number, control: MobileDrivingControlId | null) => void
   release: (pointerId: number) => void
   releaseAll: () => void
   getPressedControls: () => MobileDrivingControlId[]
@@ -44,6 +70,25 @@ export const createMobileControlPressTracker = (emit: MobileControlKeyEmitter): 
     emit('keyup', MOBILE_CONTROL_KEY_CODES[control])
   }
 
+  const update = (pointerId: number, control: MobileDrivingControlId | null) => {
+    const previousControl = controlByPointerId.get(pointerId) ?? null
+    if (previousControl === control) return
+
+    if (previousControl) {
+      controlByPointerId.delete(pointerId)
+      releaseControl(previousControl)
+    }
+
+    if (control) {
+      controlByPointerId.set(pointerId, control)
+      const nextCount = (pointerCountByControl.get(control) ?? 0) + 1
+      pointerCountByControl.set(control, nextCount)
+      if (nextCount === 1) {
+        emit('keydown', MOBILE_CONTROL_KEY_CODES[control])
+      }
+    }
+  }
+
   const release = (pointerId: number) => {
     const control = controlByPointerId.get(pointerId)
     if (!control) return
@@ -60,5 +105,5 @@ export const createMobileControlPressTracker = (emit: MobileControlKeyEmitter): 
 
   const getPressedControls = () => [...pointerCountByControl.keys()]
 
-  return { press, release, releaseAll, getPressedControls }
+  return { press, update, release, releaseAll, getPressedControls }
 }

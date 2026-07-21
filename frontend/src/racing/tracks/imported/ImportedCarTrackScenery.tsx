@@ -30,6 +30,7 @@ interface ImportedCarTrackSceneryProps {
   qualityPreset: RacingQualityPreset
   getHeightAtPosition?: TerrainHeightSampler
   forestOptions?: BillboardForestOptions
+  mode?: 'full' | 'boards-and-forest' | 'boards-only'
   onTreesGenerated?: (trees: ImportedSceneryTreePlacement[]) => void
   onBoardsGenerated?: (boards: ImportedSceneryAdvertisingBoard[]) => void
 }
@@ -39,9 +40,16 @@ export const ImportedCarTrackScenery: React.FC<ImportedCarTrackSceneryProps> = (
   qualityPreset,
   getHeightAtPosition,
   forestOptions,
+  mode = 'full',
   onTreesGenerated,
   onBoardsGenerated
 }) => {
+  React.useEffect(() => {
+    if (mode !== 'boards-only' || trackDefinition.trackId !== 'volcanoes') return
+    onTreesGenerated?.([])
+    onBoardsGenerated?.([])
+  }, [mode, onBoardsGenerated, onTreesGenerated, trackDefinition.trackId])
+
   // The volcano cave is enclosed, so birds only make sense over the open-sky billboard
   // tracks. Everything else routed through here shares the same flock layer.
   if (trackDefinition.trackId === 'volcanoes') {
@@ -51,6 +59,7 @@ export const ImportedCarTrackScenery: React.FC<ImportedCarTrackSceneryProps> = (
         qualityPreset={qualityPreset}
         getHeightAtPosition={getHeightAtPosition}
         forestOptions={forestOptions}
+        renderForest={mode !== 'boards-only'}
         onTreesGenerated={onTreesGenerated}
         onBoardsGenerated={onBoardsGenerated}
       />
@@ -64,6 +73,7 @@ export const ImportedCarTrackScenery: React.FC<ImportedCarTrackSceneryProps> = (
         qualityPreset={qualityPreset}
         getHeightAtPosition={getHeightAtPosition}
         forestOptions={forestOptions}
+        renderForest={mode !== 'boards-only'}
         onTreesGenerated={onTreesGenerated}
         onBoardsGenerated={onBoardsGenerated}
       />
@@ -80,6 +90,7 @@ export const ImportedCarTrackScenery: React.FC<ImportedCarTrackSceneryProps> = (
         }
         forest
         forestOptions={forestOptions}
+        renderTrees={mode !== 'boards-only'}
         onTreesGenerated={onTreesGenerated}
         onBoardsGenerated={onBoardsGenerated}
       />
@@ -88,11 +99,13 @@ export const ImportedCarTrackScenery: React.FC<ImportedCarTrackSceneryProps> = (
   return (
     <>
       {scenery}
-      <TrackBirds
-        trackCurve={trackDefinition.trackCurve}
-        qualityPreset={qualityPreset}
-        getHeightAtPosition={getHeightAtPosition}
-      />
+      {mode === 'full' && (
+        <TrackBirds
+          trackCurve={trackDefinition.trackCurve}
+          qualityPreset={qualityPreset}
+          getHeightAtPosition={getHeightAtPosition}
+        />
+      )}
     </>
   )
 }

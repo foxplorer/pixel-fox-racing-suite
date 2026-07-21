@@ -207,6 +207,109 @@ const panelStyle: CSSProperties = {
   backdropFilter: 'blur(8px)'
 }
 
+type ScheduledRaceStandingsRow = {
+  entrant: NonNullable<ScheduledRaceRoomSnapshot['entrants']>[number]
+  completedLaps: number
+  lapTimes: number[]
+  finishOrder?: number
+  lastSplit?: number
+  totalTime: number
+  isFinished: boolean
+  place: number
+}
+
+const buildScheduledRaceStandingsRows = ({
+  snapshot,
+  activeRaceId,
+  lapProgressByEntrant,
+  finishOrderByEntrant = {},
+  lapsRequired = 3,
+}: Pick<ScheduledRaceStandingsPanelProps, 'snapshot' | 'activeRaceId' | 'lapProgressByEntrant' | 'finishOrderByEntrant' | 'lapsRequired'>): ScheduledRaceStandingsRow[] => {
+  if (!snapshot || !activeRaceId || snapshot.raceId !== activeRaceId) return []
+
+  return (snapshot.entrants || [])
+    .slice()
+    .sort((a, b) => a.gridSlot - b.gridSlot || a.joinedAt - b.joinedAt)
+    .map((entrant) => {
+      const lapTimes = lapProgressByEntrant[entrant.entrantId] || []
+      const completedLaps = Math.min(lapTimes.length, lapsRequired)
+      const requiredLapTimes = lapTimes.slice(0, lapsRequired)
+      const totalTime = requiredLapTimes.reduce((total, lapTime) => total + lapTime, 0)
+      return {
+        entrant,
+        completedLaps,
+        lapTimes: requiredLapTimes,
+        finishOrder: finishOrderByEntrant[entrant.entrantId],
+        lastSplit: lapTimes[Math.min(lapTimes.length, lapsRequired) - 1],
+        totalTime,
+        isFinished: completedLaps >= lapsRequired,
+      }
+    })
+    .sort((a, b) => {
+      if (a.isFinished !== b.isFinished) return a.isFinished ? -1 : 1
+      if (a.isFinished && b.isFinished) {
+        const aOrder = a.finishOrder ?? Number.POSITIVE_INFINITY
+        const bOrder = b.finishOrder ?? Number.POSITIVE_INFINITY
+        if (aOrder !== bOrder) return aOrder - bOrder
+        return a.totalTime - b.totalTime
+      }
+      if (a.completedLaps !== b.completedLaps) return b.completedLaps - a.completedLaps
+      if (a.lastSplit !== b.lastSplit) return (a.lastSplit ?? Number.POSITIVE_INFINITY) - (b.lastSplit ?? Number.POSITIVE_INFINITY)
+      return a.entrant.gridSlot - b.entrant.gridSlot
+    })
+    .map((row, index) => ({ ...row, place: row.isFinished && row.finishOrder ? row.finishOrder : index + 1 }))
+}
+
+export const ScheduledRaceMobilePositionBadge = memo(function ScheduledRaceMobilePositionBadge({
+  snapshot,
+  activeRaceId,
+  localEntrantId,
+  lapProgressByEntrant,
+  finishOrderByEntrant = {},
+  lapsRequired = 3,
+}: ScheduledRaceStandingsPanelProps) {
+  const rows = useMemo(() => buildScheduledRaceStandingsRows({
+    snapshot,
+    activeRaceId,
+    lapProgressByEntrant,
+    finishOrderByEntrant,
+    lapsRequired,
+  }), [activeRaceId, finishOrderByEntrant, lapProgressByEntrant, lapsRequired, snapshot])
+
+  if (!localEntrantId || rows.length === 0) return null
+
+  const localRow = rows.find(row => row.entrant.entrantId === localEntrantId)
+  if (!localRow) return null
+
+  const statusLabel = localRow.isFinished
+    ? 'Finished'
+    : `Lap ${localRow.completedLaps}/${lapsRequired}`
+
+  return (
+    <div style={{
+      display: 'inline-grid',
+      justifyItems: 'end',
+      gap: 2,
+      padding: '6px 8px',
+      borderRadius: 7,
+      border: '1px solid rgba(255, 209, 102, 0.38)',
+      background: 'rgba(0, 0, 0, 0.58)',
+      color: '#ffffff',
+      fontFamily: 'monospace',
+      textAlign: 'right',
+      backdropFilter: 'blur(8px)',
+      boxShadow: '0 8px 20px rgba(0,0,0,0.26)',
+    }}>
+      <div style={{ color: '#FFD166', fontSize: 14, fontWeight: 900, lineHeight: 1 }}>
+        {getOrdinal(localRow.place)}
+      </div>
+      <div style={{ color: '#d8d8d8', fontSize: 10, fontWeight: 800, lineHeight: 1.2 }}>
+        of {rows.length} - {statusLabel}
+      </div>
+    </div>
+  )
+})
+
 export const ScheduledRaceStandingsPanel = memo(function ScheduledRaceStandingsPanel({
   snapshot,
   activeRaceId,
@@ -215,41 +318,13 @@ export const ScheduledRaceStandingsPanel = memo(function ScheduledRaceStandingsP
   finishOrderByEntrant = {},
   lapsRequired = 3,
 }: ScheduledRaceStandingsPanelProps) {
-  const rows = useMemo(() => {
-    if (!snapshot || !activeRaceId || snapshot.raceId !== activeRaceId) return []
-
-    return (snapshot.entrants || [])
-      .slice()
-      .sort((a, b) => a.gridSlot - b.gridSlot || a.joinedAt - b.joinedAt)
-      .map((entrant, index) => {
-        const lapTimes = lapProgressByEntrant[entrant.entrantId] || []
-        const completedLaps = Math.min(lapTimes.length, lapsRequired)
-        const requiredLapTimes = lapTimes.slice(0, lapsRequired)
-        const totalTime = requiredLapTimes.reduce((total, lapTime) => total + lapTime, 0)
-        return {
-          entrant,
-          completedLaps,
-          lapTimes: requiredLapTimes,
-          finishOrder: finishOrderByEntrant[entrant.entrantId],
-          lastSplit: lapTimes[Math.min(lapTimes.length, lapsRequired) - 1],
-          totalTime,
-          isFinished: completedLaps >= lapsRequired,
-        }
-      })
-      .sort((a, b) => {
-        if (a.isFinished !== b.isFinished) return a.isFinished ? -1 : 1
-        if (a.isFinished && b.isFinished) {
-          const aOrder = a.finishOrder ?? Number.POSITIVE_INFINITY
-          const bOrder = b.finishOrder ?? Number.POSITIVE_INFINITY
-          if (aOrder !== bOrder) return aOrder - bOrder
-          return a.totalTime - b.totalTime
-        }
-        if (a.completedLaps !== b.completedLaps) return b.completedLaps - a.completedLaps
-        if (a.lastSplit !== b.lastSplit) return (a.lastSplit ?? Number.POSITIVE_INFINITY) - (b.lastSplit ?? Number.POSITIVE_INFINITY)
-        return a.entrant.gridSlot - b.entrant.gridSlot
-      })
-      .map((row, index) => ({ ...row, place: row.isFinished && row.finishOrder ? row.finishOrder : index + 1 }))
-  }, [activeRaceId, finishOrderByEntrant, lapProgressByEntrant, lapsRequired, snapshot])
+  const rows = useMemo(() => buildScheduledRaceStandingsRows({
+    snapshot,
+    activeRaceId,
+    lapProgressByEntrant,
+    finishOrderByEntrant,
+    lapsRequired,
+  }), [activeRaceId, finishOrderByEntrant, lapProgressByEntrant, lapsRequired, snapshot])
 
   if (rows.length === 0) return null
 

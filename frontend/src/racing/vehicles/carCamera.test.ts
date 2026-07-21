@@ -8,6 +8,7 @@ import {
   getCarCameraSmoothingRate,
   getExponentialSmoothingFactor,
   isTrackTInRange,
+  MOBILE_CAMERA_MAX_DELTA_SECONDS,
   shouldResetTargetSmoothCamera,
   SHARED_CAR_CAMERA
 } from './carCamera'
@@ -19,6 +20,15 @@ const assertNear = (actual: number, expected: number, tolerance = 0.000001) => {
 test('car camera caps large frame deltas', () => {
   assert.equal(capCameraDelta(0.016), 0.016)
   assert.equal(capCameraDelta(0.25), SHARED_CAR_CAMERA.maxDeltaSeconds)
+})
+
+test('mobile camera cap lets low-fps frames advance further so the view keeps up', () => {
+  assert.equal(MOBILE_CAMERA_MAX_DELTA_SECONDS, 0.1)
+  // A ~15fps frame (0.066s) is clamped to 0.05 by default but passes through on mobile.
+  assert.equal(capCameraDelta(0.066), SHARED_CAR_CAMERA.maxDeltaSeconds)
+  assert.equal(capCameraDelta(0.066, MOBILE_CAMERA_MAX_DELTA_SECONDS), 0.066)
+  // Still capped against pathological spikes.
+  assert.equal(capCameraDelta(0.25, MOBILE_CAMERA_MAX_DELTA_SECONDS), MOBILE_CAMERA_MAX_DELTA_SECONDS)
 })
 
 test('car camera selects smoothing rates by mode', () => {

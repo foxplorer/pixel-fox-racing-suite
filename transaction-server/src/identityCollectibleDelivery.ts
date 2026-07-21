@@ -94,7 +94,9 @@ export function createIdentityCollectibleDelivery(
       keyID,
       counterparty: identityKey,
     })
-    const destinationAddress = PublicKey.fromString(publicKey).toAddress()
+    const destinationAddress = PublicKey
+      .fromString(publicKey)
+      .toAddress(options.chain === 'test' ? 'testnet' : 'mainnet')
     const result = await buildTransaction({
       serverInstance: `${kind}-server`,
       destinationAddress,

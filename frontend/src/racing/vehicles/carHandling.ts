@@ -83,6 +83,35 @@ export const SHARED_CAR_HANDLING: CarHandlingConfig = {
   gasVolumeMultiplier: 0.35
 }
 
+// Weak phones frequently run well under 20fps. The default 0.05s movement cap
+// (a 20fps floor, there to stop the car tunnelling through obstacles on a slow
+// frame) then holds the car to a fraction of real speed, so it feels like it is
+// crawling in slow motion. On the mobile budget advertising boards are visual
+// scenery only (collision boards are stripped from the mobile collision set) and
+// player-collision is resolved and corrected each frame, so a larger integration
+// step is safe here and restores real-time speed down to ~10fps. Desktop keeps
+// the tighter cap unchanged.
+export const MOBILE_MOVEMENT_DELTA_CAP_SECONDS = 0.1
+
+// Touch steering is binary (full turn rate the instant the drag crosses the pad
+// deadzone), so the default desktop turn rate feels twitchy on a phone — players
+// over-rotate and weave left/right. Mobile uses a gentler base turn rate so each
+// steer input rotates the car less sharply. This scales the *whole* turn rate; the
+// speed-based falloff (highSpeedSteeringReduction) is untouched, so the "wider at
+// speed" shape is preserved. Desktop keeps SHARED_CAR_HANDLING.turnSpeed (2.0).
+export const MOBILE_TURN_SPEED = 1.35
+
+export const MOBILE_CAR_HANDLING: CarHandlingConfig = {
+  ...SHARED_CAR_HANDLING,
+  maxMovementDeltaSeconds: MOBILE_MOVEMENT_DELTA_CAP_SECONDS,
+  turnSpeed: MOBILE_TURN_SPEED
+}
+
+// Picks the movement tuning for the active quality budget. Only the mobile
+// budget diverges from the shared handling today.
+export const getCarHandlingForQuality = (isMobileQuality: boolean): CarHandlingConfig =>
+  isMobileQuality ? MOBILE_CAR_HANDLING : SHARED_CAR_HANDLING
+
 export const getCarMaxSpeed = (isOnTrack: boolean, handling: CarHandlingConfig = SHARED_CAR_HANDLING): number => {
   return isOnTrack ? handling.maxSpeedOnTrack : handling.maxSpeedOffTrack
 }
@@ -408,6 +437,8 @@ export interface AdvanceCarControlFrameInput {
   deltaSeconds: number
   isOnTrack: boolean
   slopeGrade?: number
+  // Optional analog steering (touch pad). Overrides the binary key turn when set.
+  steeringInput?: number | null
   handling?: CarHandlingConfig
 }
 
@@ -425,6 +456,7 @@ export const advanceCarControlFrame = ({
   deltaSeconds,
   isOnTrack,
   slopeGrade = 0,
+  steeringInput = null,
   handling = SHARED_CAR_HANDLING
 }: AdvanceCarControlFrameInput): AdvanceCarControlFrameResult => {
   const controls = getCarControlState(keys)
@@ -446,6 +478,7 @@ export const advanceCarControlFrame = ({
     deltaSeconds: cappedDeltaSeconds,
     isTurningLeft: controls.isTurningLeft,
     isTurningRight: controls.isTurningRight,
+    steeringInput,
     handling
   })
 
@@ -490,6 +523,10 @@ export interface IntegrateCarRotationInput {
   deltaSeconds: number
   isTurningLeft: boolean
   isTurningRight: boolean
+  // Optional analog steering in [-1, 1] (negative = left, positive = right). When
+  // provided (touch pad), it overrides the binary isTurningLeft/Right turn so the car
+  // turns proportionally. null/undefined = keyboard binary path (desktop unchanged).
+  steeringInput?: number | null
   handling?: CarHandlingConfig
 }
 
@@ -500,6 +537,7 @@ export const integrateCarRotation = ({
   deltaSeconds,
   isTurningLeft,
   isTurningRight,
+  steeringInput = null,
   handling = SHARED_CAR_HANDLING
 }: IntegrateCarRotationInput): number => {
   if (Math.abs(speed) <= handling.minSteeringSpeed) {
@@ -509,6 +547,14 @@ export const integrateCarRotation = ({
   const steeringSensitivity = getCarSteeringSensitivity(speed, maxSpeed, handling)
   const effectiveTurnSpeed = handling.turnSpeed * steeringSensitivity
   const signedTurn = effectiveTurnSpeed * deltaSeconds * Math.sign(speed)
+
+  // Analog touch steering: turn proportional to the pad offset. Same signed-turn
+  // magnitude as a full key press at ±1, and a small offset yields a small turn.
+  if (steeringInput != null && Number.isFinite(steeringInput)) {
+    const clampedSteering = Math.max(-1, Math.min(1, steeringInput))
+    return getStableCarRotation(rotationRadians - signedTurn * clampedSteering)
+  }
+
   let nextRotation = rotationRadians
 
   if (isTurningLeft) {

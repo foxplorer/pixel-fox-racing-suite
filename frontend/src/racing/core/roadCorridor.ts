@@ -29,6 +29,11 @@ export type TerrainHeightSampler = (x: number, z: number) => number
 
 export { findNearestTrackSample }
 
+export interface RoadTerrainProtectionOptions {
+  clearanceBelowRoad?: number
+  extraMargin?: number
+}
+
 export const smoothstep = (value: number): number => {
   const t = Math.min(Math.max(value, 0), 1)
   return t * t * (3 - 2 * t)
@@ -132,6 +137,26 @@ export const createRoadCorridorTerrainHeightSampler = (
     const terrainHeight = getTerrainHeight(x, z)
     return getRoadCorridorInfluence(index, x, z, terrainHeight, config).finalHeight
   }
+}
+
+export const getRoadProtectedTerrainHeight = (
+  index: SpatialTrackIndex,
+  x: number,
+  z: number,
+  currentHeight: number,
+  config: RoadCorridorConfig,
+  options: RoadTerrainProtectionOptions = {}
+): number => {
+  const { sample, distanceSq } = findNearestTrackSample(index, x, z)
+  if (!sample) return currentHeight
+
+  const clearanceBelowRoad = options.clearanceBelowRoad ?? 0.35
+  const extraMargin = options.extraMargin ?? 0
+  const protectDistance = config.roadWidth / 2 + config.shoulderWidth + extraMargin
+  if (Math.sqrt(distanceSq) > protectDistance) return currentHeight
+
+  const roadHeight = sample.pos.y + (config.roadClearance ?? 0)
+  return Math.min(currentHeight, roadHeight - clearanceBelowRoad)
 }
 
 export const getLegacyRoadHeightInfluence = (

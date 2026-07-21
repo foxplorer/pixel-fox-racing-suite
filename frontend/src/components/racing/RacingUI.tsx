@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState, useEffect } from 'react'
+import React, { memo, useMemo, useState, useEffect, useCallback } from 'react'
 import { GameStatus } from '../foxracing/FoxRacingGame'
 import { CameraMode } from '../foxracing/FreeRoamCar'
 import racePhoto from '../../assets/race-photo.png'
@@ -20,8 +20,10 @@ import { RacingShowroomStatsStrip } from '../../racing/components/RacingShowroom
 import { MobileDrivingControls } from '../../racing/components/MobileDrivingControls'
 import { MobileOrientationOverlay } from '../../racing/components/MobileOrientationOverlay'
 import { MobileRaceMenu } from '../../racing/components/MobileRaceMenu'
+import { ScheduledRacePanel } from '../../racing/components/ScheduledRacePanel'
+import type { WalletConnectSource } from '../../components/FaucetPandaConnectButton'
 import { useRacingDeviceProfile } from '../../racing/platform/useRacingDeviceProfile'
-import { ScheduledRaceFinishStatusBanner, ScheduledRaceStandingsPanel, type ScheduledRaceFinishOrderByEntrant, type ScheduledRaceLapProgressByEntrant, type ScheduledRaceSettlementState } from '../../racing/components/ScheduledRaceStandingsPanel'
+import { ScheduledRaceFinishStatusBanner, ScheduledRaceMobilePositionBadge, ScheduledRaceStandingsPanel, type ScheduledRaceFinishOrderByEntrant, type ScheduledRaceLapProgressByEntrant, type ScheduledRaceSettlementState } from '../../racing/components/ScheduledRaceStandingsPanel'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import type { ScheduledRaceRoomSnapshot } from '../../racing/scheduled/scheduledRaceSocket'
 import type { ScheduledRace, ScheduledRaceSignup } from '../../racing/scheduled/scheduledRaceTypes'
@@ -48,7 +50,7 @@ const HUDDisplay = memo<{
     lapTxids={lapTxids}
     lapListMarginTop="70px"
     compact={compact}
-    lapListReplacement={scheduledRaceStandings ? (
+    lapListReplacement={scheduledRaceStandings && !compact ? (
       <ScheduledRaceStandingsPanel
         snapshot={scheduledRaceStandings.snapshot}
         activeRaceId={scheduledRaceStandings.activeRaceId}
@@ -104,7 +106,7 @@ interface RacingUIProps {
   speed?: number // Speed in m/s
   countdown: number
   hasJoined: boolean
-  onJoin: () => void
+  onJoin: () => void | Promise<void>
   onEnterShowroom?: () => void
   onRestart: () => void
   foxName?: string | null
@@ -114,7 +116,7 @@ interface RacingUIProps {
   playerColor: string
   onColorChange: (color: string) => void
   ordinalAddress?: string | null
-  onConnectWallet?: () => void | Promise<void>
+  onConnectWallet?: (source?: WalletConnectSource) => void | Promise<void>
   trackName?: string
   onTrackChange?: (trackName: string) => void
   cameraMode?: CameraMode
@@ -138,6 +140,13 @@ interface RacingUIProps {
     speedScale?: number
   }
 }
+
+// Persists the showroom mode across the game-component remounts that a track change
+// triggers: the game is keyed by track in FoxRacing.tsx, so selecting a different track
+// in Time Trial remounts RacingUI and would otherwise reset this state to 'multiplayer'.
+// Module-scoped so it survives the remount but resets on a full page reload; only one
+// RacingUI is mounted at a time, so a single holder is safe.
+let persistedShowroomMode: 'multiplayer' | 'itt' | null = null
 
 export const RacingUI: React.FC<RacingUIProps> = memo(({
   gameStatus,
@@ -183,9 +192,16 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight })
 	const deviceProfile = useRacingDeviceProfile()
 	const isMobileRacingUi = deviceProfile.prefersMobileRacingUi
+  const isMobileLandscapeShowroom = isMobileRacingUi && deviceProfile.isLandscape
 	const isLiveDriving = gameStatus === 'racing' || gameStatus === 'countdown'
 	const hasMultiplayerShowroom = Boolean(transactionServerUrl && onEnterScheduledRace)
-  const [showroomMode, setShowroomMode] = useState<'multiplayer' | 'itt'>(() => hasMultiplayerShowroom ? 'multiplayer' : 'itt')
+  const [showroomMode, setShowroomModeState] = useState<'multiplayer' | 'itt'>(() => (
+    persistedShowroomMode ?? (hasMultiplayerShowroom && !isMobileRacingUi ? 'multiplayer' : 'itt')
+  ))
+  const setShowroomMode = useCallback((mode: 'multiplayer' | 'itt') => {
+    persistedShowroomMode = mode
+    setShowroomModeState(mode)
+  }, [])
   const isScheduledRaceActive = Boolean(scheduledRaceStandings?.activeRaceId)
   const hasScheduledRaceSettlement = Boolean(scheduledRaceStandings?.settlement)
   const canLeaveScheduledRace = isScheduledRaceActive && (
@@ -202,6 +218,16 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
     scheduledRaceStandings?.settlement &&
     scheduledRaceStandings.settlement.status !== 'cancelled'
   )
+  const mobileScheduledRacePositionBadge = isMobileRacingUi && scheduledRaceStandings ? (
+    <ScheduledRaceMobilePositionBadge
+      snapshot={scheduledRaceStandings.snapshot}
+      activeRaceId={scheduledRaceStandings.activeRaceId}
+      localEntrantId={scheduledRaceStandings.localEntrantId}
+      lapProgressByEntrant={scheduledRaceStandings.lapProgressByEntrant}
+      finishOrderByEntrant={scheduledRaceStandings.finishOrderByEntrant}
+      lapsRequired={scheduledRaceStandings.lapsRequired}
+    />
+  ) : null
 
 	useEffect(() => {
 	  const handleResize = () => {
@@ -222,31 +248,35 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
     return getTrackPreviewDefinitions(eventVehicleModes, importedCarTracks)
   }, [importedCarTracks, showroomVehicleModes, vehicleMode])
 
-  const minimapColumns = showroomTrackData.length > 1 ? 2 : 1
+  const minimapColumns = isMobileRacingUi ? 1 : showroomTrackData.length > 1 ? 2 : 1
   const minimapRows = Math.max(1, Math.ceil(showroomTrackData.length / minimapColumns))
 
   // Calculate minimap size based on window dimensions.
   // The showroom previews use a two-column grid so larger track catalogs stay on-screen.
   const minimapSize = useMemo(() => {
-    const topMargin = 20
-    const containerPadding = 26
-    const labelHeight = 16 * minimapRows
-    const rowGaps = 8 * Math.max(0, minimapRows - 1)
-    const bottomMargin = 20
+    const topMargin = isMobileRacingUi ? 8 : 20
+    const containerPadding = isMobileRacingUi ? 16 : 26
+    const labelHeight = isMobileRacingUi ? 14 * minimapRows : 16 * minimapRows
+    const rowGaps = (isMobileRacingUi ? 6 : 8) * Math.max(0, minimapRows - 1)
+    const bottomMargin = isMobileRacingUi ? 132 : 20
     const totalOverhead = topMargin + containerPadding + labelHeight + rowGaps + bottomMargin
 
     const availableHeight = windowSize.height - totalOverhead
     const maxFromHeight = Math.floor(availableHeight / minimapRows)
 
-    const panelHorizontalMargin = 40
-    const panelPadding = 24
-    const columnGaps = 8 * Math.max(0, minimapColumns - 1)
-    const availablePanelWidth = Math.min(windowSize.width - panelHorizontalMargin, windowSize.width * 0.42)
+    const panelHorizontalMargin = isMobileRacingUi ? 16 : 40
+    const panelPadding = isMobileRacingUi ? 16 : 24
+    const columnGaps = (isMobileRacingUi ? 6 : 8) * Math.max(0, minimapColumns - 1)
+    const availablePanelWidth = isMobileRacingUi
+      ? Math.min(92, windowSize.width * 0.24)
+      : Math.min(windowSize.width - panelHorizontalMargin, windowSize.width * 0.42)
     const maxFromWidth = Math.floor((availablePanelWidth - panelPadding - columnGaps) / minimapColumns)
 
     const size = Math.min(maxFromHeight, maxFromWidth)
-    return Math.max(42, Math.min(96, size))
-  }, [minimapColumns, minimapRows, windowSize])
+    return isMobileRacingUi
+      ? Math.max(42, Math.min(70, size))
+      : Math.max(42, Math.min(96, size))
+  }, [isMobileRacingUi, minimapColumns, minimapRows, windowSize])
 
   // If idle, show Join Modal
   if (gameStatus === 'idle') {
@@ -259,48 +289,104 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
   if (gameStatus === 'showroom') {
     return (
       <>
+        {isMobileRacingUi && (
+          <MobileRaceMenu
+            canLeaveRace={false}
+            foxName={foxName}
+            foxOriginOutpoint={foxOriginOutpoint}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={onToggleFullscreen}
+            onAnyInteraction={onMobileFirstInteraction}
+          />
+        )}
+
         {/* Track Preview Minimaps - Upper right */}
         <div style={{
           position: 'absolute',
-          top: 20,
-          right: 20,
           zIndex: 100,
-          display: 'grid',
-          gridTemplateColumns: `repeat(${minimapColumns}, ${minimapSize}px)`,
-          alignItems: 'start',
-          gap: '8px',
-          padding: '10px 12px 16px 12px',
           background: 'rgba(0,0,0,0.6)',
-          borderRadius: '10px',
+          borderRadius: '8px',
           border: '1px solid rgba(255,255,255,0.1)',
           backdropFilter: 'blur(10px)',
-          maxHeight: 'calc(100vh - 40px)',
-          overflowY: 'auto'
+          ...(isMobileRacingUi
+            ? {
+                // Mobile: a single horizontal track-picker strip pinned just under
+                // the top menu bar. Reads as a carousel, not a second scrolling
+                // panel over the car — the controls sheet is the only vertical scroll.
+                top: 'calc(env(safe-area-inset-top, 0px) + 54px)',
+                left: 'calc(env(safe-area-inset-left, 0px) + 8px)',
+                right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
+                display: 'flex',
+                flexDirection: 'row',
+                gap: '6px',
+                padding: '6px',
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                WebkitOverflowScrolling: 'touch'
+              }
+            : {
+                // Desktop: unchanged — a vertical grid of previews, top-right.
+                top: 20,
+                right: 20,
+                display: 'grid',
+                gridTemplateColumns: `repeat(${minimapColumns}, ${minimapSize}px)`,
+                alignItems: 'start',
+                gap: '8px',
+                padding: '10px 12px 16px 12px',
+                maxHeight: 'calc(100vh - 40px)',
+                overflowY: 'auto'
+              })
         }}>
           {showroomTrackData.map(track => (
-            <TrackPreviewMinimap
+            <div
               key={`${track.vehicleMode}-${track.trackName}`}
-              trackCurve={track.curve}
-              trackName={track.trackName}
-              isSelected={trackName === track.trackName}
-              onClick={() => onTrackChange && onTrackChange(track.trackName)}
-              width={minimapSize}
-              height={minimapSize}
-            />
+              style={isMobileRacingUi ? { flex: '0 0 auto' } : undefined}
+            >
+              <TrackPreviewMinimap
+                trackCurve={track.curve}
+                trackName={track.trackName}
+                isSelected={trackName === track.trackName}
+                onSelectTrack={onTrackChange}
+                width={isMobileRacingUi ? 64 : minimapSize}
+                height={isMobileRacingUi ? 64 : minimapSize}
+              />
+            </div>
           ))}
         </div>
 
 	        {/* Main controls panel - Left side */}
-	        <div style={{ position: 'absolute', top: 220, left: 10, zIndex: 100, textAlign: 'left' }}>
+	        <div style={{
+            position: 'absolute',
+            top: isMobileLandscapeShowroom ? 'calc(env(safe-area-inset-top, 0px) + 136px)' : isMobileRacingUi ? 'auto' : 220,
+            left: isMobileRacingUi ? 'calc(env(safe-area-inset-left, 0px) + 8px)' : 10,
+            right: isMobileLandscapeShowroom ? 'auto' : isMobileRacingUi ? 'calc(env(safe-area-inset-right, 0px) + 8px)' : 'auto',
+            bottom: isMobileRacingUi ? 'calc(env(safe-area-inset-bottom, 0px) + 8px)' : 'auto',
+            zIndex: 100,
+            textAlign: 'left'
+          }}>
 	          <div style={{
 	            background: 'rgba(0,0,0,0.7)',
-	            padding: '20px 40px',
-            borderRadius: '12px',
+	            padding: isMobileLandscapeShowroom ? '8px 10px' : isMobileRacingUi ? '10px 12px' : '20px 40px',
+            borderRadius: '8px',
             border: '1px solid rgba(255,255,255,0.1)',
-	            backdropFilter: 'blur(10px)'
+	            backdropFilter: 'blur(10px)',
+              width: isMobileLandscapeShowroom ? 'min(360px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))' : isMobileRacingUi ? 'min(100%, 380px)' : undefined,
+              maxHeight: isMobileRacingUi
+                ? isMobileLandscapeShowroom
+                  ? 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 144px)'
+                  : '58dvh'
+                : undefined,
+              overflowY: isMobileRacingUi ? 'auto' : undefined
 	          }}>
-	            <h3 style={{ margin: '0 0 15px 0', color: '#fff', fontSize: '24px' }}>Ready to Race?</h3>
-	            {hasMultiplayerShowroom && (
+	            <h3 style={{
+                margin: isMobileRacingUi ? '0 0 8px 0' : '0 0 15px 0',
+                color: '#fff',
+                fontSize: isMobileRacingUi ? '15px' : '24px',
+                display: isMobileLandscapeShowroom ? 'none' : undefined
+              }}>
+                Ready to Race?
+              </h3>
+	            {hasMultiplayerShowroom && !isMobileRacingUi && (
 	              <div style={{
 	                color: '#d8d8d8',
 	                fontFamily: 'monospace',
@@ -318,7 +404,7 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	                display: 'grid',
 	                gridTemplateColumns: '1fr 1fr',
 	                gap: '6px',
-	                marginBottom: '14px',
+	                marginBottom: isMobileLandscapeShowroom ? '8px' : isMobileRacingUi ? '10px' : '14px',
 	                border: '1px solid rgba(255,255,255,0.14)',
 	                borderRadius: '8px',
 	                padding: '4px',
@@ -335,7 +421,7 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	                      type="button"
 	                      onClick={() => setShowroomMode(mode)}
 	                      style={{
-	                        height: 34,
+	                        height: isMobileLandscapeShowroom ? 28 : isMobileRacingUi ? 30 : 34,
 	                        borderRadius: '6px',
 	                        border: selected ? '1px solid rgba(155,231,224,0.55)' : '1px solid transparent',
 	                        background: selected ? 'rgba(155,231,224,0.18)' : 'transparent',
@@ -353,19 +439,47 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	              </div>
 	            )}
 
-	            <RacingColorPicker selectedColor={playerColor} onColorChange={onColorChange} />
+	            <RacingColorPicker
+                selectedColor={playerColor}
+                onColorChange={onColorChange}
+                gap={isMobileLandscapeShowroom ? '6px' : isMobileRacingUi ? '7px' : undefined}
+                marginBottom={isMobileLandscapeShowroom ? '8px' : isMobileRacingUi ? '10px' : undefined}
+                swatchSize={isMobileLandscapeShowroom ? '22px' : isMobileRacingUi ? '25px' : undefined}
+              />
 	            {onQualityPresetChange && (
 	              <RacingQualitySelector
 	                selectedPresetId={qualityPresetId}
 	                onPresetChange={onQualityPresetChange}
+                  compact={isMobileRacingUi}
 	              />
 	            )}
+              {isMobileRacingUi && !isMobileLandscapeShowroom && onToggleFullscreen && (
+                <button
+                  type="button"
+                  onClick={onToggleFullscreen}
+                  style={{
+                    width: '100%',
+                    height: 32,
+                    marginBottom: 8,
+                    borderRadius: 6,
+                    border: '1px solid rgba(78, 205, 196, 0.55)',
+                    background: 'rgba(78, 205, 196, 0.18)',
+                    color: '#fff',
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    fontWeight: 900,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {isFullscreen ? 'EXIT FULLSCREEN' : 'FULLSCREEN'}
+                </button>
+              )}
 
 	            {showroomMode === 'itt' && (
 	              <>
 	                {/* Track Selection Dropdown */}
-	                <div style={{ marginBottom: '15px' }}>
-	                  <label style={{ display: 'block', color: '#fff', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold' }}>
+	                <div style={{ marginBottom: isMobileLandscapeShowroom ? '8px' : isMobileRacingUi ? '10px' : '15px' }}>
+	                  <label style={{ display: isMobileLandscapeShowroom ? 'none' : 'block', color: '#fff', marginBottom: isMobileRacingUi ? '5px' : '8px', fontSize: isMobileRacingUi ? '12px' : '14px', fontWeight: 'bold' }}>
 	                    Track
 	                  </label>
 	                  <select
@@ -373,12 +487,12 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	                    onChange={(e) => onTrackChange && onTrackChange(e.target.value)}
 	                    style={{
 	                      width: '100%',
-	                      padding: '10px 15px',
+	                      padding: isMobileLandscapeShowroom ? '6px 9px' : isMobileRacingUi ? '7px 10px' : '10px 15px',
 	                      borderRadius: '8px',
 	                      border: '2px solid rgba(255,255,255,0.2)',
 	                      background: 'rgba(0,0,0,0.5)',
 	                      color: '#fff',
-	                      fontSize: '16px',
+	                      fontSize: isMobileLandscapeShowroom ? '12px' : isMobileRacingUi ? '13px' : '16px',
 	                      fontFamily: 'monospace',
 	                      cursor: 'pointer',
 	                      outline: 'none'
@@ -393,11 +507,12 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	                </div>
 
 	                <button
-	                  onClick={onJoin}
+	                  onClick={() => { void onJoin() }}
 	                  className="join-button neon"
 	                  style={{
-	                    fontSize: '20px',
-	                    padding: '15px 40px',
+	                    width: isMobileRacingUi ? '100%' : undefined,
+	                    fontSize: isMobileLandscapeShowroom ? '14px' : isMobileRacingUi ? '15px' : '20px',
+	                    padding: isMobileLandscapeShowroom ? '8px 14px' : isMobileRacingUi ? '10px 16px' : '15px 40px',
 	                    opacity: showroomLoading ? 0.4 : 1,
 	                    cursor: showroomLoading ? 'not-allowed' : 'pointer',
 	                    filter: showroomLoading ? 'grayscale(100%)' : 'none'
@@ -408,10 +523,25 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	                </button>
 	              </>
 	            )}
+
+              {showroomMode === 'multiplayer' && isMobileRacingUi && transactionServerUrl && (
+                <ScheduledRacePanel
+                  transactionServerUrl={transactionServerUrl}
+                  trackName={trackName}
+                  identityKey={identityKey}
+                  ownerAddress={ordinalAddress}
+                  foxOutpoint={foxOutpoint}
+                  foxOriginOutpoint={foxOriginOutpoint}
+                  foxName={foxName}
+                  carColor={playerColor}
+                  onEnterRace={onEnterScheduledRace}
+                  compact
+                />
+              )}
 	          </div>
 	        </div>
 
-	        {showroomMode === 'multiplayer' && (
+	        {showroomMode === 'multiplayer' && !isMobileRacingUi && (
 	          <RacingShowroomStatsStrip
 	            foxName={foxName}
 	            foxOutpoint={foxOutpoint}
@@ -422,10 +552,12 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
 	            trackName={trackName}
 	            transactionServerUrl={transactionServerUrl}
 	            onEnterScheduledRace={onEnterScheduledRace}
+              mobileLayout={isMobileRacingUi}
+              showLapStats={!isMobileRacingUi}
 	          />
 	        )}
 
-	        {showroomMode === 'itt' && (
+	        {showroomMode === 'itt' && !isMobileRacingUi && (
 	          <RacingShowroomStatsStrip
 	            foxName={foxName}
 	            foxOutpoint={foxOutpoint}
@@ -449,6 +581,8 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
           isFullscreen={isFullscreen}
           onToggleFullscreen={onToggleFullscreen}
           onAnyInteraction={onMobileFirstInteraction}
+          foxName={foxName}
+          foxOriginOutpoint={foxOriginOutpoint}
         />
       )}
 
@@ -601,6 +735,18 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
         />
       )}
 
+      {isMobileRacingUi && deviceProfile.isLandscape && mobileScheduledRacePositionBadge && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+          right: 'calc(env(safe-area-inset-right, 0px) + 100px)',
+          zIndex: 101,
+          pointerEvents: 'none'
+        }}>
+          {mobileScheduledRacePositionBadge}
+        </div>
+      )}
+
       <HUDDisplay
         distanceTraveled={distanceTraveled}
         speed={speed}
@@ -660,7 +806,10 @@ export const RacingUI: React.FC<RacingUIProps> = memo(({
       {!isMobileRacingUi && <RacingControlsHelper />}
 
       {isMobileRacingUi && isLiveDriving && (
-        <MobileDrivingControls onFirstInteraction={onMobileFirstInteraction} />
+        <MobileDrivingControls
+          inputMode={vehicleMode === 'snowmobile' ? 'keyboard' : 'car'}
+          onFirstInteraction={onMobileFirstInteraction}
+        />
       )}
 
       {isMobileRacingUi && isLiveDriving && (

@@ -33,6 +33,7 @@ interface VolcanoCaveSceneryProps {
   qualityPreset: RacingQualityPreset
   getHeightAtPosition?: TerrainHeightSampler
   forestOptions?: BillboardForestOptions
+  renderForest?: boolean
   onTreesGenerated?: (trees: ImportedSceneryTreePlacement[]) => void
   onBoardsGenerated?: (boards: ImportedSceneryAdvertisingBoard[]) => void
 }
@@ -609,6 +610,7 @@ export const VolcanoCaveScenery: React.FC<VolcanoCaveSceneryProps> = ({
   qualityPreset,
   getHeightAtPosition,
   forestOptions,
+  renderForest = true,
   onTreesGenerated,
   onBoardsGenerated
 }) => {
@@ -627,13 +629,15 @@ export const VolcanoCaveScenery: React.FC<VolcanoCaveSceneryProps> = ({
 
   const collidableRocks = useMemo<ImportedSceneryTreePlacement[]>(
     () =>
-      placements.rocks.map(rock => ({
-        x: rock.x,
-        z: rock.z,
-        scale: rock.scale,
-        radius: rock.scale * (rock.variant === 0 ? 1.4 : 1.0)
-      })),
-    [placements.rocks]
+      renderForest
+        ? placements.rocks.map(rock => ({
+          x: rock.x,
+          z: rock.z,
+          scale: rock.scale,
+          radius: rock.scale * (rock.variant === 0 ? 1.4 : 1.0)
+        }))
+        : [],
+    [placements.rocks, renderForest]
   )
 
   const particleSources = useMemo(() => {
@@ -688,7 +692,7 @@ export const VolcanoCaveScenery: React.FC<VolcanoCaveSceneryProps> = ({
 
   return (
     <>
-      <RockSpires rocks={placements.rocks} getHeightAtPosition={getHeightAtPosition} />
+      {renderForest && <RockSpires rocks={placements.rocks} getHeightAtPosition={getHeightAtPosition} />}
       <LavaField
         basin={placements.lavaBasin}
         crossings={placements.lavaCrossings}

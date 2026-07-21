@@ -177,6 +177,7 @@ setInterval(() => {
 registerCollectibleRoutes(app, {
   mode: USE_REAL_TRANSACTIONS ? 'real' : 'dummy',
   inscriptionApp: INSCRIPTION_APP,
+  chain: CHAIN,
   makeDummyTxid,
   identityDelivery,
 })

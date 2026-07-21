@@ -1,6 +1,12 @@
 import React, { useMemo } from 'react'
 import * as THREE from 'three'
-import type { TerrainHeightSampler } from '../core/roadCorridor'
+import {
+  getRoadProtectedTerrainHeight,
+  type RoadCorridorConfig,
+  type RoadTerrainProtectionOptions,
+  type TerrainHeightSampler
+} from '../core/roadCorridor'
+import type { SpatialTrackIndex } from '../core/spatialTrackIndex'
 import type { RacingQualityPresetId } from '../performance/qualitySettings'
 import {
   getRacingSurfaceTextureConfig,
@@ -22,6 +28,10 @@ interface SampledTerrainMeshProps {
    * shared procedural material; 'none' keeps a flat tinted material.
    */
   surface?: RacingSurfaceId | 'none'
+  roadProtection?: {
+    index: SpatialTrackIndex
+    corridor: RoadCorridorConfig
+  } & RoadTerrainProtectionOptions
 }
 
 export const SampledTerrainMesh: React.FC<SampledTerrainMeshProps> = ({
@@ -31,7 +41,8 @@ export const SampledTerrainMesh: React.FC<SampledTerrainMeshProps> = ({
   yOffset = -0.4,
   color = '#4a8c59',
   qualityPresetId = 'medium',
-  surface = 'grass'
+  surface = 'grass',
+  roadProtection
 }) => {
   const geometry = useMemo(() => {
     const halfSize = size / 2
@@ -43,7 +54,18 @@ export const SampledTerrainMesh: React.FC<SampledTerrainMeshProps> = ({
       const z = -halfSize + (zIndex / resolution) * size
       for (let xIndex = 0; xIndex <= resolution; xIndex++) {
         const x = -halfSize + (xIndex / resolution) * size
-        vertices.push(x, getHeightAtPosition(x, z) + yOffset, z)
+        const sampledHeight = getHeightAtPosition(x, z) + yOffset
+        const protectedHeight = roadProtection
+          ? getRoadProtectedTerrainHeight(
+            roadProtection.index,
+            x,
+            z,
+            sampledHeight,
+            roadProtection.corridor,
+            roadProtection
+          )
+          : sampledHeight
+        vertices.push(x, protectedHeight, z)
         uvs.push(xIndex / resolution, zIndex / resolution)
       }
     }
@@ -66,7 +88,7 @@ export const SampledTerrainMesh: React.FC<SampledTerrainMeshProps> = ({
     terrainGeometry.setIndex(indices)
     terrainGeometry.computeVertexNormals()
     return terrainGeometry
-  }, [getHeightAtPosition, resolution, size, yOffset])
+  }, [getHeightAtPosition, resolution, roadProtection, size, yOffset])
 
   // Procedural ground via the shared surface material. The UV grid spans the full
   // terrain `size` on both axes, so a uniform repeat keeps the surface detail a

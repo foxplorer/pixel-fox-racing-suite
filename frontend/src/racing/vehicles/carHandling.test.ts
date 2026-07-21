@@ -27,6 +27,10 @@ import {
   isCarMovementKey,
   normalizeCarRotation,
   shouldUseCarBoardSlidingTangent,
+  getCarHandlingForQuality,
+  MOBILE_CAR_HANDLING,
+  MOBILE_MOVEMENT_DELTA_CAP_SECONDS,
+  MOBILE_TURN_SPEED,
   SHARED_CAR_HANDLING
 } from './carHandling'
 
@@ -101,6 +105,27 @@ test('shared car handling exposes on-track and off-track speed caps', () => {
   assert.equal(SHARED_CAR_HANDLING.boardCollisionCarHalfLength, 2.05)
   assert.equal(SHARED_CAR_HANDLING.boardSlidingMinTangentLengthSq, 0.1)
   assert.equal(SHARED_CAR_HANDLING.maxMovementDeltaSeconds, 0.05)
+})
+
+test('mobile handling raises the movement cap and gentles the turn rate; everything else matches shared', () => {
+  assert.equal(MOBILE_MOVEMENT_DELTA_CAP_SECONDS, 0.1)
+  assert.equal(MOBILE_CAR_HANDLING.maxMovementDeltaSeconds, MOBILE_MOVEMENT_DELTA_CAP_SECONDS)
+  // Mobile steers gentler than desktop to tame binary-touch oversteer, but keeps the
+  // speed-based falloff and the rest of the tuning identical to shared.
+  assert.equal(MOBILE_CAR_HANDLING.turnSpeed, MOBILE_TURN_SPEED)
+  assert.ok(MOBILE_CAR_HANDLING.turnSpeed < SHARED_CAR_HANDLING.turnSpeed)
+  assert.equal(MOBILE_CAR_HANDLING.highSpeedSteeringReduction, SHARED_CAR_HANDLING.highSpeedSteeringReduction)
+  assert.equal(MOBILE_CAR_HANDLING.acceleration, SHARED_CAR_HANDLING.acceleration)
+  assert.equal(MOBILE_CAR_HANDLING.maxSpeedOnTrack, SHARED_CAR_HANDLING.maxSpeedOnTrack)
+})
+
+test('getCarHandlingForQuality selects mobile tuning only for the mobile budget', () => {
+  assert.equal(getCarHandlingForQuality(true), MOBILE_CAR_HANDLING)
+  assert.equal(getCarHandlingForQuality(false), SHARED_CAR_HANDLING)
+  // A 14fps frame (delta ~0.071s) is fully integrated on mobile but still
+  // clamped on desktop's tighter cap.
+  assert.equal(capCarMovementDelta(0.071, getCarHandlingForQuality(true)), 0.071)
+  assert.equal(capCarMovementDelta(0.071, getCarHandlingForQuality(false)), 0.05)
 })
 
 test('shared car downhill speed cap boosts more on track than off track', () => {
@@ -355,6 +380,50 @@ test('shared car rotation integrates steering and normalizes angle', () => {
     isTurningLeft: true,
     isTurningRight: false
   }), 2)
+})
+
+test('analog steeringInput turns proportionally and overrides the binary keys', () => {
+  const base = { rotationRadians: 0, speed: 10, maxSpeed: 75, deltaSeconds: 1 }
+
+  // Full-left analog (-1) matches a full binary left turn.
+  assertNear(integrateCarRotation({
+    ...base,
+    isTurningLeft: false,
+    isTurningRight: false,
+    steeringInput: -1
+  }), 1.8133333333333335)
+
+  // Half-left analog turns half as much (proportional / feather-able).
+  assertNear(integrateCarRotation({
+    ...base,
+    isTurningLeft: false,
+    isTurningRight: false,
+    steeringInput: -0.5
+  }), 0.9066666666666667)
+
+  // Positive analog steers right (negative rotation).
+  assertNear(integrateCarRotation({
+    ...base,
+    isTurningLeft: false,
+    isTurningRight: false,
+    steeringInput: 1
+  }), -1.8133333333333335)
+
+  // Analog wins over a conflicting binary key (touch pad is authoritative when set).
+  assertNear(integrateCarRotation({
+    ...base,
+    isTurningLeft: false,
+    isTurningRight: true,
+    steeringInput: -1
+  }), 1.8133333333333335)
+
+  // Neutral analog (0) holds a straight line even while "steering" is engaged.
+  assert.equal(integrateCarRotation({
+    ...base,
+    isTurningLeft: false,
+    isTurningRight: false,
+    steeringInput: 0
+  }), 0)
 })
 
 test('shared car control frame reads controls and advances speed and rotation', () => {

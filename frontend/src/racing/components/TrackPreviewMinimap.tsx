@@ -1,24 +1,33 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
 interface TrackPreviewMinimapProps {
   trackCurve: THREE.CatmullRomCurve3
   trackName: string
   isSelected: boolean
-  onClick: () => void
+  onClick?: () => void
+  onSelectTrack?: (trackName: string) => void
   width?: number
   height?: number
 }
 
-export const TrackPreviewMinimap: React.FC<TrackPreviewMinimapProps> = ({
+export const TrackPreviewMinimap = memo<TrackPreviewMinimapProps>(function TrackPreviewMinimap({
   trackCurve,
   trackName,
   isSelected,
   onClick,
+  onSelectTrack,
   width = 100,
   height = 100
-}) => {
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const handleClick = useCallback(() => {
+    if (onClick) {
+      onClick()
+      return
+    }
+    onSelectTrack?.(trackName)
+  }, [onClick, onSelectTrack, trackName])
 
   const trackBounds = useMemo(() => {
     const samples = 100
@@ -96,7 +105,7 @@ export const TrackPreviewMinimap: React.FC<TrackPreviewMinimapProps> = ({
 
   return (
     <div
-      onClick={onClick}
+      onClick={handleClick}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -143,4 +152,12 @@ export const TrackPreviewMinimap: React.FC<TrackPreviewMinimapProps> = ({
       </span>
     </div>
   )
-}
+}, (previous, next) => (
+  previous.trackCurve === next.trackCurve &&
+  previous.trackName === next.trackName &&
+  previous.isSelected === next.isSelected &&
+  previous.onClick === next.onClick &&
+  previous.onSelectTrack === next.onSelectTrack &&
+  previous.width === next.width &&
+  previous.height === next.height
+))

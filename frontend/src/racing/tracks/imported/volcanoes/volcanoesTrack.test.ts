@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { getRacingQualityPreset } from '../../../performance/qualitySettings'
 import { createImportedCarTrackPreviewDefinition } from '../../trackPreviewDefinitions'
 import volcanoesGeoJson from './volcanoes.source.json'
 import {
+  createVolcanoCavePlacements,
   createLavaCrossings,
   createVolcanoLavaPitPools,
   createVolcanoLavaPitRoadExclusionIntervals,
@@ -52,6 +54,22 @@ test('volcanoes lava crossing visuals reach ramp midpoints', () => {
     const gapHalf = crossing.length / 2
     assert.equal(getLavaCrossingVisualHalfLength(crossing), gapHalf + LAVA_PIT_RAMP_LENGTH / 2)
   }
+})
+
+test('volcanoes mobile cave placements keep lava and ramps with a lighter rock budget', () => {
+  const mobile = createVolcanoCavePlacements(
+    volcanoesTrackDefinition.trackCurve,
+    getRacingQualityPreset('mobile')
+  )
+  const low = createVolcanoCavePlacements(
+    volcanoesTrackDefinition.trackCurve,
+    getRacingQualityPreset('low')
+  )
+
+  assert.equal(mobile.lavaCrossings.length, 5)
+  assert.equal(mobile.lavaBasin.boundary.length > 0, true)
+  assert.equal(mobile.rocks.length > 0, true)
+  assert.equal(mobile.rocks.length < low.rocks.length, true)
 })
 
 test('volcanoes road exclusions match lava crossing midpoint spans', () => {

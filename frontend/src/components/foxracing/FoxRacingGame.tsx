@@ -98,6 +98,7 @@ const FAKE_REMOTE_PLAYER_COUNT = parseFakeRemotePlayerCount(import.meta.env.VITE
 const FAKE_REMOTE_PLAYER_SPEED_SCALE = parseFakeRemotePlayerSpeedScale(import.meta.env.VITE_RACING_FAKE_PLAYER_SPEED)
 const VOLCANO_EXPLOSION_FIRST_DELAY_MS = 1000
 const VOLCANO_EXPLOSION_INTERVAL_MS = 25000
+const MOBILE_RACE_MINIMAP_SIZE = 80
 
 interface FoxRacingGameProps {
   identityKey?: string | null
@@ -156,7 +157,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   pendingScheduledRaceEntry = null,
   onPendingScheduledRaceEntryConsumed
 }) => {
-  const { containerRef, isFullscreen, toggleFullscreen, fallbackFullscreenStyle } = useFullscreenToggle<HTMLDivElement>()
+  const { containerRef, isFullscreen, enterFullscreen, toggleFullscreen, fallbackFullscreenStyle } = useFullscreenToggle<HTMLDivElement>()
   const deviceProfile = useRacingDeviceProfile()
   const importedTrackDefinition = findImportedCarTrackDefinitionById(trackDefinitionId)
   const resolvedTrackDefinition = importedTrackDefinition ?? trackDefinition
@@ -177,6 +178,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   const [speed, setSpeed] = useState(0) // Current speed in m/s
   const [trackName, setTrackName] = useState<string>(resolvedLocalTrackName)
   const [cameraMode, setCameraMode] = useState<'simple' | 'smooth' | 'damped' | 'targetsmooth' | 'velocity'>('smooth') // Camera mode - default to 'smooth'
+  const [isManualCamera, setIsManualCamera] = useState(false)
   const [qualityPresetId, setQualityPresetId] = useRacingQualitySetting()
   const [fakeRemoteElapsedSeconds, setFakeRemoteElapsedSeconds] = useState(0)
   
@@ -888,7 +890,10 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     })
   }, [activeScheduledRaceEntry, ordinalAddress, foxOutpoint, foxOriginOutpoint, foxName, onLatestActivityChange, gameStatus, trackName, playerColor, distanceTraveled, lapTimes, recordScheduledRaceFinishOrder])
 
-  const handleStartRace = useCallback(() => {
+  const handleStartRace = useCallback(async (requestFullscreen = deviceProfile.prefersMobileRacingUi) => {
+    if (requestFullscreen) {
+      await enterFullscreen()
+    }
     socketRef.current?.emit('leaveScheduledRaceRoom')
     setActiveScheduledRaceId(null)
     activeScheduledRaceIdRef.current = null
@@ -931,9 +936,12 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       setLapTxids,
       setCountdown
     })
-  }, [foxName, foxOriginOutpoint, identityKey, ordinalAddress, playerColor, resolvedLocalTrackName, resolvedTrackDefinition.startFinishPosition, spawnPosition, carPosition, trackName, onTrackChange])
+  }, [deviceProfile.prefersMobileRacingUi, enterFullscreen, foxName, foxOriginOutpoint, identityKey, ordinalAddress, playerColor, resolvedLocalTrackName, resolvedTrackDefinition.startFinishPosition, spawnPosition, carPosition, trackName, onTrackChange])
 
-  const handleEnterScheduledRace = useCallback((race: ScheduledRace, signup: ScheduledRaceSignup) => {
+  const handleEnterScheduledRace = useCallback(async (race: ScheduledRace, signup: ScheduledRaceSignup) => {
+    if (deviceProfile.prefersMobileRacingUi) {
+      await enterFullscreen()
+    }
     if (race.trackName !== resolvedLocalTrackName && onTrackChange) {
       onTrackChange(race.trackName, undefined, { race, signup })
       return
@@ -1012,7 +1020,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
       setLapTxids,
       setCountdown
     })
-  }, [foxName, foxOriginOutpoint, identityKey, onTrackChange, ordinalAddress, playerColor, resolvedLocalTrackName, resolvedTrackDefinition.startFinishDirection, resolvedTrackDefinition.startFinishPosition])
+  }, [deviceProfile.prefersMobileRacingUi, enterFullscreen, foxName, foxOriginOutpoint, identityKey, onTrackChange, ordinalAddress, playerColor, resolvedLocalTrackName, resolvedTrackDefinition.startFinishDirection, resolvedTrackDefinition.startFinishPosition])
 
   useEffect(() => {
     if (!pendingScheduledRaceEntry || pendingScheduledRaceEntry.race.trackName !== resolvedLocalTrackName) return
@@ -1022,7 +1030,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
 
   useEffect(() => {
     if (startRaceImmediately && gameStatus === 'showroom') {
-      handleStartRace()
+      void handleStartRace(false)
     }
   }, [startRaceImmediately, gameStatus, handleStartRace])
 
@@ -1312,16 +1320,22 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           startGateMarqueeModel={startGateMarqueeModel}
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
+          onManualCameraChange={setIsManualCamera}
         />
 
-        {/* Minimap - Show during racing and countdown (bottom right) */}
-        {(gameStatus === 'racing' || gameStatus === 'countdown') && (
+        {/* Desktop keeps the full bottom-right map. Mobile uses a compact top-right map and
+            hides it in portrait or while manual camera controls are active. */}
+        {(gameStatus === 'racing' || gameStatus === 'countdown') &&
+          (!deviceProfile.prefersMobileRacingUi || deviceProfile.isLandscape) &&
+          !(deviceProfile.prefersMobileRacingUi && isManualCamera) && (
           <Minimap
             carPosition={carPosition}
             trackCurve={resolvedTrackDefinition.trackCurve}
             startFinishPosition={resolvedTrackDefinition.startFinishPosition}
             trackLocation={resolvedTrackLocationLabel ?? (resolvedLocalTrackName === 'Australia' ? trackLocation : resolvedLocalTrackName)}
-            position="bottom-right"
+            position={deviceProfile.prefersMobileRacingUi ? 'top-right' : 'bottom-right'}
+            width={deviceProfile.prefersMobileRacingUi ? MOBILE_RACE_MINIMAP_SIZE : 200}
+            height={deviceProfile.prefersMobileRacingUi ? MOBILE_RACE_MINIMAP_SIZE : 200}
             updateEveryFrames={getRacingMinimapQualitySettings(getRacingQualityPreset(qualityPresetId)).updateEveryFrames}
           />
         )}

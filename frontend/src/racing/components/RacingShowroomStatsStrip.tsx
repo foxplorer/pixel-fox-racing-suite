@@ -20,6 +20,8 @@ interface RacingShowroomStatsStripProps {
   trackName?: string
   transactionServerUrl?: string
   onEnterScheduledRace?: (race: ScheduledRace, signup: ScheduledRaceSignup) => void
+  mobileLayout?: boolean
+  showLapStats?: boolean
 }
 
 const formatLapTime = (seconds: number): string => {
@@ -45,7 +47,9 @@ export const RacingShowroomStatsStrip = memo(function RacingShowroomStatsStrip({
   playerColor,
   trackName = 'Australia',
   transactionServerUrl,
-  onEnterScheduledRace
+  onEnterScheduledRace,
+  mobileLayout = false,
+  showLapStats = true
 }: RacingShowroomStatsStripProps) {
   const [results, setResults] = useState<PixelRacingGameResult[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -111,9 +115,10 @@ export const RacingShowroomStatsStrip = memo(function RacingShowroomStatsStrip({
 
   const containerStyle: CSSProperties = {
     position: 'absolute',
-    left: isCompact ? 10 : 20,
-    right: isCompact ? 10 : 20,
-    bottom: isCompact ? 64 : 72,
+    left: mobileLayout ? 8 : isCompact ? 10 : 20,
+    right: mobileLayout ? 8 : isCompact ? 10 : 20,
+    top: mobileLayout ? 'calc(env(safe-area-inset-top, 0px) + 72px)' : undefined,
+    bottom: mobileLayout ? 'auto' : isCompact ? 64 : 72,
     zIndex: 105,
     pointerEvents: 'auto',
     color: '#fff',
@@ -122,8 +127,10 @@ export const RacingShowroomStatsStrip = memo(function RacingShowroomStatsStrip({
     border: '1px solid rgba(255,255,255,0.14)',
     borderRadius: '8px',
     backdropFilter: 'blur(10px)',
-    padding: isCompact ? '10px' : '12px 14px',
-    boxShadow: '0 14px 36px rgba(0,0,0,0.32)'
+    padding: mobileLayout ? '8px' : isCompact ? '10px' : '12px 14px',
+    boxShadow: '0 14px 36px rgba(0,0,0,0.32)',
+    maxHeight: mobileLayout ? 'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 150px)' : undefined,
+    overflowY: mobileLayout ? 'auto' : undefined
   }
 
   const rowStyle: CSSProperties = {
@@ -164,6 +171,7 @@ export const RacingShowroomStatsStrip = memo(function RacingShowroomStatsStrip({
         />
       )}
 
+      {showLapStats && (
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -203,32 +211,33 @@ export const RacingShowroomStatsStrip = memo(function RacingShowroomStatsStrip({
           Ordinals + TX
         </div>
       </div>
+      )}
 
-      {isLoading && (
+      {showLapStats && isLoading && (
         <div style={{ color: '#cfcfcf', fontSize: '12px', minHeight: '42px', display: 'flex', alignItems: 'center' }}>
           Loading your lap stats...
         </div>
       )}
 
-      {!isLoading && hasError && (
+      {showLapStats && !isLoading && hasError && (
         <div style={{ color: '#ffb3b3', fontSize: '12px', minHeight: '42px', display: 'flex', alignItems: 'center' }}>
           Your lap stats are unavailable.
         </div>
       )}
 
-      {!isLoading && !hasError && !hasFoxIdentity && (
+      {showLapStats && !isLoading && !hasError && !hasFoxIdentity && (
         <div style={{ color: '#cfcfcf', fontSize: '12px', minHeight: '42px', display: 'flex', alignItems: 'center' }}>
           Connect your Pixel Fox to track your laps.
         </div>
       )}
 
-      {!isLoading && !hasError && hasFoxIdentity && displayResults.length === 0 && (
+      {showLapStats && !isLoading && !hasError && hasFoxIdentity && displayResults.length === 0 && (
         <div style={{ color: '#cfcfcf', fontSize: '12px', minHeight: '42px', display: 'flex', alignItems: 'center' }}>
           No laps yet — set your first lap time!
         </div>
       )}
 
-      {!isLoading && !hasError && displayResults.length > 0 && (
+      {showLapStats && !isLoading && !hasError && displayResults.length > 0 && (
         <div style={rowStyle}>
           {displayResults.map((result, index) => {
             const txUrl = getWhatsOnChainTransactionUrl(result.txid)

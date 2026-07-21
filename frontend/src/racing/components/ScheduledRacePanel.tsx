@@ -19,6 +19,7 @@ interface ScheduledRacePanelProps {
   foxName?: string | null
   carColor?: string | null
   onEnterRace?: (race: ScheduledRace, signup: ScheduledRaceSignup) => void
+  compact?: boolean
 }
 
 const formatUtcStart = (startsAt: string): string => {
@@ -77,6 +78,7 @@ export const ScheduledRacePanel = memo(function ScheduledRacePanel({
   foxName,
   carColor,
   onEnterRace,
+  compact = false,
 }: ScheduledRacePanelProps) {
   const [races, setRaces] = useState<ScheduledRace[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -174,20 +176,20 @@ export const ScheduledRacePanel = memo(function ScheduledRacePanel({
 
   const panelStyle: CSSProperties = {
     borderBottom: '1px solid rgba(255,255,255,0.1)',
-    marginBottom: '8px',
-    paddingBottom: '8px',
+    marginBottom: compact ? '6px' : '8px',
+    paddingBottom: compact ? '6px' : '8px',
   }
 
   const raceRowStyle: CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: '72px minmax(0, 1fr)',
-    gap: '8px',
+    gridTemplateColumns: compact ? '56px minmax(0, 1fr) 58px' : '72px minmax(0, 1fr)',
+    gap: compact ? '6px' : '8px',
     alignItems: 'center',
     border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: '6px',
     background: 'rgba(255,255,255,0.05)',
-    padding: '7px 8px',
-    minHeight: '58px',
+    padding: compact ? '6px' : '7px 8px',
+    minHeight: compact ? '46px' : '58px',
   }
 
   return (
@@ -199,12 +201,12 @@ export const ScheduledRacePanel = memo(function ScheduledRacePanel({
         gap: '8px',
         marginBottom: '7px',
       }}>
-        <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        <div style={{ color: '#ffffff', fontSize: compact ? '11px' : '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Upcoming Races
         </div>
-        <div style={{ color: '#9BE7E0', fontSize: '10px', whiteSpace: 'nowrap' }}>
+        {!compact && <div style={{ color: '#9BE7E0', fontSize: '10px', whiteSpace: 'nowrap' }}>
           Pixel Fox Racing Track Series
-        </div>
+        </div>}
       </div>
 
       {isLoading && (
@@ -226,7 +228,11 @@ export const ScheduledRacePanel = memo(function ScheduledRacePanel({
       )}
 
       {!isLoading && !errorMessage && races.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '6px' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: compact ? '1fr' : 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: compact ? '5px' : '6px'
+        }}>
           {races.map(race => {
             const isSignedUp = Boolean(entrantId && race.roster.some(signup => signup.entrantId === entrantId))
             const actionLabel = getRaceActionLabel(race, isSignedUp)
@@ -241,35 +247,35 @@ export const ScheduledRacePanel = memo(function ScheduledRacePanel({
             return (
               <div key={race.id} style={raceRowStyle}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ color: '#ffffff', fontSize: '11px', fontWeight: 700, marginBottom: '4px', lineHeight: 1.2, whiteSpace: 'normal', overflowWrap: 'break-word' }}>
+                  <div style={{ color: '#ffffff', fontSize: compact ? '10px' : '11px', fontWeight: 700, marginBottom: compact ? '2px' : '4px', lineHeight: 1.2, whiteSpace: 'normal', overflowWrap: 'break-word' }}>
                     {race.trackName}
                   </div>
-                  <div style={{ color: '#FFD166', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  <div style={{ color: '#FFD166', fontSize: compact ? '11px' : '12px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {formatUtcStart(race.startsAt)}
                   </div>
-                  <div style={{ color: '#9BE7E0', fontSize: '11px', marginTop: '3px' }}>
+                  <div style={{ color: '#9BE7E0', fontSize: compact ? '10px' : '11px', marginTop: compact ? '1px' : '3px' }}>
                     {formatCountdown(race.startsAt, nowMs)}
                   </div>
-                  <div style={{ color: '#cfcfcf', fontSize: '10px', marginTop: '3px', textTransform: 'uppercase' }}>
+                  {!compact && <div style={{ color: '#cfcfcf', fontSize: '10px', marginTop: '3px', textTransform: 'uppercase' }}>
                     {race.status}
-                  </div>
+                  </div>}
                 </div>
 
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ color: '#fff', fontSize: '11px', marginBottom: '5px' }}>
+                  <div style={{ color: '#fff', fontSize: compact ? '10px' : '11px', marginBottom: compact ? '3px' : '5px' }}>
                     {race.signupCount}/{race.maxEntrants} slots
                   </div>
                   <div style={{ display: 'flex', gap: '4px', overflow: 'hidden' }}>
                     {race.roster.length === 0 && (
-                      <span style={{ color: '#cfcfcf', fontSize: '11px' }}>No signups yet</span>
+                      <span style={{ color: '#cfcfcf', fontSize: compact ? '10px' : '11px' }}>No signups yet</span>
                     )}
                     {race.roster.map(signup => (
                       <div
                         key={signup.entrantId}
                         title={`${signup.gridSlot}. ${signup.foxName}`}
                         style={{
-                          width: 24,
-                          height: 24,
+                          width: compact ? 18 : 24,
+                          height: compact ? 18 : 24,
                           borderRadius: '5px',
                           border: `2px solid ${signup.carColor || '#9BE7E0'}`,
                           overflow: 'hidden',
@@ -285,7 +291,7 @@ export const ScheduledRacePanel = memo(function ScheduledRacePanel({
                       </div>
                     ))}
                   </div>
-                  {resultSummary && (
+                  {!compact && resultSummary && (
                     <div
                       title={resultSummary}
                       style={{
@@ -307,15 +313,15 @@ export const ScheduledRacePanel = memo(function ScheduledRacePanel({
                   onClick={() => isSignedUp ? handleEnterRace(race) : handleSignUp(race)}
                   disabled={(!canPressSignUp && !canPressEnter) || isPending}
                   style={{
-                    gridColumn: '1 / -1',
+                    gridColumn: compact ? 'auto' : '1 / -1',
                     width: '100%',
-                    height: 34,
+                    height: compact ? 32 : 34,
                     borderRadius: '6px',
                     border: (canPressSignUp || canPressEnter) ? '1px solid rgba(255,255,255,0.34)' : '1px solid rgba(255,255,255,0.18)',
                     background: (canPressSignUp || canPressEnter) ? activeActionColor : 'rgba(255,255,255,0.08)',
                     color: (canPressSignUp || canPressEnter) ? activeActionTextColor : '#cfcfcf',
                     fontFamily: 'monospace',
-                    fontSize: '11px',
+                    fontSize: compact ? '10px' : '11px',
                     fontWeight: 700,
                     cursor: (canPressSignUp || canPressEnter) ? 'pointer' : 'default',
                     padding: '0 6px',

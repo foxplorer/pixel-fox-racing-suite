@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { PrivateKey, PublicKey } from '@bsv/sdk'
 import {
   createMetanetCollectibleDelivery,
   isIdentityKey,
@@ -223,6 +224,43 @@ test('Metanet delivery pays the supplied protocol public key', async () => {
   assert.ok(destinationAddress.length > 20)
   assert.equal(result.deliveryMode, 'metanet')
   assert.equal(result.remittance?.basket, 'pixel foxes')
+})
+
+test('Metanet delivery derives the protocol-key address for the configured chain', async () => {
+  const publicKey = PrivateKey.fromRandom().toPublicKey().toString()
+  const destinations: string[] = []
+  const buildTransaction = async (request: { destinationAddress: string }) => {
+    destinations.push(request.destinationAddress)
+    return { txid: `txid-${destinations.length}`, outputIndex: 0, atomicBEEF: [1] }
+  }
+  const deliveryTarget = {
+    type: 'protocol-key' as const,
+    publicKey,
+    protocolID: [0, 'pixel foxes'] as [0, string],
+    keyID: '1',
+    counterparty: 'anyone',
+    basket: 'pixel foxes',
+  }
+  const getEnv = (name: string) => name === 'BLUEBERRIES_COLLECTION_ID'
+    ? 'collection_0'
+    : undefined
+
+  await createMetanetCollectibleDelivery(
+    'pixelfoxracing',
+    buildTransaction,
+    getEnv,
+    'main'
+  )({ kind: 'blueberries', identityKey: publicKey, deliveryTarget })
+  await createMetanetCollectibleDelivery(
+    'pixelfoxracing',
+    buildTransaction,
+    getEnv,
+    'test'
+  )({ kind: 'blueberries', identityKey: publicKey, deliveryTarget })
+
+  assert.equal(destinations[0], PublicKey.fromString(publicKey).toAddress('mainnet'))
+  assert.equal(destinations[1], PublicKey.fromString(publicKey).toAddress('testnet'))
+  assert.notEqual(destinations[0], destinations[1])
 })
 
 test('claims without an explicit delivery target fail clearly', async () => {

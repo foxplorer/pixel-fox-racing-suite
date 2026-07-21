@@ -42,11 +42,18 @@ export const SHARED_CAR_CAMERA: CarCameraConfig = {
   sanLuisTargetSmoothTargetRate: 4
 }
 
+// On mobile a frame can take longer than the default 0.05s cap. Clamping the
+// camera-smoothing delta to 0.05 there makes the chase camera under-advance every
+// frame, so the view lags the car's actual heading — it reads as "I steered but the
+// screen hasn't caught up" latency that desktop (16ms frames) never hits. Mobile
+// passes this larger cap so the camera keeps up in wall-clock time at low fps.
+export const MOBILE_CAMERA_MAX_DELTA_SECONDS = 0.1
+
 export const capCameraDelta = (
   deltaSeconds: number,
-  config: CarCameraConfig = SHARED_CAR_CAMERA
+  maxDeltaSeconds: number = SHARED_CAR_CAMERA.maxDeltaSeconds
 ): number => {
-  return Math.min(deltaSeconds, config.maxDeltaSeconds)
+  return Math.min(deltaSeconds, maxDeltaSeconds)
 }
 
 export const getCarCameraSmoothingRate = (

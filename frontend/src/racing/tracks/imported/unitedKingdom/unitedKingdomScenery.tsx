@@ -17,6 +17,7 @@ interface UnitedKingdomSceneryProps {
   qualityPreset: RacingQualityPreset
   getHeightAtPosition?: TerrainHeightSampler
   forestOptions?: BillboardForestOptions
+  renderForest?: boolean
   onTreesGenerated?: (trees: UnitedKingdomTreePlacement[]) => void
   onBoardsGenerated?: (boards: UnitedKingdomAdvertisingBoard[]) => void
 }
@@ -26,6 +27,7 @@ export const UnitedKingdomScenery: React.FC<UnitedKingdomSceneryProps> = ({
   qualityPreset,
   getHeightAtPosition,
   forestOptions,
+  renderForest = true,
   onTreesGenerated,
   onBoardsGenerated
 }) => {
@@ -44,12 +46,14 @@ export const UnitedKingdomScenery: React.FC<UnitedKingdomSceneryProps> = ({
 
   return (
     <>
-      <TrackBillboardForest
-        trackCurve={trackCurve}
-        qualityPreset={qualityPreset}
-        getHeightAtPosition={getHeightAtPosition}
-        options={forestOptions}
-      />
+      {renderForest && (
+        <TrackBillboardForest
+          trackCurve={trackCurve}
+          qualityPreset={qualityPreset}
+          getHeightAtPosition={getHeightAtPosition}
+          options={forestOptions}
+        />
+      )}
       {boards.map((board, index) => (
         <CurvedBoard
           key={`unitedKingdom-board-${index}`}

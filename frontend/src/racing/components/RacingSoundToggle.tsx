@@ -1,5 +1,6 @@
 import React from 'react'
 import { ImVolumeHigh, ImVolumeMute2 } from 'react-icons/im'
+import { useRacingDeviceProfile } from '../platform/useRacingDeviceProfile'
 
 export const RACING_SOUND_TOGGLE_ICON_SIZE = 24
 
@@ -22,29 +23,34 @@ export const RacingSoundToggle: React.FC<RacingSoundToggleProps> = ({
   showUnmuted,
   onUnmute,
   onMute
-}) => (
-  <div style={{
-    position: 'absolute',
-    top: 20,
-    right: 220,
-    pointerEvents: 'auto',
-    zIndex: 100
-  }}>
-    <ImVolumeMute2
-      style={{
-        ...soundIconStyle,
-        display: showMuted ? 'block' : 'none'
-      }}
-      size={RACING_SOUND_TOGGLE_ICON_SIZE}
-      onClick={onUnmute}
-    />
-    <ImVolumeHigh
-      style={{
-        ...soundIconStyle,
-        display: showUnmuted ? 'block' : 'none'
-      }}
-      size={RACING_SOUND_TOGGLE_ICON_SIZE}
-      onClick={onMute}
-    />
-  </div>
-)
+}) => {
+  const { prefersMobileRacingUi, isLandscape } = useRacingDeviceProfile()
+  if (prefersMobileRacingUi && !isLandscape) return null
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 20,
+      right: 220,
+      pointerEvents: 'auto',
+      zIndex: 100
+    }}>
+      <ImVolumeMute2
+        style={{
+          ...soundIconStyle,
+          display: showMuted ? 'block' : 'none'
+        }}
+        size={RACING_SOUND_TOGGLE_ICON_SIZE}
+        onClick={onUnmute}
+      />
+      <ImVolumeHigh
+        style={{
+          ...soundIconStyle,
+          display: showUnmuted ? 'block' : 'none'
+        }}
+        size={RACING_SOUND_TOGGLE_ICON_SIZE}
+        onClick={onMute}
+      />
+    </div>
+  )
+}

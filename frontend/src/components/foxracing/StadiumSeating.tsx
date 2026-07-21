@@ -31,6 +31,7 @@ interface StadiumSeatingProps {
   side?: 'left' | 'right' | 'both'
   // Distance from track center (default 38)
   distanceFromTrack?: number
+  foxDensityScale?: number
 }
 
 export const StadiumSeating: React.FC<StadiumSeatingProps> = ({
@@ -43,7 +44,8 @@ export const StadiumSeating: React.FC<StadiumSeatingProps> = ({
   customPosition,
   customDirection,
   side = 'both',
-  distanceFromTrack: distanceFromTrackProp
+  distanceFromTrack: distanceFromTrackProp,
+  foxDensityScale = 1
 }) => {
   const foxGroupRef = useRef<THREE.Group>(null)
   const { camera } = useThree()
@@ -78,7 +80,8 @@ export const StadiumSeating: React.FC<StadiumSeatingProps> = ({
     seatWidth,
     rowDepth,
     rowHeightStep,
-    side
+    side,
+    densityScale: foxDensityScale
   })
 
   // Generate stand geometry - SIMPLIFIED for performance (was 1400 meshes, now ~35)

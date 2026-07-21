@@ -36,6 +36,7 @@ interface CollectibleDefinition {
 
 export interface RegisterCollectibleRoutesOptions extends ProcessCollectibleClaimOptions {
   inscriptionApp: string
+  chain?: 'main' | 'test'
 }
 
 export const COLLECTIBLES: Record<CollectibleKind, CollectibleDefinition> = {
@@ -82,13 +83,16 @@ async function submitToGorillapool(txid: string): Promise<void> {
 
 export function createAddressCollectibleDelivery(
   inscriptionApp: string,
-  buildTransaction: (
+  buildTransaction?: (
     request: SdkCollectibleTransactionRequest
-  ) => Promise<SdkCollectibleTransactionResult> = createSdkCollectibleTransactionBuilder({
-    chain: 'main',
-    services: new OneSatServices('main'),
-  })
+  ) => Promise<SdkCollectibleTransactionResult>,
+  chain: 'main' | 'test' = 'main'
 ): CollectibleDelivery {
+  const resolvedBuildTransaction = buildTransaction ?? createSdkCollectibleTransactionBuilder({
+    chain,
+    services: new OneSatServices(chain),
+  })
+
   return async ({ kind, deliveryTarget }) => {
     if (deliveryTarget.type !== 'address') {
       throw new Error('Address delivery requires an address')
@@ -100,7 +104,7 @@ export function createAddressCollectibleDelivery(
   <image href="/content/${collectionId}" width="100%" height="100%"/>
 </svg>`
     const time = Date.now()
-    const result = await buildTransaction({
+    const result = await resolvedBuildTransaction({
       serverInstance: definition.serverInstance,
       destinationAddress: deliveryTarget.address,
       content,
@@ -124,14 +128,17 @@ export function createAddressCollectibleDelivery(
 
 export function createMetanetCollectibleDelivery(
   inscriptionApp: string,
-  buildTransaction: (
+  buildTransaction?: (
     request: SdkCollectibleTransactionRequest
-  ) => Promise<SdkCollectibleTransactionResult> = createSdkCollectibleTransactionBuilder({
-    chain: 'main',
-    services: new OneSatServices('main'),
-  }),
-  getEnv: (name: string) => string | undefined = name => process.env[name]
+  ) => Promise<SdkCollectibleTransactionResult>,
+  getEnv: (name: string) => string | undefined = name => process.env[name],
+  chain: 'main' | 'test' = 'main'
 ): CollectibleDelivery {
+  const resolvedBuildTransaction = buildTransaction ?? createSdkCollectibleTransactionBuilder({
+    chain,
+    services: new OneSatServices(chain),
+  })
+
   return async ({ kind, deliveryTarget }) => {
     if (deliveryTarget.type !== 'protocol-key') {
       throw new Error('Metanet delivery requires a pixel foxes public key')
@@ -143,9 +150,11 @@ export function createMetanetCollectibleDelivery(
       throw new Error(`Missing required environment variable: ${definition.collectionIdEnv}`)
     }
     const time = Date.now()
-    const result = await buildTransaction({
+    const result = await resolvedBuildTransaction({
       serverInstance: definition.serverInstance,
-      destinationAddress: PublicKey.fromString(deliveryTarget.publicKey).toAddress(),
+      destinationAddress: PublicKey
+        .fromString(deliveryTarget.publicKey)
+        .toAddress(chain === 'test' ? 'testnet' : 'mainnet'),
       content: `<svg width="100%" height="100%" viewBox="${definition.viewBox}" xmlns="http://www.w3.org/2000/svg">
   <image href="/content/${collectionId}" width="100%" height="100%"/>
 </svg>`,
@@ -187,10 +196,11 @@ export function registerCollectibleRoutes(
   app: Express,
   options: RegisterCollectibleRoutesOptions
 ): void {
+  const chain = options.chain ?? 'main'
   const addressDelivery = options.addressDelivery
-    ?? createAddressCollectibleDelivery(options.inscriptionApp)
+    ?? createAddressCollectibleDelivery(options.inscriptionApp, undefined, chain)
   const metanetDelivery = options.metanetDelivery
-    ?? createMetanetCollectibleDelivery(options.inscriptionApp)
+    ?? createMetanetCollectibleDelivery(options.inscriptionApp, undefined, undefined, chain)
 
   for (const [kind, definition] of Object.entries(COLLECTIBLES) as Array<
     [CollectibleKind, CollectibleDefinition]

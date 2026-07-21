@@ -49,20 +49,29 @@ export const RACING_QUALITY_PRESETS: Record<RacingQualityPresetId, RacingQuality
     id: 'mobile',
     label: 'Mobile',
     renderer: {
-      pixelRatioCap: 1,
+      // 0.6 device-pixel cap: on weak phones pixel fill is a real limiter
+      // (a race at Low, which renders at dpr 1, was pinned to 6fps regardless
+      // of draw-call count). This stays well below Low while leaving the track
+      // less visibly upscaled than the earlier 0.45/0.5 mobile budget.
+      pixelRatioCap: 0.6,
       shadows: false,
       antialias: false
     },
     remotePlayers: {
-      renderDistance: 120,
-      maxVisible: 4
+      // Multiplayer floor: show the local pack (up to 3 rivals) so a 6-player race
+      // reads as a race and stays collidable — the culled list also drives collision.
+      // Cost is bounded by nearMaxVisible=1 in remotePlayerLod (only the closest rival
+      // gets the detailed VoxelFox car; the rest use the cheap fox-less mid model).
+      // Users can still select a higher preset on capable phones.
+      renderDistance: 90,
+      maxVisible: 3
     },
     minimap: {
-      updateEveryFrames: 6
+      updateEveryFrames: 15
     },
     scenery: {
-      densityScale: 0.35,
-      detailDistanceScale: 0.45
+      densityScale: 0.04,
+      detailDistanceScale: 0.12
     }
   },
   low: {
@@ -175,8 +184,11 @@ export const filterRemotePlayersForQuality = <TPlayer extends RemotePlayerWithTu
 export const getRacingCanvasQualitySettings = (
   preset: RacingQualityPreset = getRacingQualityPreset()
 ): RacingCanvasQualitySettings => {
+  // Floor at 0.4: only the mobile budget goes this low, and weak phones are
+  // often pixel-fill limited, so allow a genuinely lighter render there.
+  const pixelRatioCap = Math.max(0.4, preset.renderer.pixelRatioCap)
   return {
-    dpr: [1, preset.renderer.pixelRatioCap],
+    dpr: [Math.min(1, pixelRatioCap), pixelRatioCap],
     shadows: preset.renderer.shadows,
     antialias: preset.renderer.antialias
   }

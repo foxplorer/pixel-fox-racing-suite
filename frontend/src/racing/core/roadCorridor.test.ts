@@ -6,6 +6,7 @@ import {
   createRoadCorridorTerrainHeightSampler,
   findNearestTrackSample,
   getLegacyRoadHeightInfluence,
+  getRoadProtectedTerrainHeight,
   getRoadCorridorInfluence,
   smoothstep
 } from './roadCorridor'
@@ -75,6 +76,15 @@ test('createRoadCorridorTerrainHeightSampler cuts a road channel through terrain
   assert.ok(sampler(50, 35) > 2.25)
   assert.ok(sampler(50, 35) < 12)
   assert.equal(sampler(50, 80), 12)
+})
+
+test('getRoadProtectedTerrainHeight clamps rendered terrain below nearby road', () => {
+  const index = createIndex()
+
+  assert.equal(getRoadProtectedTerrainHeight(index, 50, 0, 20, config), 1.9)
+  assert.equal(getRoadProtectedTerrainHeight(index, 50, 80, 20, config), 20)
+  assert.equal(getRoadProtectedTerrainHeight(index, 50, 25, 20, config, { extraMargin: 10 }), 1.9)
+  assert.equal(getRoadProtectedTerrainHeight(index, 50, 25, 1, config, { extraMargin: 10 }), 1)
 })
 
 test('smoothstep clamps values', () => {

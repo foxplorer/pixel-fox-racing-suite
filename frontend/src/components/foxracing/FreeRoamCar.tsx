@@ -31,6 +31,7 @@ import {
   getCarCameraSmoothingRate,
   getExponentialSmoothingFactor,
   shouldResetTargetSmoothCamera,
+  MOBILE_CAMERA_MAX_DELTA_SECONDS,
   SHARED_CAR_CAMERA,
   type CarCameraZoneConfig
 } from '../../racing/vehicles/carCamera'
@@ -44,7 +45,8 @@ import { advanceLavaDeath, applyVehicleHeatTint, createLavaDeathState, resetLava
 import { CarLavaExplosion } from '../../racing/components/CarLavaExplosion'
 import { advanceCarTerrainContact, createCarTerrainContactState } from '../../racing/vehicles/carTerrainContact'
 import { updateCarGasAudio } from '../../racing/vehicles/carGasAudio'
-import { advanceCarControlFrame, advanceCarMovementFrame, canAdvanceCarFrame, getCarForwardVector, getInactiveCarSpeed, getStableCarRotation, isAnyCarControlActive, SHARED_CAR_HANDLING } from '../../racing/vehicles/carHandling'
+import { advanceCarControlFrame, advanceCarMovementFrame, canAdvanceCarFrame, getCarForwardVector, getCarHandlingForQuality, getInactiveCarSpeed, getStableCarRotation, isAnyCarControlActive, SHARED_CAR_HANDLING } from '../../racing/vehicles/carHandling'
+import { getAnalogSteeringInput } from '../../racing/vehicles/carSteeringInput'
 import { useCarKeyboardControls } from '../../racing/vehicles/useCarKeyboardControls'
 import { FLAT_CAR_MODEL_HEIGHT_OFFSET, getFlatVehicleHeightAtPosition, getSafeVehicleTargetHeight, getVehicleVisualTilt, resolveVehicleSurfaceY, smoothVehicleVisualTilt } from '../../racing/vehicles/vehicleElevation'
 import { applyVehicleVisualSurfaceFrameRotation, createVehicleVisualSurfaceFrameScratch } from '../../racing/vehicles/vehicleVisualSurfaceFrame'
@@ -636,7 +638,13 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       rotationRadians: rotation.current,
       deltaSeconds: delta,
       isOnTrack: onTrack,
-      slopeGrade
+      slopeGrade,
+      // Analog touch steering (relative pad); null on desktop → binary key turn.
+      steeringInput: getAnalogSteeringInput(),
+      // Mobile steers with a gentler turn rate (tames binary-touch oversteer). Must
+      // pass the mobile handling here too — the rotation step lives in this frame, and
+      // it defaults to SHARED otherwise.
+      handling: getCarHandlingForQuality(qualityPresetId === 'mobile')
     })
     const controls = controlFrame.controls
 
@@ -659,6 +667,12 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     rotation.current = controlFrame.rotationRadians
 
     advanceCarMovementFrame({
+      // Mobile raises the movement cap so a low-fps phone still moves in real
+      // time instead of slow motion. Board collision runs on mobile too (boards
+      // are visible), so the larger step can tunnel a board only in an extreme
+      // near-perpendicular hit at top speed — a rare, acceptable edge for side
+      // boards vs. the constant slow-motion the tighter cap caused.
+      handling: getCarHandlingForQuality(qualityPresetId === 'mobile'),
       rotationRadians: rotation.current,
       speed: speed.current,
       deltaSeconds: delta,
@@ -1015,7 +1029,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
         rotation.current = validRotation
         
         // Common setup for all camera modes
-        const cappedDelta = capCameraDelta(delta)
+        const cappedDelta = capCameraDelta(delta, qualityPresetId === 'mobile' ? MOBILE_CAMERA_MAX_DELTA_SECONDS : undefined)
         
         // Calculate base camera offset
         cameraOffsetRef.current.set(0, cameraHeight, cameraDistance)

@@ -1,14 +1,15 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react'
+import React, { memo, useRef, useEffect, useMemo, useCallback } from 'react'
 import * as THREE from 'three'
 import {
   DEFAULT_MINIMAP_TRACK_DRAW_SAMPLES,
   getMinimapTrackBounds,
+  hasMinimapPositionChanged,
   shouldDrawMinimapVehicleFrame,
   type MinimapWorldPosition,
   worldToMinimapCanvas
 } from './minimapGeometry'
 
-export type TrackMinimapPosition = 'top-right' | 'bottom-right'
+export type TrackMinimapPosition = 'top-right' | 'middle-left' | 'bottom-right'
 
 interface TrackMinimapProps {
   vehiclePosition: MinimapWorldPosition | null
@@ -21,7 +22,16 @@ interface TrackMinimapProps {
   updateEveryFrames?: number
 }
 
-export const TrackMinimap: React.FC<TrackMinimapProps> = ({
+const areMinimapPositionsEquivalent = (
+  previous: MinimapWorldPosition | null,
+  next: MinimapWorldPosition | null
+): boolean => {
+  if (previous === next) return true
+  if (!previous || !next) return false
+  return !hasMinimapPositionChanged(next, previous)
+}
+
+export const TrackMinimap = memo<TrackMinimapProps>(function TrackMinimap({
   vehiclePosition,
   trackCurve,
   startFinishPosition,
@@ -30,7 +40,7 @@ export const TrackMinimap: React.FC<TrackMinimapProps> = ({
   trackLocation = null,
   position = 'bottom-right',
   updateEveryFrames = 1
-}) => {
+}) {
   const normalizedUpdateEveryFrames = Math.max(1, Math.floor(updateEveryFrames))
   const trackBounds = useMemo(() => {
     return getMinimapTrackBounds(trackCurve)
@@ -162,9 +172,33 @@ export const TrackMinimap: React.FC<TrackMinimapProps> = ({
     }
   }, [vehiclePosition, trackCurve, worldToCanvas, width, height, normalizedUpdateEveryFrames])
 
+  const isCompact = width <= 120 || height <= 120
   const positionStyles = position === 'top-right'
-    ? { top: '20px', right: '20px', bottom: 'auto' }
-    : { bottom: '20px', right: '20px', top: 'auto' }
+    ? {
+        // Compact (mobile) top-right sits BELOW the camera control cluster (C + fullscreen), which
+        // is anchored at safe-area-top + 74px. 124px clears that single button row so the minimap
+        // tucks under those squares on the right, as requested.
+        top: isCompact ? 'calc(env(safe-area-inset-top, 0px) + 124px)' : '20px',
+        right: isCompact ? 'calc(env(safe-area-inset-right, 0px) + 10px)' : '20px',
+        bottom: 'auto',
+        left: 'auto',
+        transform: 'none'
+      }
+    : position === 'middle-left'
+      ? {
+          top: '50%',
+          left: isCompact ? 'calc(env(safe-area-inset-left, 0px) + 10px)' : '20px',
+          right: 'auto',
+          bottom: 'auto',
+          transform: 'translateY(-50%)'
+        }
+      : {
+          bottom: isCompact ? 'calc(env(safe-area-inset-bottom, 0px) + 10px)' : '20px',
+          right: isCompact ? 'calc(env(safe-area-inset-right, 0px) + 10px)' : '20px',
+          top: 'auto',
+          left: 'auto',
+          transform: 'none'
+        }
 
   return (
     <div style={{
@@ -176,9 +210,11 @@ export const TrackMinimap: React.FC<TrackMinimapProps> = ({
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      padding: '0 10px'
+      padding: isCompact ? 0 : '0 10px'
     }}>
-      {trackLocation && (
+      {/* Desktop: the name sits as a header above the map. Compact (mobile) has no room above,
+          so it is drawn as an overlay across the top of the map itself instead (see below). */}
+      {trackLocation && !isCompact && (
         <h3 style={{
           margin: '0 0 8px 0',
           padding: '0 5px',
@@ -204,6 +240,30 @@ export const TrackMinimap: React.FC<TrackMinimapProps> = ({
         overflow: 'hidden',
         boxSizing: 'border-box'
       }}>
+        {trackLocation && isCompact && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 2,
+            padding: '3px 4px',
+            color: '#fff',
+            fontSize: '10px',
+            fontWeight: 700,
+            lineHeight: 1.1,
+            letterSpacing: '0.02em',
+            textAlign: 'center',
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.9)',
+            background: 'linear-gradient(180deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0))',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            pointerEvents: 'none'
+          }}>
+            {trackLocation}
+          </div>
+        )}
         <canvas
           ref={trackCanvasRef}
           width={width}
@@ -233,4 +293,13 @@ export const TrackMinimap: React.FC<TrackMinimapProps> = ({
       </div>
     </div>
   )
-}
+}, (previous, next) => (
+  previous.trackCurve === next.trackCurve &&
+  previous.startFinishPosition === next.startFinishPosition &&
+  previous.width === next.width &&
+  previous.height === next.height &&
+  previous.trackLocation === next.trackLocation &&
+  previous.position === next.position &&
+  previous.updateEveryFrames === next.updateEveryFrames &&
+  areMinimapPositionsEquivalent(previous.vehiclePosition, next.vehiclePosition)
+))

@@ -69,10 +69,11 @@ export interface VolcanoCavePlacements {
 const LAVA_PIT_COUNT = 5
 
 const ROCK_FOREST_OPTIONS = (
-  exclusionZones: BillboardForestOptions['exclusionZones']
+  exclusionZones: BillboardForestOptions['exclusionZones'],
+  qualityPreset: RacingQualityPreset
 ): BillboardForestOptions => ({
-  baseCount: 2600,
-  minimumCount: 800,
+  baseCount: qualityPreset.id === 'mobile' ? 1200 : 2600,
+  minimumCount: qualityPreset.id === 'mobile' ? 160 : 800,
   variantCount: 4,
   seed: 73000,
   // Hug the track tightly so the rock walls feel like a cave corridor.
@@ -374,7 +375,7 @@ export const createVolcanoCavePlacements = (
   const rocks = createBillboardForestPlacements(
     trackCurve,
     qualityPreset,
-    ROCK_FOREST_OPTIONS(exclusionZones)
+    ROCK_FOREST_OPTIONS(exclusionZones, qualityPreset)
   )
     .filter(placement => !isPointInsidePolygon(placement, lavaBasin.boundary))
     .map<VolcanoRockPlacement>(placement => ({

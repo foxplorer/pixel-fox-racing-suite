@@ -1,4 +1,5 @@
 import React, { memo } from 'react'
+import { useRacingDeviceProfile } from '../platform/useRacingDeviceProfile'
 
 interface RacingCameraControlButtonsProps {
   isManualCamera: boolean
@@ -44,31 +45,50 @@ export const RacingCameraControlButtons = memo<RacingCameraControlButtonsProps>(
   right = '20px',
   zIndex = 150
 }) {
+  const { prefersMobileRacingUi, isLandscape } = useRacingDeviceProfile()
+  if (prefersMobileRacingUi && !isLandscape) return null
+
+  const buttonStyle: React.CSSProperties = prefersMobileRacingUi
+    ? {
+        ...controlButtonStyle,
+        width: '42px',
+        height: '42px',
+        borderRadius: '10px',
+        background: 'rgba(0, 0, 0, 0.58)',
+        backdropFilter: 'blur(6px)'
+      }
+    : controlButtonStyle
+  const activeButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    background: 'rgba(54, 191, 250, 0.6)'
+  }
+
   return (
     <div style={{
       position: 'absolute',
-      bottom,
-      right,
-      display: 'flex',
+      bottom: prefersMobileRacingUi ? 'auto' : bottom,
+      top: prefersMobileRacingUi ? 'calc(env(safe-area-inset-top, 0px) + 74px)' : undefined,
+      right: prefersMobileRacingUi ? 'calc(env(safe-area-inset-right, 0px) + 10px)' : right,
+      transform: undefined,
+      display: prefersMobileRacingUi ? 'grid' : 'flex',
+      gridTemplateColumns: prefersMobileRacingUi ? 'repeat(2, 42px)' : undefined,
       flexDirection: 'column',
-      gap: '5px',
-      zIndex
+      gap: prefersMobileRacingUi ? '6px' : '5px',
+      zIndex,
+      pointerEvents: 'auto'
     }}>
       {isManualCamera && (
         <>
-          <button onClick={onZoomIn} style={controlButtonStyle} title="Zoom In">+</button>
-          <button onClick={onZoomOut} style={controlButtonStyle} title="Zoom Out">−</button>
-          <button onClick={onRotateLeft} style={controlButtonStyle} title="Rotate Left">↶</button>
-          <button onClick={onRotateRight} style={controlButtonStyle} title="Rotate Right">↷</button>
+          <button onClick={onZoomIn} style={buttonStyle} title="Zoom In">+</button>
+          <button onClick={onZoomOut} style={buttonStyle} title="Zoom Out">−</button>
+          <button onClick={onRotateLeft} style={buttonStyle} title="Rotate Left">↶</button>
+          <button onClick={onRotateRight} style={buttonStyle} title="Rotate Right">↷</button>
         </>
       )}
 
       <button
         onClick={onToggleManualCamera}
-        style={isManualCamera ? {
-          ...controlButtonStyle,
-          background: 'rgba(54, 191, 250, 0.6)'
-        } : controlButtonStyle}
+        style={isManualCamera ? activeButtonStyle : buttonStyle}
         title={isManualCamera ? 'Switch to Follow Camera' : 'Switch to Manual Camera'}
       >
         C
@@ -77,7 +97,7 @@ export const RacingCameraControlButtons = memo<RacingCameraControlButtonsProps>(
       {onToggleFullscreen && (
         <button
           onClick={onToggleFullscreen}
-          style={controlButtonStyle}
+          style={buttonStyle}
           title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
         >
           {isFullscreen ? '⊠' : '⛶'}

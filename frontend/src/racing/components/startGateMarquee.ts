@@ -94,13 +94,20 @@ export const sortMarqueeStandings = (
     .map((row, index) => ({ ...row, place: index + 1 }))
 }
 
+// Marquee headline during the countdown. Note: a negative countdown means "staged, not started
+// yet" (the ~5s window before the 3-2-1 begins) — it must NOT read as GO!. GO! is only countdown 0.
+const countdownStatusLine = (countdown: number): string => {
+  if (countdown > 3) return `RACE STARTS IN ${formatMarqueeClock(countdown)}`
+  if (countdown > 0) return formatMarqueeClock(countdown)
+  if (countdown === 0) return 'GO!'
+  return 'GET READY'
+}
+
 const buildMultiplayerModel = (input: MultiplayerStartGateMarqueeInput): StartGateMarqueeModel => {
   const { gameStatus, countdown, lapsRequired, entrants } = input
 
   if (gameStatus === 'countdown') {
-    const statusLine = countdown > 3
-      ? `RACE STARTS IN ${formatMarqueeClock(countdown)}`
-      : (countdown > 0 ? formatMarqueeClock(countdown) : 'GO!')
+    const statusLine = countdownStatusLine(countdown)
     const stagedCount = entrants.length
     const stagedLabel = `${stagedCount} ${stagedCount === 1 ? 'FOX' : 'FOXES'} STAGED`
     const raceLabel = `${lapsRequired} LAPS`
@@ -156,9 +163,7 @@ const buildSoloModel = (input: SoloStartGateMarqueeInput): StartGateMarqueeModel
   }
 
   if (gameStatus === 'countdown') {
-    const statusLine = countdown > 3
-      ? `RACE STARTS IN ${formatMarqueeClock(countdown)}`
-      : (countdown > 0 ? formatMarqueeClock(countdown) : 'GO!')
+    const statusLine = countdownStatusLine(countdown)
     const preRaceLines = infoLines.length > 0
       ? infoLines
       : (trackName ? [`WELCOME TO ${trackName.toUpperCase()}`] : [])

@@ -13,7 +13,7 @@ export interface RacingSceneryQualitySettings {
 }
 
 const ROLLING_HILL_LAYERS_BY_QUALITY: Record<RacingQualityPreset['id'], number> = {
-  mobile: 1,
+  mobile: 0,
   low: 2,
   medium: 3,
   high: 4
@@ -21,9 +21,9 @@ const ROLLING_HILL_LAYERS_BY_QUALITY: Record<RacingQualityPreset['id'], number> 
 
 const EFFECT_QUALITY_BY_PRESET: Record<RacingQualityPreset['id'], RacingSceneryQualitySettings['effects']> = {
   mobile: {
-    meshDetailScale: 0.4,
-    activeLightScale: 0.25,
-    particleDensityScale: 0.3
+    meshDetailScale: 0.12,
+    activeLightScale: 0,
+    particleDensityScale: 0
   },
   low: {
     meshDetailScale: 0.5,

@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import pixelRacingLogo from '../assets/pixel_racing_logo.png';
 import { NewGameChoosePlayerModal } from "../components/NewGameChoosePlayerModal";
 import { WalletPermissionsModal } from "../components/WalletPermissionsModal";
@@ -31,6 +32,7 @@ import {
 } from "../wallet/shuallet";
 import { normalizeOrdinalOutpoint } from "../racing/transactions/ordinalOutpoint";
 import type { ScheduledRace, ScheduledRaceSignup } from "../racing/scheduled/scheduledRaceTypes";
+import { useRacingDeviceProfile } from "../racing/platform/useRacingDeviceProfile";
 
 const DEFAULT_TRACK_EVENT_ID: TrackEventId = 'australia-car';
 const TRANSACTION_SERVER_URL = import.meta.env.VITE_PIXELRACING_TRANSACTION_URL || 'http://localhost:9000';
@@ -57,6 +59,8 @@ const TrackEventLoadingFallback = () => (
 
 export const FoxRacing = () => {
   const { wallet, status, identityKey: walletIdentityKey, providerType } = useWallet();
+  const deviceProfile = useRacingDeviceProfile();
+  const isMobileRacingUi = deviceProfile.prefersMobileRacingUi;
   
   // Wallet & Player State
   const [myordaddress, setMyOrdAddress] = useState<string>("");
@@ -95,6 +99,20 @@ export const FoxRacing = () => {
 
   // Game Racing State - to hide outer fox info panel when game shows its own
   const [isGameRacing, setIsGameRacing] = useState<boolean>(false);
+  const [nativeFullscreenElement, setNativeFullscreenElement] = useState<Element | null>(null);
+  useEffect(() => {
+    const doc = document as Document & { webkitFullscreenElement?: Element | null };
+    const handleFullscreenChange = () => {
+      setNativeFullscreenElement(document.fullscreenElement ?? doc.webkitFullscreenElement ?? null);
+    };
+    handleFullscreenChange();
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
   const activeIdentityValue = walletOrdinalSource === 'metanet'
     ? walletIdentityKey
     : myordaddress || shualletSession?.identityKey;
@@ -394,7 +412,7 @@ export const FoxRacing = () => {
     <div className="App">
       <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: -1, backgroundColor: '#000000' }} />
 
-      <div className="Topbar">
+      <div className="Topbar" style={{ display: isMobileRacingUi && foxSelected ? 'none' : undefined }}>
         <img 
           src={pixelRacingLogo} 
           alt="Logo" 
@@ -415,35 +433,44 @@ export const FoxRacing = () => {
               pointerEvents: 'none',
               zIndex: 900
             }}>
-              {/* Fox info display - hide when Aspen snowmobile game is racing because that track has its own panel */}
-              {foxSelected && foximagesrc && !(isGameRacing && selectedEvent.vehicleMode === 'snowmobile') && (
-                <RacingPlayerInfoPanel
-                  name={foxname}
-                  originOutpoint={foximagesrc}
-                  addresses={activeIdentityValue ? [{
-                    label: activeIdentityLabel,
-                    value: activeIdentityValue,
-                    canCopy: true
-                  }] : []}
-                  walletItems={[
-                    { label: 'Blueberries', iconUrl: blueberryUrl, count: walletBlueberryCount },
-                    { label: 'Salads', iconUrl: saladUrl, count: walletSaladCount },
-                    { label: 'Rabbits', iconUrl: rabbitUrl, count: walletRabbitCount }
-                  ]}
-                  position="fixed"
-                  top={70}
-                  left={10}
-                  zIndex={900}
-                  backgroundColor="rgba(0, 0, 0, 0.8)"
-                  borderColor="rgba(255, 255, 255, 0.1)"
-                  accentColor="#36bffa"
-                  mutedColor="#888"
-                  imageSize={80}
-                  minWidth={300}
-                  maxWidth={400}
-                  maxHeight="calc(100vh - 80px)"
-                />
-              )}
+              {/* Mobile uses the compact in-game badge. In native desktop fullscreen, portal the
+                  page-level panel into the fullscreen subtree so the browser keeps it visible. */}
+              {(() => {
+                const shouldShowPanel = foxSelected && foximagesrc && !isMobileRacingUi
+                  && !(isGameRacing && selectedEvent.vehicleMode === 'snowmobile');
+                if (!shouldShowPanel) return null;
+                const panel = (
+                  <RacingPlayerInfoPanel
+                    name={foxname}
+                    originOutpoint={foximagesrc}
+                    addresses={activeIdentityValue ? [{
+                      label: activeIdentityLabel,
+                      value: activeIdentityValue,
+                      canCopy: true
+                    }] : []}
+                    walletItems={[
+                      { label: 'Blueberries', iconUrl: blueberryUrl, count: walletBlueberryCount },
+                      { label: 'Salads', iconUrl: saladUrl, count: walletSaladCount },
+                      { label: 'Rabbits', iconUrl: rabbitUrl, count: walletRabbitCount }
+                    ]}
+                    position="fixed"
+                    top={nativeFullscreenElement ? 10 : 70}
+                    left={10}
+                    zIndex={900}
+                    backgroundColor="rgba(0, 0, 0, 0.8)"
+                    borderColor="rgba(255, 255, 255, 0.1)"
+                    accentColor="#36bffa"
+                    mutedColor="#888"
+                    imageSize={80}
+                    minWidth={300}
+                    maxWidth={400}
+                    maxHeight="calc(100vh - 80px)"
+                  />
+                );
+                return nativeFullscreenElement
+                  ? createPortal(panel, nativeFullscreenElement)
+                  : panel;
+              })()}
 
               {/* Exit Button - Upper Right */}
               {/* {foxSelected && (

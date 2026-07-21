@@ -23,7 +23,7 @@ test('identity collectible delivery returns recipient internalization material',
     makeKeyID: () => 'inscribe-test',
     async buildTransaction(request) {
       assert.equal(request.serverInstance, 'blueberries-server')
-      assert.equal(request.destinationAddress, destinationKey.toAddress())
+      assert.equal(request.destinationAddress, destinationKey.toAddress('testnet'))
       assert.equal(request.contentType, 'image/svg+xml')
       assert.equal(request.map.subType, 'collectionItem')
       return { txid: 'txid', outputIndex: 0, atomicBEEF: [1, 2, 3] }

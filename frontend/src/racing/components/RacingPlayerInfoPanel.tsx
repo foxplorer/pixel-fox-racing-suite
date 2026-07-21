@@ -61,6 +61,7 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
   const displayName = name || 'Fox'
   const visibleAddresses = addresses.filter(address => address.value)
   const hasWalletItems = walletItems.length > 0
+  const isCompact = imageSize <= 50
 
   return (
     <div style={{
@@ -70,7 +71,7 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
       zIndex,
       backgroundColor,
       borderRadius: '8px',
-      padding: '15px',
+      padding: isCompact ? '8px' : '15px',
       minWidth,
       maxWidth,
       border: `1px solid ${borderColor}`,
@@ -81,7 +82,7 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '15px'
+        gap: isCompact ? '8px' : '15px'
       }}>
         <a
           target="_blank"
@@ -117,7 +118,7 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
           >
             <span style={{
               color: accentColor,
-              fontSize: '1.1em',
+              fontSize: isCompact ? '0.9em' : '1.1em',
               fontWeight: 'bold',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -131,7 +132,7 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
           {(visibleAddresses.length > 0 || hasWalletItems) && (
             <div style={{
               marginTop: showDetailsDivider ? '8px' : '5px',
-              paddingTop: showDetailsDivider ? '8px' : 0,
+              paddingTop: showDetailsDivider ? (isCompact ? '5px' : '8px') : 0,
               borderTop: showDetailsDivider ? `1px solid ${borderColor}` : undefined
             }}>
               {visibleAddresses.map(address => (
@@ -139,12 +140,12 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  marginBottom: '8px'
+                  marginBottom: isCompact ? '5px' : '8px'
                 }}>
                   {address.label && (
                     <span style={{
                       color: mutedColor,
-                      fontSize: '0.85em',
+                      fontSize: isCompact ? '0.72em' : '0.85em',
                       fontWeight: '600'
                     }}>
                       {address.label}
@@ -152,7 +153,7 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
                   )}
                   <span style={{
                     color: '#ccc',
-                    fontSize: '0.85em',
+                    fontSize: isCompact ? '0.72em' : '0.85em',
                     fontFamily: 'monospace'
                   }}>
                     {formatShortAddress(address.value ?? '')}
@@ -164,7 +165,7 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
                         backgroundColor: 'transparent',
                         border: `1px solid ${accentColor}`,
                         color: accentColor,
-                        padding: '2px 6px',
+                        padding: isCompact ? '1px 4px' : '2px 6px',
                         borderRadius: '4px',
                         fontSize: '10px',
                         cursor: 'pointer',
@@ -179,14 +180,14 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
 
               {hasWalletItems && (
                 <div style={{
-                  marginTop: '8px',
-                  paddingTop: '8px',
+                  marginTop: isCompact ? '5px' : '8px',
+                  paddingTop: isCompact ? '5px' : '8px',
                   borderTop: `1px solid ${borderColor}`
                 }}>
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: isCompact ? '6px' : '8px',
                     flexWrap: 'wrap'
                   }}>
                     {walletItems.map(item => (
@@ -195,8 +196,8 @@ export const RacingPlayerInfoPanel: React.FC<RacingPlayerInfoPanelProps> = ({
                         alignItems: 'center',
                         gap: '4px'
                       }}>
-                        <img src={item.iconUrl} alt={item.label} style={{ width: '16px', height: '16px' }} />
-                        <span style={{ color: '#ccc', fontSize: '0.85em' }}>{item.count}</span>
+                        <img src={item.iconUrl} alt={item.label} style={{ width: isCompact ? '13px' : '16px', height: isCompact ? '13px' : '16px' }} />
+                        <span style={{ color: '#ccc', fontSize: isCompact ? '0.72em' : '0.85em' }}>{item.count}</span>
                       </div>
                     ))}
                   </div>

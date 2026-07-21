@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createMobileControlPressTracker,
+  getMobileControlKeyboardKey,
+  getMobileSteeringControl,
   MOBILE_CONTROL_KEY_CODES
 } from './mobileDrivingControls'
 
@@ -66,6 +68,21 @@ test('duplicate press and unknown release are ignored', () => {
   assert.deepEqual(tracker.getPressedControls(), ['brake'])
 })
 
+test('pointer update switches a held finger between gas and brake', () => {
+  const { tracker, emitted } = createRecordingTracker()
+
+  tracker.press(1, 'gas')
+  tracker.update(1, 'brake')
+  tracker.release(1)
+
+  assert.deepEqual(emitted, [
+    { type: 'keydown', code: MOBILE_CONTROL_KEY_CODES.gas },
+    { type: 'keyup', code: MOBILE_CONTROL_KEY_CODES.gas },
+    { type: 'keydown', code: MOBILE_CONTROL_KEY_CODES.brake },
+    { type: 'keyup', code: MOBILE_CONTROL_KEY_CODES.brake }
+  ])
+})
+
 test('releaseAll lifts every held control exactly once', () => {
   const { tracker, emitted } = createRecordingTracker()
 
@@ -83,4 +100,21 @@ test('releaseAll lifts every held control exactly once', () => {
 
   tracker.releaseAll()
   assert.equal(emitted.filter(event => event.type === 'keyup').length, 2)
+})
+
+test('mobile steering control maps slider values through a deadzone', () => {
+  assert.equal(getMobileSteeringControl(-1), 'left')
+  assert.equal(getMobileSteeringControl(-0.19), 'left')
+  assert.equal(getMobileSteeringControl(-0.17), null)
+  assert.equal(getMobileSteeringControl(0), null)
+  assert.equal(getMobileSteeringControl(0.17), null)
+  assert.equal(getMobileSteeringControl(0.19), 'right')
+  assert.equal(getMobileSteeringControl(1), 'right')
+})
+
+test('keyboard fallback maps control codes to event keys snowmobile handlers read', () => {
+  assert.equal(getMobileControlKeyboardKey(MOBILE_CONTROL_KEY_CODES.gas), 'w')
+  assert.equal(getMobileControlKeyboardKey(MOBILE_CONTROL_KEY_CODES.brake), 's')
+  assert.equal(getMobileControlKeyboardKey(MOBILE_CONTROL_KEY_CODES.left), 'ArrowLeft')
+  assert.equal(getMobileControlKeyboardKey(MOBILE_CONTROL_KEY_CODES.right), 'ArrowRight')
 })

@@ -49,6 +49,33 @@ export const useFullscreenToggle = <TElement extends HTMLElement>() => {
     setIsFallbackFullscreen(false)
   }, [])
 
+  const enterFullscreen = useCallback(async () => {
+    const container = containerRef.current
+    if (!container || isFallbackFullscreen || getNativeFullscreenElement()) return
+
+    const webkitContainer = container as HTMLElement as WebkitFullscreenElement
+    if (typeof container.requestFullscreen === 'function') {
+      try {
+        await container.requestFullscreen()
+        setIsNativeFullscreen(true)
+      } catch {
+        enterFallbackFullscreen()
+      }
+      return
+    }
+
+    if (typeof webkitContainer.webkitRequestFullscreen === 'function') {
+      try {
+        await Promise.resolve(webkitContainer.webkitRequestFullscreen())
+      } catch {
+        enterFallbackFullscreen()
+      }
+      return
+    }
+
+    enterFallbackFullscreen()
+  }, [enterFallbackFullscreen, isFallbackFullscreen])
+
   const toggleFullscreen = useCallback(() => {
     const container = containerRef.current
     if (!container) return
@@ -113,6 +140,7 @@ export const useFullscreenToggle = <TElement extends HTMLElement>() => {
   return {
     containerRef,
     isFullscreen: isNativeFullscreen || isFallbackFullscreen,
+    enterFullscreen,
     toggleFullscreen,
     fallbackFullscreenStyle: isFallbackFullscreen ? FALLBACK_FULLSCREEN_STYLE : null
   }

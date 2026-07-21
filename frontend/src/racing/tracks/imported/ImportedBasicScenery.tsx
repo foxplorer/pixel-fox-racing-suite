@@ -33,6 +33,7 @@ interface ImportedBasicSceneryProps {
   forestOptions?: BillboardForestOptions
   forestPalette?: TreeBillboardPalette
   forestSpecies?: TreeSpecies
+  renderTrees?: boolean
   onTreesGenerated?: (trees: ImportedSceneryTreePlacement[]) => void
   onBoardsGenerated?: (boards: ImportedSceneryAdvertisingBoard[]) => void
 }
@@ -56,6 +57,7 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
   forestOptions,
   forestPalette,
   forestSpecies,
+  renderTrees = true,
   onTreesGenerated,
   onBoardsGenerated
 }) => {
@@ -63,6 +65,7 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
   // so when `forest` is on we generate no simple-tree placements at all — that drops both
   // their meshes and the collision targets reported via onTreesGenerated.
   const trees = useMemo(() => {
+    if (!renderTrees) return []
     if (forest) return []
     const placements = createImportedBasicTreePlacements(trackDefinition.trackCurve, qualityPreset, treeOptions)
     if (!getHeightAtPosition) return placements
@@ -71,7 +74,7 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
       ...tree,
       y: getHeightAtPosition(tree.x, tree.z)
     }))
-  }, [forest, getHeightAtPosition, qualityPreset, trackDefinition.trackCurve, treeOptions])
+  }, [forest, getHeightAtPosition, qualityPreset, renderTrees, trackDefinition.trackCurve, treeOptions])
 
   const boards = useMemo(() => {
     return createImportedBasicAdvertisingBoards(trackDefinition.trackCurve, boardOptions)
@@ -87,7 +90,7 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
 
   return (
     <>
-      {forest && (
+      {renderTrees && forest && (
         <TrackBillboardForest
           trackCurve={trackDefinition.trackCurve}
           qualityPreset={qualityPreset}
@@ -97,7 +100,7 @@ export const ImportedBasicScenery: React.FC<ImportedBasicSceneryProps> = ({
           species={forestSpecies}
         />
       )}
-      {!forest && (
+      {renderTrees && !forest && (
         <TreeInstances
           trees={trees}
           palette={treePalette}

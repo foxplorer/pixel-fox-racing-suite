@@ -27,7 +27,11 @@ interface RemotePlayerLodBudget {
 
 const REMOTE_PLAYER_LOD_BUDGETS: Record<RacingQualityPreset['id'], RemotePlayerLodBudget> = {
   mobile: {
-    nearMaxVisible: 2,
+    // Only the single closest rival renders the detailed VoxelFox car; every other
+    // visible rival (up to maxVisible=3) falls to the cheap fox-less mid model. This
+    // caps the one expensive per-car cost (the voxel fox + its texture) at one, which
+    // is the load the 50fps on-device reading was taken at, while the pack stays visible.
+    nearMaxVisible: 1,
     nearDistance: 60
   },
   low: {

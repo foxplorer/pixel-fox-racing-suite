@@ -39,7 +39,9 @@ export const useRaceCountdownFlow = ({
 
     if (gameStatus === 'loading' && isWorldLoaded && isVehicleLoaded) {
       const timer = setTimeout(() => {
-        setCountdown(0)
+        // -1 = "staged, countdown not started yet". The start-gate marquee treats this as
+        // GET READY; using 0 here made it flash GO! for the whole ~5s pre-countdown window.
+        setCountdown(-1)
         setGameStatus('countdown')
       }, 200)
       return () => clearTimeout(timer)
@@ -103,7 +105,9 @@ export const useRaceCountdownFlow = ({
             clearInterval(countdownTimerRef.current)
             countdownTimerRef.current = null
           }
-          setGameStatus('racing')
+          // Hold on GO! (countdown 0) for a beat so the marquee shows GO! now — after the
+          // countdown completes — instead of racing batching over it straight to LAP 1.
+          setTimeout(() => setGameStatus('racing'), 650)
         }
       }, 1000)
     }, 5000)
