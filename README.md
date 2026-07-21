@@ -229,3 +229,10 @@ Manual wallet smoke tests should cover all three wallet buttons, fox selection,
 one Yours collectible broadcast to the derived ordinal address, one SHUAllet
 collectible broadcast to the submitted ordinal address, and one Metanet
 collectible internalization with retry behavior.
+
+Mobile-specific changes also have a required real-phone merge gate. Desktop
+testing or browser device emulation alone is not sufficient. Before merging,
+complete a countdown and lap on Australia, Belgium, San Luis, and Aspen and
+check touch controls, fullscreen/orientation, HUD layout, camera/minimap
+behavior, and frame stability. See `CONTRIBUTING.md` for the full checklist and
+the test details that should be recorded in the pull request.

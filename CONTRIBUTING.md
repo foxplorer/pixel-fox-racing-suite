@@ -21,6 +21,38 @@ Before opening a PR:
 - Do not commit `.env` files, signing WIFs, database URLs, or generated folders.
 - Prefer local dummy transaction mode for development unless the change specifically needs real inscriptions.
 
+## Mobile pre-merge gate
+
+Changes to mobile controls, rendering, performance, fullscreen, cameras, or the
+race HUD must be tested on at least one real touch-first phone before they are
+merged into the default branch. Desktop testing and browser device emulation
+are useful for initial layout checks, but they do not satisfy this requirement.
+
+Test the exact commit or deployed branch that will be merged. In landscape
+orientation, complete the countdown and at least one lap on each of these
+routes:
+
+- Australia
+- Belgium
+- San Luis
+- Aspen
+
+During the phone test, verify:
+
+- Steering remains responsive while gas is held with another finger.
+- Gas, brake/reverse, and release behavior do not leave controls stuck.
+- Fullscreen entry, exit, and orientation changes preserve the race layout.
+- Camera controls, minimap, chat, sound, and the compact race HUD do not overlap
+  the driving controls.
+- Movement and camera motion remain stable during low-FPS moments, without
+  severe frame-rate spikes or obvious slow-motion movement.
+- A lap completes normally and collectible pickup still works in the suite's
+  default dummy transaction mode.
+
+Record the phone model, operating system, browser, tested commit, and result in
+the pull request. Do not merge a mobile-specific change until this real-device
+check passes. If a change affects another track, test that track as well.
+
 Useful local URLs:
 
 - Frontend: `http://localhost:5173/pixelfoxracing`
