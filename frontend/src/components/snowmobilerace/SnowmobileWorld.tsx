@@ -478,6 +478,7 @@ const StartGate: React.FC<StartGateProps> = ({ gameStatus, countdown }) => {
           countdown={countdown}
           visible={gameStatus === 'countdown' || gameStatus === 'racing'}
           gameStatus={gameStatus}
+          position={[0, 6, 0]}
         />
       </group>
     </group>
@@ -810,7 +811,8 @@ const PlayerController: React.FC<{
   onLapTimeUpdate?: (currentLapTime: number) => void
   onCarControlUsed?: () => void
   snowSprayParticleCount: number
-}> = ({ gameStatus, color, foxOriginOutpoint, backgroundRemovalStrategy = 'default', trees, otherPlayers, onPositionUpdate, onSpeedUpdate, onDistanceUpdate, onGasChange, onSledReady, isManualCamera, onToggleManualCamera, localChatMessage, cameraMode = 'smooth', onLapComplete, onLapTimeUpdate, onCarControlUsed, snowSprayParticleCount }) => {
+  isMobile?: boolean
+}> = ({ gameStatus, color, foxOriginOutpoint, backgroundRemovalStrategy = 'default', trees, otherPlayers, onPositionUpdate, onSpeedUpdate, onDistanceUpdate, onGasChange, onSledReady, isManualCamera, onToggleManualCamera, localChatMessage, cameraMode = 'smooth', onLapComplete, onLapTimeUpdate, onCarControlUsed, snowSprayParticleCount, isMobile = false }) => {
   const { camera } = useThree()
   const groupRef = useRef<THREE.Group>(null)
   const positionRef = useRef(new THREE.Vector3(0, -0.6, 0)) // Start sunk deep in powder
@@ -1140,7 +1142,9 @@ const PlayerController: React.FC<{
 
       if (Math.abs(speedRef.current) > 0.5 && !isAirborneForTurn) {
         // Turn rate varies with speed (slower at high speed for stability)
+        const MOBILE_TURN_RATE_SCALE = 0.68
         const turnRate = THREE.MathUtils.lerp(BASE_TURN_RATE, HIGH_SPEED_TURN_RATE, speedRatio)
+          * (isMobile ? MOBILE_TURN_RATE_SCALE : 1)
 
         // Sidehill affects steering - harder to turn uphill on a sidehill
         let sidehillSteering = 0
@@ -2437,6 +2441,7 @@ interface SnowmobileWorldProps {
   localChatMessage?: { text: string; timestamp: number } | null
   isFullscreen?: boolean
   onToggleFullscreen?: () => void
+  onManualCameraChange?: (isManual: boolean) => void
   onSledReady?: () => void
   countdown?: number
   cameraMode?: CameraMode
@@ -2469,6 +2474,7 @@ export const SnowmobileWorld: React.FC<SnowmobileWorldProps> = ({
   localChatMessage,
   isFullscreen = false,
   onToggleFullscreen,
+  onManualCameraChange,
   onSledReady,
   countdown = 0,
   cameraMode = 'smooth',
@@ -2502,6 +2508,10 @@ export const SnowmobileWorld: React.FC<SnowmobileWorldProps> = ({
   const handleToggleManualCamera = useCallback(() => {
     setIsManualCamera(prev => !prev)
   }, [])
+
+  useEffect(() => {
+    onManualCameraChange?.(isManualCamera)
+  }, [isManualCamera, onManualCameraChange])
 
   // Report track length on mount
   useEffect(() => {
@@ -2688,6 +2698,7 @@ export const SnowmobileWorld: React.FC<SnowmobileWorldProps> = ({
           onLapTimeUpdate={onLapTimeUpdate}
           onCarControlUsed={() => setIsManualCamera(false)}
           snowSprayParticleCount={snowSprayParticleCount}
+          isMobile={qualityPresetId === 'mobile'}
         />
       )}
 

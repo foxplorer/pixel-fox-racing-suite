@@ -140,6 +140,67 @@ test('submitCollectibleTransaction posts the collectible request and returns res
   assert.deepEqual(result, { txid: 'txid', dummy: true })
 })
 
+test('submitCollectibleTransaction throws server error messages for failed collectible responses', async () => {
+  let calls = 0
+  await assert.rejects(
+    submitCollectibleTransaction(
+      'http://localhost:9000',
+      'rabbit',
+      '02identity',
+      { type: 'address', address: 'owner' },
+      async () => {
+        calls += 1
+        return {
+          ok: false,
+          status: 500,
+          async json() {
+            return {
+              error: 'failed_create_rabbit',
+              message: 'No payment UTXOs available in database'
+            }
+          }
+        }
+      }
+    ),
+    /No payment UTXOs available in database/
+  )
+  assert.equal(calls, 1)
+})
+
+test('submitCollectibleTransaction retries transient network fetch failures', async () => {
+  let calls = 0
+  const delays: number[] = []
+  const retryAttempts: number[] = []
+  const result = await submitCollectibleTransaction(
+    'http://localhost:9000',
+    'rabbit',
+    '02identity',
+    { type: 'address', address: 'owner' },
+    async () => {
+      calls += 1
+      if (calls < 3) {
+        throw new TypeError('Failed to fetch')
+      }
+      return {
+        ok: true,
+        async json() {
+          return { txid: 'txid', deliveryMode: 'address' }
+        }
+      }
+    },
+    {
+      initialDelayMs: 10,
+      sleep: async delayMs => { delays.push(delayMs) },
+      onRetry: attempt => { retryAttempts.push(attempt) }
+    }
+  )
+
+  assert.deepEqual(result, { txid: 'txid', deliveryMode: 'address' })
+  assert.equal(calls, 3)
+  assert.deepEqual(delays, [10, 20])
+  assert.deepEqual(retryAttempts, [1, 2])
+})
+
 test('buildMetanetCollectibleInternalizeAction builds a Metanet pixel foxes basket insertion', () => {
   const action = buildMetanetCollectibleInternalizeAction({
     txid: 'txid',

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { Showroom } from '../racingsanluis/Showroom'
 import { Track } from '../racingsanluis/Track'
 import { GameStatus } from './FoxRacingGame'
@@ -58,6 +58,7 @@ interface FoxRacingWorldProps {
   startGateMarqueeModel?: StartGateMarqueeModel | null
   isFullscreen?: boolean
   onToggleFullscreen?: () => void
+  onManualCameraChange?: (isManual: boolean) => void
 }
 
 export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
@@ -91,7 +92,8 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
   qualityPresetId = 'medium',
   startGateMarqueeModel = null,
   isFullscreen = false,
-  onToggleFullscreen
+  onToggleFullscreen,
+  onManualCameraChange
 }) => {
   const worldRuntime = useCarTrackWorldRuntime({
     config: sanLuisCarTrackDefinition,
@@ -101,6 +103,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     onWorldLoaded,
     onSceneReady
   })
+  const isMobileQuality = worldRuntime.qualityPreset.id === 'mobile'
   const [treePositions, setTreePositions] = useState<Array<{ x: number; z: number; scale: number; radius: number }>>([])
   
   // Track segment generators (defined outside useMemo so they're accessible)
@@ -236,6 +239,10 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     })
   }, [worldRuntime.manualCamera])
 
+  useEffect(() => {
+    onManualCameraChange?.(worldRuntime.manualCamera.isManualCamera)
+  }, [onManualCameraChange, worldRuntime.manualCamera.isManualCamera])
+
   const handleZoomIn = useCallback(() => {
     const controls = worldRuntime.manualCamera.orbitControlsRef.current as any
     if (!controls?.object) return
@@ -272,6 +279,65 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
     controls.update()
   }, [worldRuntime.manualCamera.orbitControlsRef])
 
+  const staticScenery = useMemo(() => (
+    <>
+      <color attach="background" args={['#87CEEB']} />
+      <fog attach="fog" args={['#87CEEB', 250, 2000]} />
+      <ambientLight intensity={0.6} />
+      <directionalLight
+        position={[50, 200, 50]}
+        intensity={1.0}
+        castShadow={worldRuntime.canvasQuality.shadows}
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-far={2000}
+        shadow-camera-left={-1000}
+        shadow-camera-right={1000}
+        shadow-camera-top={1000}
+        shadow-camera-bottom={-1000}
+      />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+        <planeGeometry args={[8000, 8000]} />
+        <RacingSurfaceMaterial
+          surface="grass"
+          qualityPresetId={qualityPresetId}
+          repeat={getSurfaceTextureRepeat(8000, getRacingSurfaceTextureConfig('grass', qualityPresetId).tileWorldSize)}
+          color="#4a7c59"
+          side={THREE.FrontSide}
+        />
+      </mesh>
+      {!isMobileQuality && <DistantMountains radius={2000} layers={5} />}
+      <SimpleTrees
+        count={isMobileQuality ? 24 : 50}
+        area={1500}
+        trackCurve={worldRuntime.trackCurve}
+        onTreesGenerated={setTreePositions}
+      />
+      {!isMobileQuality && (
+        <TrackBirds
+          trackCurve={worldRuntime.trackCurve}
+          qualityPreset={worldRuntime.qualityPreset}
+          getHeightAtPosition={getTerrainHeight}
+        />
+      )}
+      <Track
+        curve={worldRuntime.trackCurve}
+        frames={worldRuntime.trackFrames}
+        segments={worldRuntime.trackSegments}
+        qualityPresetId={qualityPresetId}
+      />
+      <StadiumSeating isSoundEnabled={isSoundEnabled} />
+    </>
+  ), [
+    isMobileQuality,
+    isSoundEnabled,
+    qualityPresetId,
+    worldRuntime.canvasQuality.shadows,
+    worldRuntime.qualityPreset,
+    worldRuntime.trackCurve,
+    worldRuntime.trackFrames,
+    worldRuntime.trackSegments
+  ])
+
   // Showroom Canvas
   if (gameStatus === 'showroom' || gameStatus === 'idle') {
     return (
@@ -297,57 +363,7 @@ export const FoxRacingWorld: React.FC<FoxRacingWorldProps> = ({
       startGateLayout={worldRuntime.startGateLayout}
       startGateMarqueeModel={startGateMarqueeModel}
       qualityPresetId={qualityPresetId}
-      staticScenery={(
-        <>
-          <color attach="background" args={['#87CEEB']} />
-          <fog attach="fog" args={['#87CEEB', 250, 2000]} />
-          <ambientLight intensity={0.6} />
-          <directionalLight
-            position={[50, 200, 50]}
-            intensity={1.0}
-            castShadow
-            shadow-mapSize={[2048, 2048]}
-            shadow-camera-far={2000}
-            shadow-camera-left={-1000}
-            shadow-camera-right={1000}
-            shadow-camera-top={1000}
-            shadow-camera-bottom={-1000}
-          />
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[0, 0, 0]}
-            receiveShadow
-          >
-            <planeGeometry args={[8000, 8000]} />
-            <RacingSurfaceMaterial
-              surface="grass"
-              qualityPresetId={qualityPresetId}
-              repeat={getSurfaceTextureRepeat(8000, getRacingSurfaceTextureConfig('grass', qualityPresetId).tileWorldSize)}
-              color="#4a7c59"
-              side={THREE.FrontSide}
-            />
-          </mesh>
-          <DistantMountains radius={2000} layers={5} />
-          <SimpleTrees
-            count={50}
-            area={1500}
-            trackCurve={worldRuntime.trackCurve}
-            onTreesGenerated={setTreePositions}
-          />
-          <TrackBirds
-            trackCurve={worldRuntime.trackCurve}
-            qualityPreset={worldRuntime.qualityPreset}
-            getHeightAtPosition={getTerrainHeight}
-          />
-          <Track
-            curve={worldRuntime.trackCurve}
-            frames={worldRuntime.trackFrames}
-            segments={worldRuntime.trackSegments}
-            qualityPresetId={qualityPresetId}
-          />
-          <StadiumSeating isSoundEnabled={isSoundEnabled} />
-        </>
-      )}
+      staticScenery={staticScenery}
       localVehicle={(
         <CarTrackLocalVehicle
           VehicleComponent={FreeRoamCar}

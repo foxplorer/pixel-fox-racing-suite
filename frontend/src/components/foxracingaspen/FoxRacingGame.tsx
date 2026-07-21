@@ -74,12 +74,14 @@ import {
 import { buildJoinedRacingWorldPlayer, buildRacingWorldPlayer } from '../../racing/multiplayer/worldPlayers'
 import { filterRemotePlayersForQuality, getRacingMinimapQualitySettings, getRacingQualityPreset } from '../../racing/performance/qualitySettings'
 import { useRacingQualitySetting } from '../../racing/performance/useRacingQualitySetting'
+import { useRacingDeviceProfile } from '../../racing/platform/useRacingDeviceProfile'
 
 const collectibleImageUrls = {
   blueberry: blueberryUrl,
   salad: saladUrl,
   rabbit: rabbitUrl
 }
+const MOBILE_RACE_MINIMAP_SIZE = 80
 
 // Socket server URL
 const SOCKET_URL = import.meta.env.VITE_PIXELRACING_SOCKET_URL || 'http://localhost:5000'
@@ -146,9 +148,12 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
   const [speed, setSpeed] = useState(0) // Current speed in m/s
   const [trackName, setTrackName] = useState<string>('Aspen') // Aspen track
   const [cameraMode, setCameraMode] = useState<CameraMode>('smooth') // Camera mode - default to 'smooth'
+  const [isManualCamera, setIsManualCamera] = useState(false)
+  const deviceProfile = useRacingDeviceProfile()
+  const isMobileRacingUi = deviceProfile.prefersMobileRacingUi
   const [qualityPresetId, setQualityPresetId] = useRacingQualitySetting()
 
-  const { containerRef, isFullscreen, toggleFullscreen } = useFullscreenToggle<HTMLDivElement>()
+  const { containerRef, isFullscreen, enterFullscreen, toggleFullscreen, fallbackFullscreenStyle } = useFullscreenToggle<HTMLDivElement>()
 
   // Snowmobile position for minimap and player filtering
   const [vehiclePosition, setVehiclePosition] = useState<{ x: number; y: number; z: number } | null>(null)
@@ -928,7 +933,10 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     setLapTime(0)
   }, [ordinalAddress, foxOutpoint, foxOriginOutpoint, foxName, onLatestActivityChange, gameStatus, trackName, playerColor, distanceTraveled])
 
-  const handleStartRace = useCallback(() => {
+  const handleStartRace = useCallback(async (requestFullscreen = deviceProfile.prefersMobileRacingUi) => {
+    if (requestFullscreen) {
+      await enterFullscreen()
+    }
     if (trackName !== 'Aspen' && onTrackChange) {
       onTrackChange(trackName, playerColor)
       return
@@ -966,7 +974,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
     if (spawnPosition && !vehiclePosition) {
       setVehiclePosition(spawnPosition)
     }
-  }, [foxName, foxOriginOutpoint, identityKey, ordinalAddress, playerColor, spawnPosition, vehiclePosition, trackName, onTrackChange])
+  }, [deviceProfile.prefersMobileRacingUi, enterFullscreen, foxName, foxOriginOutpoint, identityKey, ordinalAddress, playerColor, spawnPosition, vehiclePosition, trackName, onTrackChange])
 
   const playRaceStartBeeps = useCallback(() => {
     if (hasPlayedRaceStartBeepsRef.current) {
@@ -1041,7 +1049,7 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
 
   return (
     <>
-      <div ref={containerRef} style={{ width: '100%', height: 'calc(100vh - 60px)', position: 'relative', backgroundColor: '#000', margin: '0 auto' }}>
+      <div ref={containerRef} style={{ width: '100%', height: 'calc(100vh - 60px)', position: 'relative', backgroundColor: '#000', margin: '0 auto', ...(fallbackFullscreenStyle ?? {}) }}>
         {/* Loading Screen */}
         {gameStatus === 'loading' && (
           <RacingLoadingOverlay />
@@ -1091,15 +1099,18 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           showMinimap={false}
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
+          onManualCameraChange={setIsManualCamera}
           qualityPresetId={qualityPresetId}
         />
 
-        {/* Minimap - Show during racing and countdown (bottom right) */}
-        {(gameStatus === 'racing' || gameStatus === 'countdown') && (
+        {/* Mobile uses a compact minimap and hides it in portrait/manual-camera mode. */}
+        {(gameStatus === 'racing' || gameStatus === 'countdown') && (!isMobileRacingUi || deviceProfile.isLandscape) && !(isMobileRacingUi && isManualCamera) && (
           <Minimap
             carPosition={vehiclePosition}
             trackLocation={trackLocation}
-            position="bottom-right"
+            position={isMobileRacingUi ? 'top-right' : 'bottom-right'}
+            width={isMobileRacingUi ? MOBILE_RACE_MINIMAP_SIZE : 200}
+            height={isMobileRacingUi ? MOBILE_RACE_MINIMAP_SIZE : 200}
             updateEveryFrames={getRacingMinimapQualitySettings(getRacingQualityPreset(qualityPresetId)).updateEveryFrames}
           />
         )}
@@ -1116,8 +1127,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           />
         )}
 
-        {/* Fox Info Panel - shown during racing/countdown (same panel for normal and fullscreen modes) */}
-        {(gameStatus === 'racing' || gameStatus === 'countdown') && hasJoined && foxOriginOutpoint && (
+        {/* Desktop fox info panel. Mobile uses the compact shared race menu. */}
+        {!isMobileRacingUi && (gameStatus === 'racing' || gameStatus === 'countdown') && hasJoined && foxOriginOutpoint && (
           <RacingPlayerInfoPanel
             name={foxName}
             originOutpoint={foxOriginOutpoint}
@@ -1179,6 +1190,8 @@ export const FoxRacingGame: React.FC<FoxRacingGameProps> = ({
           showroomLoading={false}
           qualityPresetId={qualityPresetId}
           onQualityPresetChange={setQualityPresetId}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
           showroomVehicleModes={['car', 'snowmobile']}
         />
       </div>

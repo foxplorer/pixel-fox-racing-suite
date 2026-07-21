@@ -89,6 +89,17 @@ export const useCollectibleItemActions = ({
         itemType,
         identityKey,
         deliveryTarget,
+        fetch,
+        {
+          maxAttempts: 3,
+          initialDelayMs: 750,
+          onRetry: (attempt, error, nextDelayMs) => {
+            console.warn(
+              `Collectible ${itemType} submit attempt ${attempt} failed; retrying in ${nextDelayMs}ms`,
+              error
+            )
+          }
+        }
       )
 
       if (providerType === METANET_WALLET_PROVIDER && result.deliveryMode === 'metanet') {

@@ -44,6 +44,55 @@ export const CarTrackVehicleModel: React.FC<CarTrackVehicleModelProps> = ({
     )
   }
 
+  // Mobile uses a stripped kart for weak phones. Compared with the low model,
+  // this removes the transparent windshield render pass, dynamic point lights,
+  // roll-bar trim, hubcaps, and the higher-poly cylinder wheels.
+  if (qualityPresetId === 'mobile') {
+    return (
+      <group rotation={[0, Math.PI, 0]}>
+        <mesh position={[0, 0.3, 0]} castShadow receiveShadow>
+          <boxGeometry args={[2, 0.4, 3.8]} />
+          <meshStandardMaterial color={playerColor} metalness={0.6} roughness={0.4} />
+        </mesh>
+        <mesh position={[0, 0.75, 0.2]} castShadow receiveShadow>
+          <boxGeometry args={[1.8, 0.55, 1.6]} />
+          <meshStandardMaterial color={playerColor} metalness={0.6} roughness={0.4} />
+        </mesh>
+
+        {([[-1.05, 1.2], [1.05, 1.2], [-1.05, -1.2], [1.05, -1.2]] as const).map(([x, z]) => (
+          <mesh key={`${x}:${z}`} position={[x, 0.3, z]} castShadow>
+            <boxGeometry args={[0.35, 0.7, 0.85]} />
+            <meshStandardMaterial color="#111" />
+          </mesh>
+        ))}
+
+        {[-0.55, 0.55].map(x => (
+          <mesh key={x} position={[x, 0.45, 1.92]}>
+            <boxGeometry args={[0.34, 0.14, 0.08]} />
+            <meshStandardMaterial
+              color={headlightsEnabled ? '#fffbe0' : '#c9c2a4'}
+              emissive={headlightsEnabled ? '#fff4c2' : '#000000'}
+              emissiveIntensity={headlightsEnabled ? 1.8 : 0}
+            />
+          </mesh>
+        ))}
+
+        <group position={[0, 0.5, 0.2]} scale={1.0}>
+          <VoxelFox
+            position={[0, 0, 0]}
+            rotation={[0, -Math.PI / 2, 0]}
+            foxTextureUrl={foxTextureUrl ?? (getOrdinalContentUrl(foxOriginOutpoint) || undefined)}
+            backgroundRemovalStrategy={backgroundRemovalStrategy}
+            color={playerColor}
+            message={localChatMessage?.text}
+            messageTime={localChatMessage?.timestamp}
+            onTextureLoaded={onFoxLoaded}
+          />
+        </group>
+      </group>
+    )
+  }
+
   return (
     <group rotation={[0, Math.PI, 0]}>
       <mesh position={[0, 0.25, 0]} castShadow receiveShadow>

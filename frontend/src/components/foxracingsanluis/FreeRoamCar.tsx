@@ -21,11 +21,12 @@ import { CarHeadlightBeam } from '../../racing/components/CarHeadlightBeam'
 import type { RacingQualityPresetId } from '../../racing/performance/qualitySettings'
 import { getTrackRuntimeConfig } from '../../racing/tracks/trackRuntimeConfig'
 import { getCarSurfaceVisualY } from '../../racing/vehicles/carBounce'
-import { capCameraDelta, clampCameraDistance, getCarCameraSmoothingRate, getExponentialSmoothingFactor, SHARED_CAR_CAMERA } from '../../racing/vehicles/carCamera'
+import { capCameraDelta, clampCameraDistance, getCarCameraSmoothingRate, getExponentialSmoothingFactor, MOBILE_CAMERA_MAX_DELTA_SECONDS, SHARED_CAR_CAMERA } from '../../racing/vehicles/carCamera'
 import { updateCarGasAudio } from '../../racing/vehicles/carGasAudio'
 import { resolveCarCollisionFrame } from '../../racing/vehicles/carCollisionFrame'
 import type { PlayerVehicleContactStateStore } from '../../racing/vehicles/playerVehicleCollision'
-import { advanceCarControlFrame, advanceCarMovementFrame, canAdvanceCarFrame, getInactiveCarSpeed, getStableCarRotation, isAnyCarControlActive, SHARED_CAR_HANDLING } from '../../racing/vehicles/carHandling'
+import { advanceCarControlFrame, advanceCarMovementFrame, canAdvanceCarFrame, getCarHandlingForQuality, getInactiveCarSpeed, getStableCarRotation, isAnyCarControlActive, SHARED_CAR_HANDLING } from '../../racing/vehicles/carHandling'
+import { getAnalogSteeringInput } from '../../racing/vehicles/carSteeringInput'
 import { useCarKeyboardControls } from '../../racing/vehicles/useCarKeyboardControls'
 import { collectFirstNearbyItem } from '../../racing/collectibles/collectiblePickup'
 import type { RacingGameCollectibleItem as GameItem } from '../../racing/collectibles/collectibleTypes'
@@ -288,7 +289,9 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
       speed: speed.current,
       rotationRadians: rotation.current,
       deltaSeconds: delta,
-      isOnTrack: onTrack
+      isOnTrack: onTrack,
+      steeringInput: getAnalogSteeringInput(),
+      handling: getCarHandlingForQuality(qualityPresetId === 'mobile')
     })
     const controls = controlFrame.controls
 
@@ -311,6 +314,7 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
     rotation.current = controlFrame.rotationRadians
 
     advanceCarMovementFrame({
+      handling: getCarHandlingForQuality(qualityPresetId === 'mobile'),
       rotationRadians: rotation.current,
       speed: speed.current,
       deltaSeconds: delta,
@@ -472,7 +476,10 @@ export const FreeRoamCar: React.FC<FreeRoamCarProps> = ({
         if (!isManualCamera) {
           cameraUpdateCountRef.current++
           // Common setup for all camera modes
-          const cappedDelta = capCameraDelta(delta)
+          const cappedDelta = capCameraDelta(
+            delta,
+            qualityPresetId === 'mobile' ? MOBILE_CAMERA_MAX_DELTA_SECONDS : undefined
+          )
           
           rotation.current = getStableCarRotation(rotation.current, initialRotation)
 

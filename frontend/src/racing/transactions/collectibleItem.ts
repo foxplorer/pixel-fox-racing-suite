@@ -65,9 +65,22 @@ export interface CollectibleTransactionResponse {
 export type CollectibleTransactionFetch = (
   url: string,
   init: RequestInit
-) => Promise<{ json(): Promise<CollectibleTransactionResponse> }>
+) => Promise<{
+  ok?: boolean
+  status?: number
+  statusText?: string
+  json(): Promise<CollectibleTransactionResponse>
+  text?: () => Promise<string>
+}>
 
 export interface InternalizeMetanetCollectibleDeliveryWithRetryOptions {
+  maxAttempts?: number
+  initialDelayMs?: number
+  sleep?: (delayMs: number) => Promise<void>
+  onRetry?: (attempt: number, error: unknown, nextDelayMs: number) => void
+}
+
+export interface SubmitCollectibleTransactionOptions {
   maxAttempts?: number
   initialDelayMs?: number
   sleep?: (delayMs: number) => Promise<void>
@@ -85,6 +98,16 @@ const COLLECTIBLE_SCORES: Record<RacingCollectibleType, number> = {
   salad: 20,
   rabbit: 50
 }
+
+class CollectibleHttpError extends Error {}
+
+const isRetryableCollectibleSubmitError = (error: unknown): boolean => (
+  error instanceof TypeError
+  || (
+    error instanceof Error
+    && /failed to fetch|network|load failed/i.test(error.message)
+  )
+)
 
 export const getCollectibleTransactionEndpoint = (
   itemType: RacingCollectibleType
@@ -125,7 +148,13 @@ export const submitCollectibleTransaction = async (
   itemType: RacingCollectibleType,
   identityKey: string,
   deliveryTarget: CollectibleDeliveryTarget,
-  requestFetcher: CollectibleTransactionFetch = fetch
+  requestFetcher: CollectibleTransactionFetch = fetch,
+  {
+    maxAttempts = 3,
+    initialDelayMs = 750,
+    sleep: sleepFn = sleep,
+    onRetry
+  }: SubmitCollectibleTransactionOptions = {}
 ): Promise<CollectibleTransactionResponse> => {
   const request = buildCollectibleTransactionRequest(
     transactionServerUrl,
@@ -133,8 +162,36 @@ export const submitCollectibleTransaction = async (
     identityKey,
     deliveryTarget,
   )
-  const response = await requestFetcher(request.url, request.init)
-  return response.json()
+  const attempts = Math.max(1, Math.floor(maxAttempts))
+  let nextDelayMs = Math.max(0, initialDelayMs)
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await requestFetcher(request.url, request.init)
+      const body = await response.json()
+      if (response.ok === false) {
+        throw new CollectibleHttpError(
+          body.message
+            || body.error
+            || `Collectible transaction failed with status ${response.status ?? 'unknown'}`
+        )
+      }
+      return body
+    } catch (error) {
+      lastError = error
+      if (error instanceof CollectibleHttpError || !isRetryableCollectibleSubmitError(error) || attempt >= attempts) break
+      onRetry?.(attempt, error, nextDelayMs)
+      if (nextDelayMs > 0) {
+        await sleepFn(nextDelayMs)
+      }
+      nextDelayMs *= 2
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Collectible transaction failed after retries')
 }
 
 export const buildMetanetCollectibleInternalizeAction = (
