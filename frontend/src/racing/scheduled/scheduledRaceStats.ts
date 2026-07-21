@@ -38,11 +38,31 @@ export const buildScheduledRaceFinalStatsRow = (race: ScheduledRace): PixelRacin
   const txid = race.finalInscription?.txid
   if (!txid) return null
 
+  const resultsByEntrantId = new Map(race.results.map(result => [result.entrantId, result]))
   const firstFinishedResult = race.results.find(result => result.status === 'finished')
   const firstEntrant = firstFinishedResult
     ? race.roster.find(signup => signup.entrantId === firstFinishedResult.entrantId)
     : race.roster[0]
   const timestamp = Date.parse(race.finalInscription?.updatedAt || race.finalInscription?.createdAt || race.serverTime || '')
+  const groupRaceEntrants = race.roster.map(signup => {
+    const result = resultsByEntrantId.get(signup.entrantId)
+
+    return {
+      entrantId: signup.entrantId,
+      foxName: signup.foxName,
+      foxOutpoint: signup.foxOutpoint,
+      foxOriginOutpoint: signup.foxOriginOutpoint,
+      foxInfoLink: getOrdinalContentUrl(signup.foxOriginOutpoint),
+      foxImageLink: getOrdinalInscriptionUrl(signup.foxOutpoint),
+      ownerAddress: signup.ownerAddress,
+      carColor: signup.carColor ?? null,
+      gridSlot: signup.stagedGridSlot ?? signup.gridSlot ?? null,
+      finishPosition: result?.finishPosition ?? null,
+      totalTimeMs: result?.totalTimeMs ?? null,
+      lapTimesMs: result?.lapTimesMs ?? [],
+      status: result?.status ?? signup.status,
+    }
+  })
 
   return {
     recordVersion: 2,
@@ -62,6 +82,7 @@ export const buildScheduledRaceFinalStatsRow = (race: ScheduledRace): PixelRacin
     groupRaceFinal: true,
     groupRaceEntrantCount: race.roster.length,
     groupRaceFinisherCount: race.results.filter(result => result.status === 'finished').length,
+    groupRaceEntrants,
     groupRaceFinishPosition: firstFinishedResult?.finishPosition ?? null,
     groupRaceTotalTimeMs: firstFinishedResult?.totalTimeMs ?? null,
     groupRaceStatus: firstFinishedResult?.status,

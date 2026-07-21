@@ -27,8 +27,25 @@ export interface PixelRacingGameResult {
   groupRaceFinal?: boolean
   groupRaceEntrantCount?: number
   groupRaceFinisherCount?: number
+  groupRaceEntrants?: PixelRacingGroupRaceEntrant[]
   inscriptionName?: string
   outputIndex?: number | null
+}
+
+export interface PixelRacingGroupRaceEntrant {
+  entrantId: string
+  foxName: string
+  foxOutpoint: string
+  foxOriginOutpoint: string
+  foxInfoLink: string
+  foxImageLink: string
+  ownerAddress: string
+  carColor?: string | null
+  gridSlot?: number | null
+  finishPosition?: number | null
+  totalTimeMs?: number | null
+  lapTimesMs: number[]
+  status: 'finished' | 'dnf' | 'not_staged' | 'staged' | 'signed_up' | 'withdrawn'
 }
 
 export interface LapPlayerIdentity {

@@ -131,4 +131,29 @@ test('buildScheduledRaceFinalStatsRow exposes final race tx without owner addres
   assert.equal(row.groupRaceEntrantCount, 2)
   assert.equal(row.groupRaceFinisherCount, 1)
   assert.equal(row.inscriptionName, 'multiplayer race')
+  assert.deepEqual(row.groupRaceEntrants?.map(entrant => ({
+    foxName: entrant.foxName,
+    finishPosition: entrant.finishPosition,
+    totalTimeMs: entrant.totalTimeMs,
+    lapTimesMs: entrant.lapTimesMs,
+    status: entrant.status,
+    carColor: entrant.carColor,
+  })), [
+    {
+      foxName: 'A Fox',
+      finishPosition: 1,
+      totalTimeMs: 213000,
+      lapTimesMs: [70000, 71000, 72000],
+      status: 'finished',
+      carColor: '#4ECDC4',
+    },
+    {
+      foxName: 'B Fox',
+      finishPosition: null,
+      totalTimeMs: null,
+      lapTimesMs: [80000],
+      status: 'dnf',
+      carColor: '#FFD166',
+    },
+  ])
 })

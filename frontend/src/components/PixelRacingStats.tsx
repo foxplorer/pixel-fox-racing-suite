@@ -73,7 +73,6 @@ const TRACK_ICON_BY_NAME: Record<string, string> = {
   Aspen: '🏔️',
   Volcanoes: '🌋'
 };
-type PixelRacingStatsEra = 'current' | 'legacy';
 
 // Compute driver championship standings from all race data
 const computeDriverChampionship = (allGames: PixelRacingGameResult[]): DriverStats[] => {
@@ -229,35 +228,23 @@ const processFetchedGames = (games: PixelRacingGameResult[]) => {
 };
 
 const ACTIVITY_PAGE_SIZE = 5;
-const LEGACY_ERA_DISPLAY_COUNT = 1410;
 
 const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOrdinalAddress, customTitle, renderBeforeLeaderboard, transactionServerUrl }: PixelRacingStatsProps) {
   const [liveActivity, setLiveActivity] = useState<PixelRacingGameResult[]>([]); // ONLY live items/games
   const [multiplayerRaceActivity, setMultiplayerRaceActivity] = useState<PixelRacingGameResult[]>([]);
   const [gameHistory, setGameHistory] = useState<PixelRacingGameResult[]>([]); // Fetched global games
-  const [legacyGameHistory, setLegacyGameHistory] = useState<PixelRacingGameResult[]>([]);
-  const [leadersdisplay, setLeadersDisplay] = useState<PixelRacingGameResult[]>([]); // Legacy - keeping for compatibility
   const [trackLeaderboards, setTrackLeaderboards] = useState<Record<string, PixelRacingGameResult[]>>({});
-  const [legacyTrackLeaderboards, setLegacyTrackLeaderboards] = useState<Record<string, PixelRacingGameResult[]>>({});
-  const [gamecount, setGameCount] = useState<number>(0);
-  const [legacyGameCount, setLegacyGameCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isLoadingLegacy, setIsLoadingLegacy] = useState<boolean>(false);
   const [activityresults, setActivityResults] = useState<number>(ACTIVITY_PAGE_SIZE);
   const [historyResults, setHistoryResults] = useState<number>(ACTIVITY_PAGE_SIZE);
-  const [legacyHistoryResults, setLegacyHistoryResults] = useState<number>(ACTIVITY_PAGE_SIZE);
   const [displayshowmoreactivity, setDisplayShowMoreActivity] = useState<boolean>(false);
   const [displayshowmorehistory, setDisplayShowMoreHistory] = useState<boolean>(false);
-  const [displayShowMoreLegacyHistory, setDisplayShowMoreLegacyHistory] = useState<boolean>(false);
   const [fetchError, setFetchError] = useState<string | null>(null); // Track fetch errors for retry UI
-  const [legacyFetchError, setLegacyFetchError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0); // Track retry attempts
   const [driverChampionship, setDriverChampionship] = useState<DriverStats[]>([]); // Driver standings
-  const [legacyDriverChampionship, setLegacyDriverChampionship] = useState<DriverStats[]>([]);
   const [expandedDrivers, setExpandedDrivers] = useState<Set<string>>(new Set()); // Expanded driver cards
   const [championshipDisplayCount, setChampionshipDisplayCount] = useState<number>(10); // Pagination
   const [activeTab, setActiveTab] = useState<string>(PIXEL_RACING_CHAMPIONSHIP_TAB_ID); // Track tabs
-  const [statsEra, setStatsEra] = useState<PixelRacingStatsEra>('current');
   const [canScrollLeft, setCanScrollLeft] = useState(false); // Track if can scroll left
   const [canScrollRight, setCanScrollRight] = useState(true); // Track if more tabs to scroll
 
@@ -265,7 +252,6 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
   const didMount = useRef(false);
   const tabContainerRef = useRef<HTMLDivElement>(null);
   const hasFetchedHistory = useRef(false); // Track if history has been fetched
-  const hasFetchedLegacyHistory = useRef(false);
   const MAX_RETRIES = 3;
   const BASE_DELAY = 1000; // 1 second base delay for exponential backoff
   
@@ -378,7 +364,10 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     setFetchError(null);
 
     try {
-      const uniqueHistoryGames = await fetchPixelRacingResults(CURRENT_PIXELRACING_RESULT_QUERIES);
+      const [uniqueHistoryGames, legacyHistoryGames] = await Promise.all([
+        fetchPixelRacingResults(CURRENT_PIXELRACING_RESULT_QUERIES),
+        fetchPixelRacingResults(LEGACY_PIXELRACING_RESULT_QUERIES),
+      ]);
       const completedScheduledRaces = transactionServerUrl
         ? await fetchCompletedScheduledRaces({
           transactionServerUrl,
@@ -393,20 +382,25 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
       const scheduledRaceFinalRows = completedScheduledRaces
         .map(buildScheduledRaceFinalStatsRow)
         .filter((row): row is PixelRacingGameResult => Boolean(row));
-      const currentSeasonGames = [...uniqueHistoryGames, ...scheduledRaceLapRows];
-      const processed = processFetchedGames(currentSeasonGames);
+      const allLapRows = [
+        ...uniqueHistoryGames,
+        ...legacyHistoryGames,
+        ...scheduledRaceLapRows,
+      ];
+      const uniqueLapRows = Array.from(
+        new Map(allLapRows.map(game => [game.txid || `${game.outpoint}_${game.time}`, game])).values()
+      );
+      const processed = processFetchedGames(uniqueLapRows);
 
-      console.log(`Fetched ${uniqueHistoryGames.length} current-season history games by metadata search, ${scheduledRaceLapRows.length} scheduled race lap rows, and ${scheduledRaceFinalRows.length} multiplayer race final transactions`);
+      console.log(`Fetched ${uniqueHistoryGames.length} current history games, ${legacyHistoryGames.length} legacy history games, ${scheduledRaceLapRows.length} scheduled race lap rows, and ${scheduledRaceFinalRows.length} multiplayer race final transactions`);
 
       setGameHistory(processed.sortedHistory);
       setMultiplayerRaceActivity(_.sortBy(scheduledRaceFinalRows, item => Number(item.time) || 0).reverse());
       setHistoryResults(ACTIVITY_PAGE_SIZE);
       setDisplayShowMoreHistory(processed.sortedHistory.length > ACTIVITY_PAGE_SIZE);
-      setLeadersDisplay(processed.leaders);
       setTrackLeaderboards(processed.trackLeaderboards);
       setDriverChampionship(processed.driverChampionship);
       console.log(`Computed driver championship with ${processed.driverChampionship.length} drivers`);
-      setGameCount(processed.gameCount);
       setIsLoading(false);
       setRetryCount(0); // Reset retry count on success
       setFetchError(null);
@@ -431,55 +425,12 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     }
   };
 
-  const fetchLegacyHistory = async (): Promise<void> => {
-    setIsLoadingLegacy(true);
-    setLegacyFetchError(null);
-
-    try {
-      const uniqueHistoryGames = await fetchPixelRacingResults(LEGACY_PIXELRACING_RESULT_QUERIES);
-      const processed = processFetchedGames(uniqueHistoryGames);
-
-      console.log(`Fetched ${uniqueHistoryGames.length} legacy history games by metadata search`);
-
-      setLegacyGameHistory(processed.sortedHistory);
-      setLegacyHistoryResults(ACTIVITY_PAGE_SIZE);
-      setDisplayShowMoreLegacyHistory(processed.sortedHistory.length > ACTIVITY_PAGE_SIZE);
-      setLegacyTrackLeaderboards(processed.trackLeaderboards);
-      setLegacyDriverChampionship(processed.driverChampionship);
-      setLegacyGameCount(processed.gameCount);
-      setIsLoadingLegacy(false);
-      setLegacyFetchError(null);
-    } catch (err) {
-      console.error('Error fetching legacy pixel racing stats:', err);
-      hasFetchedLegacyHistory.current = false;
-      setIsLoadingLegacy(false);
-      setLegacyFetchError('Failed to load legacy racing stats. Please try again.');
-    }
-  };
-
   // Manual refresh function
   const handleManualRefresh = () => {
-    if (statsEra === 'legacy') {
-      hasFetchedLegacyHistory.current = false;
-      setLegacyFetchError(null);
-      hasFetchedLegacyHistory.current = true;
-      fetchLegacyHistory();
-      return;
-    }
-
     hasFetchedHistory.current = false;
     setRetryCount(0);
     setFetchError(null);
     fetchHistoryWithRetry(0);
-  };
-
-  const handleStatsEraChange = (nextEra: PixelRacingStatsEra) => {
-    if (nextEra === statsEra) return;
-
-    setStatsEra(nextEra);
-    setActiveTab(PIXEL_RACING_CHAMPIONSHIP_TAB_ID);
-    setExpandedDrivers(new Set());
-    setChampionshipDisplayCount(10);
   };
 
   // Fetch GLOBAL HISTORY only (for History & Leaderboard sections)
@@ -493,15 +444,6 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     hasFetchedHistory.current = true;
     fetchHistoryWithRetry(0);
   }, []);
-
-  useEffect(() => {
-    if (statsEra !== 'legacy' || hasFetchedLegacyHistory.current) {
-      return;
-    }
-
-    hasFetchedLegacyHistory.current = true;
-    fetchLegacyHistory();
-  }, [statsEra]);
 
   // Handle LIVE updates (Latest Transactions)
   useEffect(() => {
@@ -551,13 +493,6 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
             const updated = [latestactivity, ...prev];
             return _.sortBy(updated, item => Number(item.time) || 0).reverse();
         });
-        setLeadersDisplay(prev => {
-            // Check for duplicate
-            if (prev.find(a => a.txid === latestactivity.txid)) return prev;
-            const updated = [...prev, latestactivity];
-            return updated.sort((a, b) => Number(a.laptime) - Number(b.laptime));
-        });
-        
         const statsTrackName = getPixelRacingStatsTrackName(latestactivity);
         setTrackLeaderboards(prev => {
           const existing = prev[statsTrackName] ?? [];
@@ -567,7 +502,6 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
             [statsTrackName]: [...existing, latestactivity].sort((a, b) => Number(a.laptime) - Number(b.laptime))
           };
         });
-        setGameCount(c => c + 1);
     }
   }, [latestactivity]);
 
@@ -578,22 +512,12 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
 
   // Helper to show more HISTORY
   const showMoreHistory = () => {
-      const activeHistory = statsEra === 'legacy' ? legacyGameHistory : gameHistory;
-      const currentCount = statsEra === 'legacy' ? legacyHistoryResults : historyResults;
-      const newCount = currentCount + ACTIVITY_PAGE_SIZE;
-
-      if (statsEra === 'legacy') {
-        setLegacyHistoryResults(newCount);
-        if (newCount >= activeHistory.length) {
-          setDisplayShowMoreLegacyHistory(false);
-        }
-        return;
-      }
+      const newCount = historyResults + ACTIVITY_PAGE_SIZE;
 
       setHistoryResults(newCount);
 
       // Hide button if all items are shown
-      if (newCount >= activeHistory.length) {
+      if (newCount >= gameHistory.length) {
           setDisplayShowMoreHistory(false);
       }
   };
@@ -639,6 +563,25 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     if (position <= 10) return '#36bffa'; // Points position
     return '#666'; // No points
   };
+
+  const formatRaceDuration = (milliseconds?: number | null): string => {
+    if (!milliseconds || !Number.isFinite(milliseconds)) return 'DNF';
+    return formatLapTime(milliseconds / 1000);
+  };
+
+  const formatBestLap = (lapTimesMs: number[]): string => {
+    if (!lapTimesMs.length) return 'No lap';
+    return formatRaceDuration(Math.min(...lapTimesMs));
+  };
+
+  const getRaceEntrantPositionLabel = (finishPosition?: number | null, status?: string): string => {
+    if (finishPosition) return getOrdinalSuffix(finishPosition);
+    return status === 'dnf' ? 'DNF' : 'DNS';
+  };
+
+  const getRaceEntrantSortValue = (entrant: NonNullable<PixelRacingGameResult['groupRaceEntrants']>[number]): number => (
+    entrant.finishPosition ?? (entrant.status === 'dnf' ? 9000 : 10000)
+  );
 
   const styles = {
     section: {
@@ -742,40 +685,27 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
     }
   };
 
-  const trackNamesForTabs = getPixelRacingStatsTrackNames(
-    statsEra === 'legacy' ? legacyGameHistory : gameHistory
-  );
-  const activeGameHistory = statsEra === 'legacy' ? legacyGameHistory : gameHistory;
-  const activeTrackLeaderboards = statsEra === 'legacy' ? legacyTrackLeaderboards : trackLeaderboards;
-  const activeDriverChampionship = statsEra === 'legacy' ? legacyDriverChampionship : driverChampionship;
-  const activeIsLoading = statsEra === 'legacy' ? isLoadingLegacy : isLoading;
-  const activeFetchError = statsEra === 'legacy' ? legacyFetchError : fetchError;
-  const activeHistoryResults = statsEra === 'legacy' ? legacyHistoryResults : historyResults;
-  const activeShowMoreHistory = statsEra === 'legacy' ? displayShowMoreLegacyHistory : displayshowmorehistory;
-  const currentEraResultCount = gamecount.toLocaleString();
-  const legacyEraResultCount = LEGACY_ERA_DISPLAY_COUNT.toLocaleString();
+  const trackNamesForTabs = getPixelRacingStatsTrackNames(gameHistory);
   const trackTabs = [
     {
       id: PIXEL_RACING_CHAMPIONSHIP_TAB_ID,
       label: 'Championship',
       icon: '🏆',
-      count: activeDriverChampionship.length,
+      count: driverChampionship.length,
       trackName: null
     },
-    // Multiplayer races only exist in the current era. Keep it near the front
-    // because it is a mode-level activity view, not a per-track leaderboard.
-    ...(statsEra === 'current' ? [{
+    {
       id: PIXEL_RACING_MULTIPLAYER_TAB_ID,
       label: 'Multiplayer',
       icon: '🏎️',
       count: multiplayerRaceActivity.length,
       trackName: null
-    }] : []),
+    },
     ...trackNamesForTabs.map(trackName => ({
       id: getPixelRacingStatsTrackTabId(trackName),
       label: trackName,
       icon: TRACK_ICON_BY_NAME[trackName] ?? '🏁',
-      count: activeTrackLeaderboards[trackName]?.length ?? 0,
+      count: trackLeaderboards[trackName]?.length ?? 0,
       trackName
     }))
   ];
@@ -842,58 +772,149 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
         </p>
       )}
       {multiplayerRaceActivity.length > 0 ? (
-        <ol style={styles.list}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
           {multiplayerRaceActivity.slice(0, 15).map((data, index) => {
             const txidlink = getWhatsOnChainTransactionUrl(data.txid);
             const inscriptionlink = getOrdinalInscriptionUrl(`${data.txid}_${data.outputIndex ?? 0}`);
             const date = new Date(Number(data.time) || 0).toLocaleString();
+            const entrants = [...(data.groupRaceEntrants ?? [])].sort((a, b) => getRaceEntrantSortValue(a) - getRaceEntrantSortValue(b));
+            const winner = entrants.find(entrant => entrant.finishPosition === 1);
+            const fastestLapMs = entrants.flatMap(entrant => entrant.lapTimesMs).reduce<number | null>((best, lapTimeMs) => (
+              best === null || lapTimeMs < best ? lapTimeMs : best
+            ), null);
+            const totalLaps = entrants.reduce((sum, entrant) => sum + entrant.lapTimesMs.length, 0);
+            const field = entrants.length > 0 ? entrants : [{
+              entrantId: `${data.txid || data.groupRaceId || index}-winner`,
+              foxName: data.foxname,
+              foxOutpoint: data.outpoint,
+              foxOriginOutpoint: data.originoutpoint,
+              foxInfoLink: data.foxinfolink,
+              foxImageLink: data.foximagelink,
+              ownerAddress: data.owneraddress,
+              carColor: data.carcolor ?? null,
+              gridSlot: null,
+              finishPosition: data.groupRaceFinishPosition ?? 1,
+              totalTimeMs: data.groupRaceTotalTimeMs ?? (Number(data.laptime) > 0 ? Number(data.laptime) * 1000 : null),
+              lapTimesMs: [],
+              status: data.groupRaceStatus ?? 'finished',
+            }];
 
             return (
-              <li key={`multiplayer-${data.txid}-${data.time}-${index}`} style={styles.listItem}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                  {data.foxinfolink && (
-                    <a target="blank" href={data.foximagelink} style={styles.imageLink}>
-                      <img
-                        style={styles.image}
-                        src={data.foxinfolink}
-                        alt={data.foxname}
-                        data-outpoint={data.originoutpoint}
-                        onError={handleImageError}
-                      />
-                    </a>
-                  )}
-                  <div style={{ color: '#FFD700', fontSize: '0.85em', fontWeight: 'bold', marginBottom: '2px' }}>
-                    🏆 Winner
-                  </div>
-                  <div style={styles.foxName}>{data.foxname}</div>
-                  {Number(data.laptime) > 0 && (
-                    <div style={styles.laptime}>Race Time: {formatLapTime(Number(data.laptime))}</div>
-                  )}
-                  <div style={{ color: '#4CAF50', fontSize: '0.9em', marginTop: '2px' }}>
-                    {data.groupRaceFinisherCount ?? 0}/{data.groupRaceEntrantCount ?? 0} finishers
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500', marginTop: '2px' }}>
-                    Track: {getPixelRacingStatsTrackName(data)}
-                  </div>
-                  {data.inscriptionName && (
-                    <div style={{ color: '#ffd166', fontSize: '0.8em', marginTop: '4px' }}>
-                      {data.inscriptionName}
+              <article key={`multiplayer-${data.txid}-${data.time}-${index}`} style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                borderRadius: '8px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ color: '#FFD700', fontSize: '0.85em', fontWeight: 'bold', marginBottom: '4px' }}>
+                      🏆 {winner?.foxName || data.foxname}
                     </div>
-                  )}
-                  <div style={styles.date}>{date}</div>
-                  <div style={styles.links}>
-                    <a style={styles.link} target="blank" href={txidlink}>
-                      <u>Transaction</u>
-                    </a>
-                    <a style={styles.link} target="blank" href={inscriptionlink}>
-                      <u>Inscription</u>
-                    </a>
+                    <div style={{ color: '#ffffff', fontWeight: 'bold', fontSize: '1.05em' }}>
+                      {getPixelRacingStatsTrackName(data)}
+                    </div>
+                    <div style={styles.date}>{date}</div>
+                  </div>
+                  <div style={{ textAlign: 'right', color: '#4CAF50', fontWeight: 'bold', fontSize: '0.9em' }}>
+                    {data.groupRaceFinisherCount ?? field.filter(entrant => entrant.status === 'finished').length}/{data.groupRaceEntrantCount ?? field.length} finishers
+                    <div style={{ color: '#bbb', fontSize: '0.78em', fontWeight: 'normal', marginTop: '3px' }}>
+                      {totalLaps || '-'} laps logged
+                    </div>
                   </div>
                 </div>
-              </li>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(86px, 1fr))', gap: '10px' }}>
+                  {field.slice(0, 8).map(entrant => {
+                    const positionColor = entrant.finishPosition ? getPositionColor(entrant.finishPosition) : '#666';
+                    return (
+                      <a
+                        key={`${data.txid}-${entrant.entrantId}`}
+                        target="blank"
+                        href={entrant.foxImageLink || entrant.foxInfoLink}
+                        style={{ ...styles.imageLink, color: '#fff', textDecoration: 'none' }}
+                      >
+                        <div style={{
+                          border: `2px solid ${positionColor}`,
+                          borderRadius: '6px',
+                          padding: '6px',
+                          backgroundColor: 'rgba(0, 0, 0, 0.28)',
+                          minHeight: '154px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          {entrant.foxInfoLink && (
+                            <img
+                              style={{ ...styles.image, width: '58px', height: '58px', marginBottom: 0 }}
+                              src={entrant.foxInfoLink}
+                              alt={entrant.foxName}
+                              data-outpoint={entrant.foxOriginOutpoint}
+                              onError={handleImageError}
+                            />
+                          )}
+                          <div style={{ color: positionColor, fontWeight: 'bold', fontSize: '0.85em' }}>
+                            {getRaceEntrantPositionLabel(entrant.finishPosition, entrant.status)}
+                          </div>
+                          <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.78em', textAlign: 'center', lineHeight: 1.25 }}>
+                            {entrant.foxName}
+                          </div>
+                          {entrant.carColor && (
+                            <span style={{
+                              width: '18px',
+                              height: '8px',
+                              borderRadius: '999px',
+                              backgroundColor: entrant.carColor,
+                              border: '1px solid rgba(255,255,255,0.6)'
+                            }} />
+                          )}
+                          <div style={{ color: '#4CAF50', fontSize: '0.72em', textAlign: 'center' }}>
+                            {formatRaceDuration(entrant.totalTimeMs)}
+                          </div>
+                          <div style={{ color: '#aaa', fontSize: '0.68em', textAlign: 'center' }}>
+                            Best {formatBestLap(entrant.lapTimesMs)}
+                          </div>
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: '8px',
+                  color: '#ddd',
+                  fontSize: '0.82em',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ backgroundColor: 'rgba(0,0,0,0.24)', borderRadius: '6px', padding: '7px' }}>
+                    <strong style={{ color: '#fff' }}>{field.length}</strong><br />Foxes
+                  </div>
+                  <div style={{ backgroundColor: 'rgba(0,0,0,0.24)', borderRadius: '6px', padding: '7px' }}>
+                    <strong style={{ color: '#fff' }}>{fastestLapMs ? formatRaceDuration(fastestLapMs) : '-'}</strong><br />Fastest Lap
+                  </div>
+                  <div style={{ backgroundColor: 'rgba(0,0,0,0.24)', borderRadius: '6px', padding: '7px' }}>
+                    <strong style={{ color: '#fff' }}>{data.inscriptionName || 'Final'}</strong><br />Record
+                  </div>
+                </div>
+
+                <div style={styles.links}>
+                  <a style={styles.link} target="blank" href={txidlink}>
+                    <u>Transaction</u>
+                  </a>
+                  <a style={styles.link} target="blank" href={inscriptionlink}>
+                    <u>Inscription</u>
+                  </a>
+                </div>
+              </article>
             );
           })}
-        </ol>
+        </div>
       ) : !isLoading ? (
         <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
           <p>No multiplayer races completed yet.</p>
@@ -912,7 +933,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
       <h3 style={styles.sectionTitle}>🏆 {trackName}</h3>
       <div id={`${getPixelRacingStatsTrackTabId(trackName)}Leaderboard`}>
         <div className="CenterLoader">
-          {activeIsLoading ? (
+          {isLoading ? (
             <PulseLoader color="#ffffff" />
           ) : null}
         </div>
@@ -969,9 +990,6 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                     </a>
                   )}
                   <div style={styles.foxName}>{data.foxname}</div>
-                  {data.recordVersion !== undefined && data.recordVersion >= 2 ? null : (
-                    <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
-                  )}
                   <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500', marginTop: '2px' }}>
                     Track: {trackName}
                   </div>
@@ -989,13 +1007,11 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
               );
             })}
           </ol>
-        ) : !activeIsLoading ? (
+        ) : !isLoading ? (
           <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
             <p>No {trackName} track entries yet.</p>
             <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
-              {statsEra === 'legacy'
-                ? `No legacy results recorded for ${trackName}.`
-                : `Play games on ${trackName} track to appear here!`}
+              Play games on {trackName} track to appear here!
             </p>
           </div>
         ) : null}
@@ -1070,31 +1086,96 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                 let txidlink = getWhatsOnChainTransactionUrl(data.txid);
                 let inscriptionlink = getOrdinalInscriptionUrl(`${data.txid}_0`);
                 let date = new Date(Number(data.time) || 0).toLocaleString();
+                const compactRaceEntrants = [...(data.groupRaceEntrants ?? [])].sort((a, b) => getRaceEntrantSortValue(a) - getRaceEntrantSortValue(b));
+                const compactRaceWinner = compactRaceEntrants.find(entrant => entrant.finishPosition === 1);
+                const compactRaceFastestLapMs = compactRaceEntrants
+                  .flatMap(entrant => entrant.lapTimesMs)
+                  .reduce<number | null>((best, lapTimeMs) => (
+                    best === null || lapTimeMs < best ? lapTimeMs : best
+                  ), null);
                 
                 return (
                   <li key={`${data.txid}-${data.time}-${index}`} style={styles.listItem}>
                     {data.groupRaceFinal ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                        {data.foxinfolink && (
-                          <a target="blank" href={data.foximagelink} style={styles.imageLink}>
-                            <img
-                              style={styles.image}
-                              src={data.foxinfolink}
-                              alt={data.foxname}
-                              data-outpoint={data.originoutpoint}
-                              onError={handleImageError}
-                            />
-                          </a>
-                        )}
-                        <div style={styles.foxName}>Multiplayer Race Final</div>
-                        <div style={{ color: '#4CAF50', fontSize: '0.9em', marginBottom: '4px', textAlign: 'center' }}>
-                          {data.groupRaceFinisherCount ?? 0}/{data.groupRaceEntrantCount ?? 0} finishers
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', width: '100%', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%' }}>
+                          <div style={{ display: 'flex', marginLeft: compactRaceEntrants.length > 1 ? '8px' : 0 }}>
+                            {(compactRaceEntrants.length ? compactRaceEntrants : [{
+                              entrantId: `${data.txid || data.groupRaceId || index}-winner`,
+                              foxName: data.foxname,
+                              foxOutpoint: data.outpoint,
+                              foxOriginOutpoint: data.originoutpoint,
+                              foxInfoLink: data.foxinfolink,
+                              foxImageLink: data.foximagelink,
+                              ownerAddress: data.owneraddress,
+                              carColor: data.carcolor ?? null,
+                              gridSlot: null,
+                              finishPosition: data.groupRaceFinishPosition ?? 1,
+                              totalTimeMs: data.groupRaceTotalTimeMs ?? null,
+                              lapTimesMs: [],
+                              status: data.groupRaceStatus ?? 'finished',
+                            }]).slice(0, 4).map((entrant, entrantIndex) => (
+                              <a
+                                key={`${data.txid}-${entrant.entrantId}-compact`}
+                                target="blank"
+                                href={entrant.foxImageLink || entrant.foxInfoLink}
+                                style={{
+                                  ...styles.imageLink,
+                                  marginLeft: entrantIndex === 0 ? 0 : '-8px',
+                                  position: 'relative',
+                                  zIndex: 5 - entrantIndex
+                                }}
+                              >
+                                <img
+                                  style={{
+                                    width: '46px',
+                                    height: '46px',
+                                    borderRadius: '6px',
+                                    objectFit: 'cover',
+                                    border: `2px solid ${entrant.finishPosition ? getPositionColor(entrant.finishPosition) : '#555'}`,
+                                    backgroundColor: '#111'
+                                  }}
+                                  src={entrant.foxInfoLink}
+                                  alt={entrant.foxName}
+                                  data-outpoint={entrant.foxOriginOutpoint}
+                                  onError={handleImageError}
+                                />
+                              </a>
+                            ))}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: '#FFD700', fontSize: '0.78em', fontWeight: 'bold', marginBottom: '2px' }}>
+                              Multiplayer Race Final
+                            </div>
+                            <div style={{ ...styles.foxName, marginBottom: '2px', textAlign: 'left' as const }}>
+                              🏆 {compactRaceWinner?.foxName || data.foxname}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500' }}>
+                              {getPixelRacingStatsTrackName(data)}
+                            </div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500', marginTop: '2px' }}>
-                          Track: {getPixelRacingStatsTrackName(data)}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                          gap: '6px',
+                          width: '100%',
+                          color: '#ddd',
+                          fontSize: '0.74em',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: '5px', padding: '6px 4px' }}>
+                            <strong style={{ color: '#4CAF50' }}>{data.groupRaceFinisherCount ?? 0}/{data.groupRaceEntrantCount ?? compactRaceEntrants.length}</strong><br />Finishers
+                          </div>
+                          <div style={{ backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: '5px', padding: '6px 4px' }}>
+                            <strong style={{ color: '#fff' }}>{Number(data.laptime) > 0 ? formatLapTime(Number(data.laptime)) : '-'}</strong><br />Win Time
+                          </div>
+                          <div style={{ backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: '5px', padding: '6px 4px' }}>
+                            <strong style={{ color: '#fff' }}>{compactRaceFastestLapMs ? formatRaceDuration(compactRaceFastestLapMs) : '-'}</strong><br />Best Lap
+                          </div>
                         </div>
                         {data.inscriptionName && (
-                          <div style={{ color: '#ffd166', fontSize: '0.8em', marginTop: '4px' }}>
+                          <div style={{ color: '#ffd166', fontSize: '0.75em', textAlign: 'center' }}>
                             {data.inscriptionName}
                           </div>
                         )}
@@ -1152,9 +1233,6 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                         </div>
                       </>
                     )}
-                    {data.recordVersion !== undefined && data.recordVersion >= 2 ? null : (
-                      <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
-                    )}
                     <div style={styles.date}>{date}</div>
                     <div style={styles.links}>
                       <a style={styles.link} target="blank" href={txidlink}>
@@ -1196,67 +1274,22 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
         </div>
       )}
 
-      {/* Stats Era Toggle */}
-      <div style={{
-        ...styles.section,
-        padding: '16px 20px',
-        marginBottom: '20px',
-        background: 'linear-gradient(135deg, rgba(0,0,0,0.65) 0%, rgba(20,20,40,0.75) 100%)',
-      }}>
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-          gap: '10px',
-          marginBottom: statsEra === 'legacy' ? '12px' : '0',
-        }}>
-          <button
-            type="button"
-            onClick={() => handleStatsEraChange('current')}
-            style={tabBarStyles.pill(statsEra === 'current') as React.CSSProperties}
-          >
-            <span>🏁</span>
-            <span>Current Tracks ({currentEraResultCount})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleStatsEraChange('legacy')}
-            style={tabBarStyles.pill(statsEra === 'legacy') as React.CSSProperties}
-          >
-            <span>📜</span>
-            <span>Legacy Era ({legacyEraResultCount})</span>
-          </button>
-        </div>
-        {statsEra === 'legacy' && (
-          <p style={{
-            margin: 0,
-            textAlign: 'center',
-            color: '#b8c5d1',
-            fontSize: '0.9em',
-            lineHeight: 1.5,
-          }}>
-            Scores from the earlier foxplorer era on different track layouts.
-            Lap times here are not directly comparable to current tracks.
-          </p>
-        )}
-      </div>
-
       {/* Game History Section */}
       <div style={styles.section}>
         <h3 style={styles.sectionTitle}>
-          {statsEra === 'legacy' ? 'Legacy Game History' : 'Game History'}
-          {activeGameHistory.length > 0 ? ` (${activeGameHistory.length.toLocaleString()})` : ''}
+          Game History
+          {gameHistory.length > 0 ? ` (${gameHistory.length.toLocaleString()})` : ''}
         </h3>
         <div id="GameHistory">
           <div className="CenterLoader">
-            {activeIsLoading ? (
+            {isLoading ? (
               <PulseLoader color="#ffffff" />
             ) : null}
           </div>
 
-          {activeFetchError && !activeIsLoading && (
+          {fetchError && !isLoading && (
             <div style={{ textAlign: 'center', color: '#ff6b6b', padding: '20px' }}>
-              <p>{activeFetchError}</p>
+              <p>{fetchError}</p>
               <button
                 onClick={handleManualRefresh}
                 style={{
@@ -1276,9 +1309,9 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
             </div>
           )}
           
-          {activeGameHistory && activeGameHistory.length > 0 ? (
+          {gameHistory && gameHistory.length > 0 ? (
             <ol style={styles.list}>
-              {activeGameHistory.slice(0, activeHistoryResults).map((data, index) => {
+              {gameHistory.slice(0, historyResults).map((data, index) => {
                 let txidlink = getWhatsOnChainTransactionUrl(data.txid);
                 let inscriptionlink = getOrdinalInscriptionUrl(`${data.txid}_0`);
                 let date = new Date(Number(data.time) || 0).toLocaleString();
@@ -1300,9 +1333,6 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                     )}
                     <div style={styles.foxName}>{data.foxname}</div>
                         <div style={styles.laptime}>Lap Time: {formatLapTime(Number(data.laptime))}</div>
-                    {data.recordVersion !== undefined && data.recordVersion >= 2 ? null : (
-                      <div style={styles.address}>{formatShortAddress(data.owneraddress)}</div>
-                    )}
                     <div style={{ fontSize: '11px', color: '#4ECDC4', fontWeight: '500', marginTop: '2px' }}>
                       Track: {getPixelRacingStatsTrackName(data)}
                     </div>
@@ -1319,18 +1349,14 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                 );
               })}
             </ol>
-          ) : !activeIsLoading && !activeFetchError ? (
+          ) : !isLoading && !fetchError ? (
             <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
-              <p>{statsEra === 'legacy' ? 'No legacy game history found.' : 'No game history found.'}</p>
-              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
-                {statsEra === 'legacy'
-                  ? 'Legacy scores will appear here once loaded from foxplorer inscriptions.'
-                  : 'Be the first to play a game!'}
-              </p>
+              <p>No game history found.</p>
+              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>Be the first to play a game!</p>
             </div>
           ) : null}
           
-          {activeGameHistory && activeGameHistory.length > 0 && activeShowMoreHistory && (
+          {gameHistory && gameHistory.length > 0 && displayshowmorehistory && (
             <div id="ShowMoreHistory" style={{ 
               display: 'flex',
               justifyContent: 'center',
@@ -1433,10 +1459,10 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
 
       {activeTrackTab?.trackName && renderTrackLeaderboard(
         activeTrackTab.trackName,
-        activeTrackLeaderboards[activeTrackTab.trackName] ?? []
+        trackLeaderboards[activeTrackTab.trackName] ?? []
       )}
 
-      {activeTab === PIXEL_RACING_MULTIPLAYER_TAB_ID && statsEra === 'current' && renderMultiplayerRaces()}
+      {activeTab === PIXEL_RACING_MULTIPLAYER_TAB_ID && renderMultiplayerRaces()}
 
       {/* Driver Championship Section */}
       {activeTab === PIXEL_RACING_CHAMPIONSHIP_TAB_ID && (
@@ -1454,7 +1480,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
           textShadow: '0 0 10px rgba(255, 215, 0, 0.5)',
           marginBottom: '5px'
         }}>
-          {statsEra === 'legacy' ? 'Legacy Driver Championship' : 'Fox Championship'}
+          Fox Championship
         </h3>
         <p style={{
           textAlign: 'center',
@@ -1463,21 +1489,19 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
           marginTop: '0',
           marginBottom: '20px'
         }}>
-          {statsEra === 'legacy'
-            ? 'Legacy championship standings from earlier track layouts (foxplorer era).'
-            : 'Fox standings use origin outpoints. Points: 25-18-15-12-10-8-6-4-2-1 for the top 10 per track.'}
+          Fox standings use origin outpoints when available. Points: 25-18-15-12-10-8-6-4-2-1 for the top 10 per track.
         </p>
 
         <div id="DriverChampionship">
           <div className="CenterLoader">
-            {activeIsLoading ? (
+            {isLoading ? (
               <PulseLoader color="#FFD700" />
             ) : null}
           </div>
 
-          {activeDriverChampionship && activeDriverChampionship.length > 0 ? (
+          {driverChampionship && driverChampionship.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {activeDriverChampionship.slice(0, championshipDisplayCount).map((driver, index) => {
+              {driverChampionship.slice(0, championshipDisplayCount).map((driver, index) => {
                 const isExpanded = expandedDrivers.has(driver.address);
                 const championshipPosition = index + 1;
                 const tracksRaced = Object.keys(driver.trackStats).length;
@@ -1911,7 +1935,7 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
               })}
 
               {/* Show More Button */}
-              {activeDriverChampionship.length > championshipDisplayCount && (
+              {driverChampionship.length > championshipDisplayCount && (
                 <div style={{
                   display: 'flex',
                   justifyContent: 'center',
@@ -1921,19 +1945,15 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
                 </div>
               )}
             </div>
-          ) : !activeIsLoading && !activeFetchError ? (
+          ) : !isLoading && !fetchError ? (
             <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
-              <p>{statsEra === 'legacy' ? 'No legacy championship data yet.' : 'No championship data yet.'}</p>
-              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
-                {statsEra === 'legacy'
-                  ? 'Switch back to Current Tracks or wait for legacy scores to load.'
-                  : 'Race on any track to earn championship points!'}
-              </p>
+              <p>No championship data yet.</p>
+              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>Race on any track to earn championship points!</p>
             </div>
           ) : null}
 
           {/* Championship Summary Stats */}
-          {activeDriverChampionship && activeDriverChampionship.length > 0 && !activeIsLoading && (
+          {driverChampionship && driverChampionship.length > 0 && !isLoading && (
             <div style={{
               marginTop: '25px',
               padding: '15px',
@@ -1958,21 +1978,21 @@ const PixelRacingStats = memo(function PixelRacingStats({ latestactivity, userOr
               }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ color: '#FFD700', fontSize: '1.8em', fontWeight: 'bold' }}>
-                    {activeDriverChampionship.length}
+                    {driverChampionship.length}
                   </div>
                   <div style={{ color: '#888' }}>
-                    {statsEra === 'legacy' ? 'Total Drivers' : 'Total Foxes'}
+                    Total Foxes
                   </div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ color: '#36bffa', fontSize: '1.8em', fontWeight: 'bold' }}>
-                    {activeDriverChampionship.reduce((sum, d) => sum + d.totalRaces, 0)}
+                    {driverChampionship.reduce((sum, d) => sum + d.totalRaces, 0)}
                   </div>
                   <div style={{ color: '#888' }}>Total Races</div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ color: '#4CAF50', fontSize: '1.8em', fontWeight: 'bold' }}>
-                    {activeDriverChampionship.reduce((sum, d) => sum + d.totalPoints, 0)}
+                    {driverChampionship.reduce((sum, d) => sum + d.totalPoints, 0)}
                   </div>
                   <div style={{ color: '#888' }}>Total Points Awarded</div>
                 </div>
